@@ -57,91 +57,71 @@
   margin-left: auto;
 }
 
-/* Resources grid */
+/* Resources — two gauges side by side */
 .resources {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  gap: 16px;
 }
 
 @media (max-width: 800px) {
   .resources { grid-template-columns: 1fr; }
 }
 
-.resource { display: flex; flex-direction: column; gap: 8px; }
-
-.resHeader {
+/* Circle gauge */
+.gauge {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
 }
-.resLabel {
+
+.gaugeInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.gaugeLabel {
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
-}
-.resAllocatable {
-  font-size: 11px;
-  color: var(--muted);
+  margin-bottom: 1px;
 }
 
-/* Dual bar row */
-.barRow {
-  display: grid;
-  grid-template-columns: 64px 1fr 36px 80px;
-  align-items: center;
-  gap: 8px;
-}
-
-.barRowLabel {
-  font-size: 11px;
-  color: var(--muted);
-  text-align: right;
-}
-
-.track {
-  height: 10px;
-  background: var(--surface2);
-  border-radius: 5px;
-  overflow: hidden;
-  position: relative;
-}
-
-.fill {
-  height: 100%;
-  border-radius: 5px;
-  transition: width 0.4s ease;
-}
-
-.noData {
-  font-size: 9px;
-  color: var(--muted);
+.gaugeLine {
   display: flex;
   align-items: center;
-  height: 100%;
-  padding: 0 6px;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fg);
+  white-space: nowrap;
 }
 
-.barPct {
-  font-size: 12px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
+.gaugeDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
-.barVal {
-  font-size: 12px;
+.gaugeNoData {
+  font-size: 11px;
   color: var(--muted);
-  font-variant-numeric: tabular-nums;
 }
 
-/* Gap indicator */
-.gap {
+.gaugeAllocatable {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.gaugeGap {
   font-size: 11px;
   font-weight: 600;
-  padding-left: 72px;
+  color: var(--blue-over);
 }
 
 /* NotReady state */

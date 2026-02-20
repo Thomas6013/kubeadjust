@@ -13,7 +13,7 @@ const KIND_META: Record<SuggestionKind, { icon: string; color: string; action: s
 function SuggestionItem({ s }: { s: Suggestion }) {
   const meta = KIND_META[s.kind];
   return (
-    <div className={styles.item} style={{ borderLeftColor: meta.color }}>
+    <a href={`#dep-${s.deployment}`} className={styles.item} style={{ borderLeftColor: meta.color }}>
       <div className={styles.itemHeader}>
         <span className={styles.icon} style={{ color: meta.color }}>{meta.icon}</span>
         <span className={styles.depName}>{s.deployment}</span>
@@ -28,7 +28,7 @@ function SuggestionItem({ s }: { s: Suggestion }) {
         <span className={styles.suggested} style={{ color: meta.color }}>{s.suggested}</span>
       </div>
       <div className={styles.containerTag}>{s.container}</div>
-    </div>
+    </a>
   );
 }
 

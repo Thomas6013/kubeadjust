@@ -24,3 +24,12 @@
 
 .body { border-top: 1px solid var(--border); }
 .empty { padding: 16px; color: var(--muted); font-size: 13px; }
+
+/* Highlight when scrolled to via suggestion panel */
+@keyframes highlightPulse {
+  0%   { border-color: var(--border); box-shadow: none; }
+  15%  { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(108, 142, 247, 0.2); }
+  70%  { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(108, 142, 247, 0.1); }
+  100% { border-color: var(--border); box-shadow: none; }
+}
+.card:target { animation: highlightPulse 1.8s ease forwards; }

@@ -12,7 +12,7 @@ export default function DeploymentCard({ dep }: { dep: DeploymentDetail }) {
   const statusColor = healthy ? "var(--green)" : "var(--yellow)";
 
   return (
-    <div className={styles.card}>
+    <div id={`dep-${dep.name}`} className={styles.card}>
       <button className={styles.header} onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         <span className={styles.arrow}>{open ? "▾" : "▸"}</span>
         <span className={styles.name}>{dep.name}</span>
