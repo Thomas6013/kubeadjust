@@ -84,9 +84,12 @@ async function apiFetch<T>(path: string, token: string): Promise<T> {
   const res = await fetch(`/api${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  const data = await res.json();
-  if (!res.ok) throw new APIError(res.status, data.error ?? res.statusText);
-  return data as T;
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { msg = (await res.json()).error ?? msg; } catch { /* non-JSON error body */ }
+    throw new APIError(res.status, msg);
+  }
+  return res.json() as Promise<T>;
 }
 
 export const api = {
