@@ -1,0 +1,38 @@
+"use client";
+
+import { useState } from "react";
+import type { DeploymentDetail } from "@/lib/api";
+import PodRow from "./PodRow";
+import styles from "./DeploymentCard.module.css";
+
+export default function DeploymentCard({ dep }: { dep: DeploymentDetail }) {
+  const [open, setOpen] = useState(true);
+
+  const healthy = dep.readyReplicas === dep.replicas;
+  const statusColor = healthy ? "var(--green)" : "var(--yellow)";
+
+  return (
+    <div className={styles.card}>
+      <button className={styles.header} onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span className={styles.arrow}>{open ? "▾" : "▸"}</span>
+        <span className={styles.name}>{dep.name}</span>
+        <span className={styles.replicas} style={{ color: statusColor }}>
+          {dep.readyReplicas}/{dep.replicas} ready
+        </span>
+        <span className={styles.pods}>
+          {(dep.pods ?? []).length} pod{(dep.pods ?? []).length !== 1 ? "s" : ""}
+        </span>
+      </button>
+
+      {open && (
+        <div className={styles.body}>
+          {!dep.pods || dep.pods.length === 0 ? (
+            <p className={styles.empty}>No pods found.</p>
+          ) : (
+            dep.pods.map((pod) => <PodRow key={pod.name} pod={pod} />)
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

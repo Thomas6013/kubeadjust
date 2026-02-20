@@ -1,0 +1,166 @@
+.panel {
+  width: 260px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.panelTitle {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.total {
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.list {
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px;
+}
+
+.item {
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 10px 12px;
+  border-left: 3px solid;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.itemHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon {
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.depName {
+  font-size: 12px;
+  font-weight: 600;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.itemMsg {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.itemAction {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.actionLabel {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  width: 100%;
+  margin-bottom: -2px;
+}
+
+.current {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-decoration: line-through;
+  font-size: 12px;
+}
+
+.suggested {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.arrow {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.containerTag {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: monospace;
+  background: var(--surface2);
+  padding: 1px 6px;
+  border-radius: 3px;
+  align-self: flex-start;
+}
+
+/* All good state */
+.allGood {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.allGoodIcon {
+  font-size: 28px;
+  color: var(--green);
+}

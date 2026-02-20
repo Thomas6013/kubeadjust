@@ -1,0 +1,44 @@
+{{- if .Values.rbac.create }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kubeadjust.fullname" . }}-viewer
+  labels:
+    {{- include "kubeadjust.labels" . | nindent 4 }}
+rules:
+  # Core resources
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "persistentvolumeclaims", "nodes"]
+    verbs: ["get", "list", "watch"]
+  # Apps
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  # Metrics server (CPU/memory)
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+  # Kubelet stats/summary proxy (ephemeral storage + volume usage)
+  # Best-effort: dashboard degrades gracefully if this is not granted
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
+---
+# Bind the viewer role to the app's service account
+# (used for the health-check SA; users bring their own tokens)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kubeadjust.fullname" . }}-viewer
+  labels:
+    {{- include "kubeadjust.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kubeadjust.fullname" . }}-viewer
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kubeadjust.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

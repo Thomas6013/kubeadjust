@@ -1,0 +1,68 @@
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 40px;
+  width: 100%;
+  max-width: 460px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.logoIcon { font-size: 28px; }
+.logo h1 { font-size: 22px; font-weight: 700; }
+
+.subtitle {
+  color: var(--muted);
+  margin-bottom: 32px;
+  font-size: 13px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.form label {
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.error {
+  color: var(--red);
+  font-size: 13px;
+  padding: 8px 12px;
+  background: rgba(252, 129, 129, 0.1);
+  border-radius: var(--radius);
+  border: 1px solid rgba(252, 129, 129, 0.3);
+}
+
+.hint {
+  margin-top: 24px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+.hint code {
+  display: block;
+  background: var(--surface2);
+  padding: 6px 10px;
+  border-radius: 4px;
+  margin-top: 6px;
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text);
+}

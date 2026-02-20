@@ -1,0 +1,113 @@
+"use client";
+
+import { useState } from "react";
+import type { PodDetail } from "@/lib/api";
+import ResourceBar from "./ResourceBar";
+import VolumeSection from "./VolumeSection";
+import styles from "./PodRow.module.css";
+
+export default function PodRow({ pod }: { pod: PodDetail }) {
+  const [open, setOpen] = useState(true);
+
+  const phaseColor =
+    pod.phase === "Running"
+      ? "var(--green)"
+      : pod.phase === "Pending"
+      ? "var(--yellow)"
+      : "var(--red)";
+
+  return (
+    <div className={styles.pod}>
+      <button
+        className={styles.header}
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
+        <span className={styles.arrow}>{open ? "▾" : "▸"}</span>
+        <span className={styles.name}>{pod.name}</span>
+        <span className={styles.phase} style={{ color: phaseColor }}>{pod.phase}</span>
+        <span className={styles.containers}>
+          {pod.containers.length} container{pod.containers.length !== 1 ? "s" : ""}
+        </span>
+      </button>
+
+      {open && (
+        <div className={styles.body}>
+          {pod.containers.map((c) => (
+            <div key={c.name} className={styles.container}>
+              <div className={styles.containerName}>{c.name}</div>
+
+              {/* CPU + Memory */}
+              <div className={styles.resources}>
+                <ResourceBar label="CPU"    request={c.requests.cpu}    limit={c.limits.cpu}    usage={c.usage?.cpu}    isCPU={true} />
+                <ResourceBar label="Memory" request={c.requests.memory} limit={c.limits.memory} usage={c.usage?.memory} isCPU={false} />
+              </div>
+
+              {/* Ephemeral storage */}
+              {c.ephemeralStorage && (
+                <EphemeralBar eph={c.ephemeralStorage} />
+              )}
+            </div>
+          ))}
+
+          {/* Pod-level volumes (emptyDir, PVC) */}
+          <VolumeSection volumes={pod.volumes ?? []} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Inline ephemeral storage row ---
+
+import type { EphemeralStorageInfo, ResourceValue } from "@/lib/api";
+import { fmtStorage, storagePct } from "@/lib/api";
+import { storageStatus } from "@/lib/suggestions";
+
+const STATUS_COLOR: Record<string, string> = {
+  danger:  "var(--red)",
+  warning: "var(--orange)",
+  healthy: "var(--green)",
+  none:    "var(--border)",
+};
+
+function EphemeralBar({ eph }: { eph: EphemeralStorageInfo }) {
+  const hasLimit = !!eph.limit;
+  const capacity: ResourceValue | undefined = eph.limit;
+  const status = storageStatus(eph.usage, capacity, hasLimit);
+  const color = STATUS_COLOR[status] ?? "var(--border)";
+  const pct = storagePct(eph.usage, capacity);
+
+  return (
+    <div className={styles.ephemeral}>
+      <div className={styles.ephHeader}>
+        <span className={styles.ephLabel}>Ephemeral storage</span>
+        {!hasLimit && eph.usage && (
+          <span style={{ fontSize: 10, color: "var(--orange)", fontWeight: 700, textTransform: "uppercase" }}>
+            NO LIMIT
+          </span>
+        )}
+        {pct !== null && (
+          <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color }}>{pct}%</span>
+        )}
+      </div>
+      <div className={styles.ephTrack}>
+        <div className={styles.ephFill} style={{ width: pct !== null ? `${pct}%` : "0%", background: color }} />
+      </div>
+      <div className={styles.ephValues}>
+        {eph.request && (
+          <span className={styles.val}><span className={styles.valLabel}>req</span><strong>{fmtStorage(eph.request)}</strong></span>
+        )}
+        {eph.usage && (
+          <span className={styles.val} style={{ color }}><span className={styles.valLabel}>use</span><strong>{fmtStorage(eph.usage)}</strong></span>
+        )}
+        {eph.limit && (
+          <span className={styles.val}><span className={styles.valLabel}>lim</span><strong>{fmtStorage(eph.limit)}</strong></span>
+        )}
+        {!hasLimit && !eph.usage && (
+          <span className={styles.val}><span className={styles.valLabel}>lim</span><strong style={{ color: "var(--muted)" }}>—</strong></span>
+        )}
+      </div>
+    </div>
+  );
+}

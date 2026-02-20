@@ -1,0 +1,104 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+  flex: 1;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  min-width: 44px;
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid;
+  opacity: 0.9;
+}
+
+.pct {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bar track */
+.track {
+  position: relative;
+  height: 10px;
+  background: var(--surface2);
+  border-radius: 5px;
+  overflow: visible;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.4s ease;
+  min-width: 3px;
+}
+
+/* Request marker — vertical tick above the bar */
+.reqMarker {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 18px;
+  background: var(--muted);
+  border-radius: 1px;
+  transform: translateX(-50%);
+  opacity: 0.6;
+}
+.reqMarker::after {
+  content: 'R';
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+/* Values */
+.values {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.val {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.valLabel {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.val strong {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}

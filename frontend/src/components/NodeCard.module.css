@@ -1,0 +1,152 @@
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transition: border-color 0.2s;
+}
+.card.notReady { border-color: rgba(252, 129, 129, 0.4); }
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.nodeIcon { font-size: 18px; color: var(--accent); }
+
+.nodeName {
+  font-size: 15px;
+  font-weight: 700;
+  font-family: monospace;
+  flex: 1;
+}
+
+.statusBadge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.roleBadge {
+  font-size: 11px;
+  background: var(--surface2);
+  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.roleBadge.controlPlane {
+  background: rgba(108, 142, 247, 0.12);
+  color: var(--accent);
+}
+
+.pods {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+/* Resources grid */
+.resources {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 800px) {
+  .resources { grid-template-columns: 1fr; }
+}
+
+.resource { display: flex; flex-direction: column; gap: 8px; }
+
+.resHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.resLabel {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.resAllocatable {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Dual bar row */
+.barRow {
+  display: grid;
+  grid-template-columns: 64px 1fr 36px 80px;
+  align-items: center;
+  gap: 8px;
+}
+
+.barRowLabel {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.track {
+  height: 10px;
+  background: var(--surface2);
+  border-radius: 5px;
+  overflow: hidden;
+  position: relative;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.4s ease;
+}
+
+.noData {
+  font-size: 9px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 6px;
+}
+
+.barPct {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.barVal {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Gap indicator */
+.gap {
+  font-size: 11px;
+  font-weight: 600;
+  padding-left: 72px;
+}
+
+/* NotReady state */
+.notReadyMsg {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 8px 0;
+}

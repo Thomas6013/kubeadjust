@@ -1,0 +1,17 @@
+# Go
+backend/vendor/
+
+.claude
+.env
+CLAUDE.md
+
+docker-compose.yml
+
+
+# Node
+frontend/node_modules/
+frontend/.next/
+
+# Env
+.env
+.env.local
