@@ -21,10 +21,10 @@ function gaugeColor(p: number): string {
 }
 
 // SVG constants
-const SIZE = 96;
+const SIZE = 130;
 const CX = SIZE / 2;
-const ROUT = 36; // outer ring: usage
-const RIN  = 24; // inner ring: allocated
+const ROUT = 50; // outer ring: usage
+const RIN  = 33; // inner ring: allocated
 const COUT = 2 * Math.PI * ROUT;
 const CIN  = 2 * Math.PI * RIN;
 
@@ -82,9 +82,9 @@ function CircleGauge({ label, allocatable, requested, usage, isCPU }: GaugeProps
         />
         {/* Center: percentage */}
         <text
-          x={CX} y={CX - 5}
+          x={CX} y={CX - 7}
           textAnchor="middle" dominantBaseline="middle"
-          fontSize={15} fontWeight={700}
+          fontSize={20} fontWeight={700}
           fill={mainColor}
           style={{ fontFamily: "inherit" }}
         >
@@ -92,9 +92,9 @@ function CircleGauge({ label, allocatable, requested, usage, isCPU }: GaugeProps
         </text>
         {/* Center: sub-label */}
         <text
-          x={CX} y={CX + 11}
+          x={CX} y={CX + 13}
           textAnchor="middle" dominantBaseline="middle"
-          fontSize={8} fontWeight={600}
+          fontSize={10} fontWeight={600}
           fill="var(--muted)"
           style={{ fontFamily: "inherit" }}
         >
