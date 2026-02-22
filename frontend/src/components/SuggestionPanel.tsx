@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { DeploymentDetail } from "@/lib/api";
 import { computeSuggestions, type Suggestion, type SuggestionKind } from "@/lib/suggestions";
 import styles from "./SuggestionPanel.module.css";
@@ -20,9 +21,9 @@ function groupSuggestions(suggestions: Suggestion[]): Array<{ resource: string; 
     map.get(s.resource)!.push(s);
   }
   // Sort within each group by severity
-  for (const items of map.values()) {
+  map.forEach((items) => {
     items.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
-  }
+  });
   const groups: Array<{ resource: string; items: Suggestion[] }> = [];
   for (const resource of RESOURCE_ORDER) {
     if (map.has(resource)) {
@@ -31,9 +32,9 @@ function groupSuggestions(suggestions: Suggestion[]): Array<{ resource: string; 
     }
   }
   // Any remaining resources not in the predefined order
-  for (const [resource, items] of map) {
+  map.forEach((items, resource) => {
     groups.push({ resource, items });
-  }
+  });
   return groups;
 }
 
@@ -55,6 +56,20 @@ function SuggestionItem({ s }: { s: Suggestion }) {
       </div>
       <div className={styles.containerTag}>{s.container}</div>
     </a>
+  );
+}
+
+function SuggestionGroup({ resource, items }: { resource: string; items: Suggestion[] }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className={styles.group}>
+      <button className={styles.groupHeader} onClick={() => setOpen((o) => !o)}>
+        <span className={styles.groupArrow}>{open ? "▾" : "▸"}</span>
+        <span className={styles.groupLabel}>{resource}</span>
+        <span className={styles.groupCount}>{items.length}</span>
+      </button>
+      {open && items.map((s, i) => <SuggestionItem key={i} s={s} />)}
+    </div>
   );
 }
 
@@ -80,7 +95,6 @@ export default function SuggestionPanel({ deployments }: { deployments: Deployme
         </div>
       ) : (
         <>
-          {/* Summary chips */}
           <div className={styles.summary}>
             {danger > 0 && (
               <span className={styles.chip} style={{ background: "rgba(252,129,129,0.15)", color: "var(--red)" }}>
@@ -101,15 +115,7 @@ export default function SuggestionPanel({ deployments }: { deployments: Deployme
 
           <div className={styles.list}>
             {groups.map(({ resource, items }) => (
-              <div key={resource} className={styles.group}>
-                <div className={styles.groupHeader}>
-                  <span>{resource}</span>
-                  <span className={styles.groupCount}>{items.length}</span>
-                </div>
-                {items.map((s, i) => (
-                  <SuggestionItem key={i} s={s} />
-                ))}
-              </div>
+              <SuggestionGroup key={resource} resource={resource} items={items} />
             ))}
           </div>
         </>

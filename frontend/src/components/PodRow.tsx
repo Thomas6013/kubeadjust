@@ -7,7 +7,7 @@ import VolumeSection from "./VolumeSection";
 import styles from "./PodRow.module.css";
 
 export default function PodRow({ pod }: { pod: PodDetail }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   const phaseColor =
     pod.phase === "Running"

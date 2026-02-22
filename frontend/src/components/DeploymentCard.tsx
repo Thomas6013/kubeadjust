@@ -6,7 +6,7 @@ import PodRow from "./PodRow";
 import styles from "./DeploymentCard.module.css";
 
 export default function DeploymentCard({ dep }: { dep: DeploymentDetail }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   const healthy = dep.readyReplicas === dep.replicas;
   const statusColor = healthy ? "var(--green)" : "var(--yellow)";
