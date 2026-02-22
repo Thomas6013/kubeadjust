@@ -6,7 +6,7 @@ fullnameOverride: ""
 backend:
   image:
     repository: ghcr.io/thomas6013/devops-kubeadjust/kubeadjust-backend
-    tag: ""
+    tag: ""  # defaults to .Chart.AppVersion — set explicitly to pin a specific version
     pullPolicy: Always
     pullSecrets:
       - ghcr-login-secret
@@ -26,7 +26,7 @@ backend:
 frontend:
   image:
     repository: ghcr.io/thomas6013/devops-kubeadjust/kubeadjust-frontend
-    tag: ""
+    tag: ""  # defaults to .Chart.AppVersion — set explicitly to pin a specific version
     pullPolicy: Always
     pullSecrets:
       - ghcr-login-secret
