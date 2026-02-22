@@ -1,0 +1,30 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      # Point to your cluster API server
+      KUBE_API_SERVER: "${KUBE_API_SERVER:-https://kubernetes.default.svc}"
+      # Set to true if your cluster uses a self-signed certificate
+      KUBE_INSECURE_TLS: "${KUBE_INSECURE_TLS:-false}"
+      # Optional: connect to an existing Prometheus for sparklines
+      # PROMETHEUS_URL: "http://prometheus:9090"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        BACKEND_URL: "http://backend:8080"
+    ports:
+      - "3000:3000"
+    environment:
+      BACKEND_URL: "http://backend:8080"
+    depends_on:
+      - backend
+    restart: unless-stopped
