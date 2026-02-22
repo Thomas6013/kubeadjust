@@ -5,9 +5,11 @@ fullnameOverride: ""
 # Image registries — set to your registry
 backend:
   image:
-    repository: ghcr.io/your-org/kubeadjust-backend
+    repository: ghcr.io/thomas6013/devops-kubeadjust/kubeadjust-backend
     tag: "0.1.0"
     pullPolicy: IfNotPresent
+    pullSecrets:
+      - ghcr-login-secret
   port: 8080
   resources:
     requests:
@@ -17,15 +19,17 @@ backend:
       cpu: 200m
       memory: 128Mi
   # Extra env vars
-  env: []
-  # - name: KUBE_INSECURE_TLS
-  #   value: "true"
+  env: 
+  - name: KUBE_INSECURE_TLS
+    value: "true"
 
 frontend:
   image:
-    repository: ghcr.io/your-org/kubeadjust-frontend
+    repository: ghcr.io/thomas6013/devops-kubeadjust/kubeadjust-frontend
     tag: "0.1.0"
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
+    pullSecrets:
+      - ghcr-login-secret
   port: 3000
   resources:
     requests:
