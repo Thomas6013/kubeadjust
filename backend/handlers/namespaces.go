@@ -12,6 +12,7 @@ type NamespaceItem struct {
 	Name string `json:"name"`
 }
 
+// ListNamespaces returns all namespaces the token has access to.
 func ListNamespaces(w http.ResponseWriter, r *http.Request) {
 	token := middleware.TokenFromContext(r.Context())
 	client := k8s.New(token, "")
@@ -27,11 +28,13 @@ func ListNamespaces(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, result)
 }
 
+// jsonOK writes v as JSON with 200 OK.
 func jsonOK(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(v)
 }
 
+// jsonError writes a JSON {"error": msg} response with the given HTTP status code.
 func jsonError(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)

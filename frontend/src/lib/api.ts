@@ -75,12 +75,14 @@ export interface NamespaceItem {
   name: string;
 }
 
+/** Typed error thrown by apiFetch when the backend returns a non-2xx status. */
 class APIError extends Error {
   constructor(public status: number, message: string) {
     super(message);
   }
 }
 
+/** Generic authenticated fetch helper. Throws APIError on non-2xx responses. */
 async function apiFetch<T>(path: string, token: string): Promise<T> {
   const res = await fetch(`/api${path}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -124,6 +126,7 @@ export const api = {
 
 // --- Formatting helpers ---
 
+/** Formats a CPU ResourceValue as millicores ("500m") or cores ("1.50 cores"). */
 export function fmtCPU(rv: ResourceValue): string {
   if (!rv?.raw) return "—";
   if (rv.millicores !== undefined && rv.millicores > 0) {
@@ -133,6 +136,7 @@ export function fmtCPU(rv: ResourceValue): string {
   return rv.raw;
 }
 
+/** Formats a memory ResourceValue as KiB/MiB/GiB. */
 export function fmtMemory(rv: ResourceValue): string {
   if (!rv?.raw) return "—";
   if (rv.bytes !== undefined && rv.bytes > 0) {
@@ -145,11 +149,13 @@ export function fmtMemory(rv: ResourceValue): string {
   return rv.raw;
 }
 
+/** Formats a storage ResourceValue (delegates to fmtMemory). */
 export function fmtStorage(rv: ResourceValue | undefined): string {
   if (!rv) return "—";
   return fmtMemory(rv);
 }
 
+/** Returns usage as a percentage of limit (0–100), or null if either value is missing/zero. */
 export function usagePct(
   usage: ResourceValue | undefined,
   limit: ResourceValue | undefined,
@@ -162,6 +168,7 @@ export function usagePct(
   return Math.min(100, Math.round((u / l) * 100));
 }
 
+/** Returns storage usage as a percentage of capacity (0–100), or null if missing/zero. */
 export function storagePct(
   usage: ResourceValue | undefined,
   capacity: ResourceValue | undefined,
