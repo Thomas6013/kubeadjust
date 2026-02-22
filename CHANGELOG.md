@@ -2,6 +2,13 @@
 
 All notable changes to KubeAdjust are documented here.
 
+## [0.4.2] - 2026-02-22
+
+### Fixed
+- **Docker Publish workflow**: removed `v` prefix from version tag — images are now tagged `0.4.2`, `latest` and commit SHA (not `v0.4.2`)
+
+---
+
 ## [0.4.1] - 2026-02-22
 
 ### Fixed
