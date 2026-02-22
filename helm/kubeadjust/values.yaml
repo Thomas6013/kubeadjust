@@ -7,7 +7,7 @@ backend:
   image:
     repository: ghcr.io/thomas6013/devops-kubeadjust/kubeadjust-backend
     tag: "0.1.0"
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
     pullSecrets:
       - ghcr-login-secret
   port: 8080
