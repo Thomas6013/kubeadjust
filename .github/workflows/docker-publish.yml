@@ -46,8 +46,8 @@ jobs:
           context: ${{ matrix.context }}
           push: true
           tags: |
-            ghcr.io/${{ steps.version.outputs.owner }}/${{ matrix.image }}:latest
-            ghcr.io/${{ steps.version.outputs.owner }}/${{ matrix.image }}:v${{ steps.version.outputs.value }}
-            ghcr.io/${{ steps.version.outputs.owner }}/${{ matrix.image }}:${{ github.sha }}
+            ghcr.io/${{ steps.version.outputs.owner }}/kubeadjust/${{ matrix.image }}:latest
+            ghcr.io/${{ steps.version.outputs.owner }}/kubeadjust/${{ matrix.image }}:v${{ steps.version.outputs.value }}
+            ghcr.io/${{ steps.version.outputs.owner }}/kubeadjust/${{ matrix.image }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
