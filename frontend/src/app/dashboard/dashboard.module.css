@@ -80,7 +80,11 @@
 
 .depList { display: flex; flex-direction: column; gap: 10px; }
 
-.nodeGrid { display: flex; flex-direction: column; gap: 12px; }
+.nodeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
 
 .nodeBtn { font-size: 13px !important; }
 .nodeBadge {

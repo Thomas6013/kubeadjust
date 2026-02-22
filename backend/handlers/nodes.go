@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -101,11 +102,11 @@ func ListNodes(w http.ResponseWriter, r *http.Request) {
 		if a := agg[node.Metadata.Name]; a != nil {
 			overview.PodCount = a.podCount
 			overview.Requested = NodeResources{
-				CPU:    ResourceValue{Millicores: a.cpuReq, Raw: fmtBytes(a.cpuReq) + "m"},
+				CPU:    ResourceValue{Millicores: a.cpuReq, Raw: fmtMillicores(a.cpuReq)},
 				Memory: ResourceValue{Bytes: a.memReq, Raw: fmtBytes(a.memReq)},
 			}
 			overview.Limited = NodeResources{
-				CPU:    ResourceValue{Millicores: a.cpuLim, Raw: fmtBytes(a.cpuLim) + "m"},
+				CPU:    ResourceValue{Millicores: a.cpuLim, Raw: fmtMillicores(a.cpuLim)},
 				Memory: ResourceValue{Bytes: a.memLim, Raw: fmtBytes(a.memLim)},
 			}
 		}
@@ -125,6 +126,16 @@ func ListNodes(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, result)
 }
 
+// fmtMillicores formats a millicores value as "500m" or "1.50" (cores).
+func fmtMillicores(m int64) string {
+	if m >= 1000 {
+		return fmt.Sprintf("%.2f", float64(m)/1000)
+	}
+	return fmt.Sprintf("%dm", m)
+}
+
+// nodeRoles extracts role names from node labels (node-role.kubernetes.io/<role>).
+// Falls back to "worker" if no role labels are present.
 func nodeRoles(labels map[string]string) []string {
 	roles := []string{}
 	for k := range labels {
@@ -141,6 +152,7 @@ func nodeRoles(labels map[string]string) []string {
 	return roles
 }
 
+// nodeStatus derives a human-readable status string from the node's Ready condition.
 func nodeStatus(conditions []k8s.NodeCondition) string {
 	for _, c := range conditions {
 		if c.Type == "Ready" {

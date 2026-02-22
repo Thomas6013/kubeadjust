@@ -1,13 +1,12 @@
 # Go
 backend/vendor/
 
-.claude
-.env
-build.md
+# Claude workspace (project-specific AI instructions)
+.claude/
 CLAUDE.md
 
-docker-compose.yml
-
+# Personal build scripts
+build.md
 
 # Node
 frontend/node_modules/
@@ -16,3 +15,4 @@ frontend/.next/
 # Env
 .env
 .env.local
+.env*.local

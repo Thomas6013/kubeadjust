@@ -12,11 +12,13 @@ export interface Suggestion {
   suggested: string;
 }
 
+/** Extracts the numeric value from a ResourceValue (millicores for CPU, bytes for memory). */
 function val(rv: ResourceValue | undefined, isCPU: boolean): number {
   if (!rv) return 0;
   return isCPU ? (rv.millicores ?? 0) : (rv.bytes ?? 0);
 }
 
+/** Formats a suggested resource value for display in the suggestion panel. */
 function fmtSuggested(v: number, isCPU: boolean): string {
   if (isCPU) {
     if (v >= 1000) return `${(v / 1000).toFixed(2)} cores`;
@@ -29,6 +31,7 @@ function fmtSuggested(v: number, isCPU: boolean): string {
   return `${Math.ceil(v / 1024)} KiB`;
 }
 
+/** Generates CPU and memory suggestions for a container: danger/warning when near limit, overkill when far below request. */
 function analyzeCpuMem(c: ContainerResources, depName: string): Suggestion[] {
   const results: Suggestion[] = [];
   for (const isCPU of [true, false]) {
@@ -60,6 +63,7 @@ function analyzeCpuMem(c: ContainerResources, depName: string): Suggestion[] {
   return results;
 }
 
+/** Generates ephemeral storage suggestions: flags missing limits, warns near capacity. */
 function analyzeEphemeral(c: ContainerResources, depName: string): Suggestion[] {
   const eph = c.ephemeralStorage;
   if (!eph?.usage) return [];
@@ -89,6 +93,7 @@ function analyzeEphemeral(c: ContainerResources, depName: string): Suggestion[] 
   return results;
 }
 
+/** Generates volume suggestions: PVC near capacity, emptyDir without sizeLimit. */
 function analyzeVolumes(volumes: VolumeDetail[], depName: string): Suggestion[] {
   const results: Suggestion[] = [];
   for (const vol of volumes) {
@@ -120,6 +125,7 @@ function analyzeVolumes(volumes: VolumeDetail[], depName: string): Suggestion[] 
   return results;
 }
 
+/** Computes all suggestions across all workloads, sorted by severity (danger → warning → overkill). */
 export function computeSuggestions(deployments: DeploymentDetail[]): Suggestion[] {
   const out: Suggestion[] = [];
   for (const dep of deployments) {
@@ -135,6 +141,7 @@ export function computeSuggestions(deployments: DeploymentDetail[]): Suggestion[
   return out.sort((a, b) => order[a.kind] - order[b.kind]);
 }
 
+/** Returns the color status for a resource bar based on usage vs request/limit thresholds. */
 export function resourceStatus(
   use: ResourceValue | undefined,
   req: ResourceValue | undefined,
@@ -152,6 +159,7 @@ export function resourceStatus(
   return "healthy";
 }
 
+/** Returns the color status for a storage bar. Always warns when no limit is set. */
 export function storageStatus(
   use: ResourceValue | undefined,
   capacity: ResourceValue | undefined,

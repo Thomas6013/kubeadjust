@@ -150,6 +150,8 @@ func buildOwnerMaps(pods []k8s.Pod, rsList *k8s.ReplicaSetList, jobs *k8s.JobLis
 	return podToWorkload
 }
 
+// ListDeployments fetches all workloads (Deployments, StatefulSets, CronJobs) in a namespace
+// along with per-container CPU/memory metrics, ephemeral storage, and PVC details.
 func ListDeployments(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
 	token := middleware.TokenFromContext(r.Context())
@@ -438,6 +440,7 @@ func buildPodDetails(
 
 // --- Resource parsing ---
 
+// parseResource converts a raw k8s resource string (e.g. "500m", "256Mi") into a typed ResourceValue.
 func parseResource(raw string, isCPU bool) ResourceValue {
 	if raw == "" {
 		return ResourceValue{Raw: ""}
@@ -451,6 +454,7 @@ func parseResource(raw string, isCPU bool) ResourceValue {
 	return rv
 }
 
+// parseStorageBytes parses a storage quantity string into a ResourceValue with bytes populated.
 func parseStorageBytes(raw string) ResourceValue {
 	if raw == "" {
 		return ResourceValue{}
@@ -459,6 +463,8 @@ func parseStorageBytes(raw string) ResourceValue {
 	return ResourceValue{Raw: raw, Bytes: b}
 }
 
+// parseCPUMillicores converts a k8s CPU string to millicores.
+// Handles nanocores ("18447n"), millicores ("500m"), and whole cores ("2").
 func parseCPUMillicores(s string) int64 {
 	if strings.HasSuffix(s, "n") {
 		// nanocores (metrics-server returns e.g. "18447n") → millicores
@@ -473,6 +479,8 @@ func parseCPUMillicores(s string) int64 {
 	return int64(v * 1000)
 }
 
+// parseMemoryBytes converts a k8s memory/storage quantity string to bytes.
+// Supports binary (Ki/Mi/Gi/Ti) and decimal (K/M/G/T) suffixes.
 func parseMemoryBytes(s string) int64 {
 	suffixes := []struct {
 		suffix string
@@ -501,6 +509,7 @@ func parseMemoryBytes(s string) int64 {
 	return v
 }
 
+// fmtBytes formats a byte count as a human-readable string (GiB/MiB/KiB/B).
 func fmtBytes(b int64) string {
 	const gib = 1024 * 1024 * 1024
 	const mib = 1024 * 1024
@@ -517,6 +526,7 @@ func fmtBytes(b int64) string {
 	}
 }
 
+// GetPodMetrics proxies raw pod metrics from metrics-server. Useful for debugging.
 func GetPodMetrics(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
 	client := k8s.New(middleware.TokenFromContext(r.Context()), "")
