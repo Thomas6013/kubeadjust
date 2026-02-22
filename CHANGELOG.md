@@ -2,6 +2,21 @@
 
 All notable changes to KubeAdjust are documented here.
 
+## [0.3.0] - 2026-02-22
+
+### Added
+- **Docker Publish workflow**: images automatically built and pushed to GHCR on every merge to `main`, tagged `latest`, `vX.Y.Z` (from `Chart.appVersion`) and commit SHA
+- **ROADMAP.md**: public checklist of potential next steps
+- **Dashboard screenshot**: `docs/screenshot.png` displayed in README
+
+### Changed
+- **Helm image tags default to `Chart.appVersion`**: `backend.image.tag` and `frontend.image.tag` default to `""` in `values.yaml`; the deployment template falls back to `.Chart.AppVersion` — only `Chart.yaml` needs updating on a release
+- **metrics-server sub-chart aliased to `metricsServer`**: Helm dependency now uses `alias: metricsServer` so all sub-chart values (including `replicas`) are configured under the same `metricsServer:` key instead of `metrics-server:`
+- README updated with solo-project disclaimer and AI-assisted development notice
+- CONTRIBUTING.md updated with versioning convention and release checklist
+
+---
+
 ## [0.2.0] - 2026-02-22
 
 ### Added
