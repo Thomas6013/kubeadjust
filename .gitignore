@@ -1,0 +1,20 @@
+# Go
+backend/vendor/
+
+build 
+
+# Claude workspace (project-specific AI instructions)
+.claude/
+CLAUDE.md
+
+# Personal build scripts
+build.md
+
+# Node
+frontend/node_modules/
+frontend/.next/
+
+# Env
+.env
+.env.local
+.env*.local

@@ -1,0 +1,46 @@
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: transparent;
+  color: var(--text);
+  padding: 14px 16px;
+  font-size: 14px;
+  border-radius: 0;
+  text-align: left;
+}
+.header:hover { background: rgba(255,255,255,0.03); }
+.arrow { font-size: 11px; color: var(--muted); width: 12px; }
+.name { flex: 1; font-weight: 600; }
+.replicas { font-size: 13px; font-weight: 600; }
+.pods { font-size: 12px; color: var(--muted); }
+.kindBadge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--surface2);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.body { border-top: 1px solid var(--border); }
+.empty { padding: 16px; color: var(--muted); font-size: 13px; }
+
+/* Highlight when scrolled to via suggestion panel */
+@keyframes highlightPulse {
+  0%   { border-color: var(--border); box-shadow: none; }
+  15%  { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(108, 142, 247, 0.2); }
+  70%  { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(108, 142, 247, 0.1); }
+  100% { border-color: var(--border); box-shadow: none; }
+}
+.card:target { animation: highlightPulse 1.8s ease forwards; }

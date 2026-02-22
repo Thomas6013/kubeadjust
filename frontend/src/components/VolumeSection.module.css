@@ -1,0 +1,108 @@
+.section {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+.sectionTitle {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.list { display: flex; flex-direction: column; gap: 10px; }
+
+.volume { display: flex; flex-direction: column; gap: 5px; }
+
+.volHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.volType {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.volName {
+  font-size: 12px;
+  font-family: monospace;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.claimName {
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--muted);
+}
+
+.storageClass, .accessMode {
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--surface2);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.noLimit {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pct {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.track {
+  height: 8px;
+  background: var(--surface2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.values {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.val {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.valLabel {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.val strong {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
