@@ -1,0 +1,15 @@
+KubeAdjust has been deployed!
+
+1. Get the frontend URL:
+{{- if .Values.ingress.enabled }}
+   https://{{ .Values.ingress.host }}
+{{- else }}
+   kubectl port-forward svc/{{ include "kubeadjust.fullname" . }}-frontend 3000:80 -n {{ .Release.Namespace }}
+   Then open http://localhost:3000
+{{- end }}
+
+2. Generate a service account token to log in:
+   kubectl create token <your-service-account> -n <namespace>
+
+   Or use the kubeadjust viewer SA created by this chart:
+   kubectl create token {{ include "kubeadjust.serviceAccountName" . }} -n {{ .Release.Namespace }}

@@ -1,0 +1,18 @@
+apiVersion: v2
+name: kubeadjust
+description: Lightweight Kubernetes resource limits/requests dashboard
+type: application
+version: 0.2.0
+appVersion: "0.2.0"
+keywords:
+  - kubernetes
+  - resources
+  - dashboard
+  - limits
+  - requests
+
+dependencies:
+  - name: metrics-server
+    version: "3.12.2"
+    repository: "https://kubernetes-sigs.github.io/metrics-server/"
+    condition: metricsServer.enabled

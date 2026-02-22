@@ -1,0 +1,81 @@
+# Global
+nameOverride: ""
+fullnameOverride: ""
+
+# Image registries — set to your registry
+backend:
+  image:
+    repository: ghcr.io/thomas6013/devops-kubeadjust/kubeadjust-backend
+    tag: "0.1.0"
+    pullPolicy: Always
+    pullSecrets:
+      - ghcr-login-secret
+  port: 8080
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  # Extra env vars
+  env: 
+  - name: KUBE_INSECURE_TLS
+    value: "true"
+
+frontend:
+  image:
+    repository: ghcr.io/thomas6013/devops-kubeadjust/kubeadjust-frontend
+    tag: "0.1.0"
+    pullPolicy: Always
+    pullSecrets:
+      - ghcr-login-secret
+  port: 3000
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ServiceAccount used by the backend to proxy k8s API calls
+# Note: the actual permissions are granted per-user via their own token.
+# This SA only needs minimal rights (the bearer token from the UI carries the real permissions).
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# RBAC — create a ClusterRole + ClusterRoleBinding for demo/admin users
+# You can bind this role to specific users/groups manually.
+rbac:
+  create: true
+  # "viewer" creates read-only access to deployments, pods, namespaces, metrics
+  # "admin" additionally allows listing all namespaces
+  role: viewer
+
+service:
+  type: ClusterIP
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: kubeadjust.example.com
+  tls: []
+
+replicaCount: 1
+
+# Optional: deploy metrics-server as a sub-chart (disabled by default)
+# Enable if your cluster does not already have metrics-server installed.
+metricsServer:
+  enabled: false
+  # Pass extra args to metrics-server (e.g. for self-signed kubelet certs)
+  args:
+    - --kubelet-insecure-tls
+
+# Optional: connect to an existing Prometheus for CPU/memory sparklines
+prometheus:
+  enabled: false
+  url: ""  # e.g. http://prometheus-operated.monitoring.svc.cluster.local:9090
