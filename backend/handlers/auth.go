@@ -11,10 +11,6 @@ import (
 // VerifyToken checks whether the provided token can reach the Kubernetes API.
 func VerifyToken(w http.ResponseWriter, r *http.Request) {
 	token := middleware.TokenFromContext(r.Context())
-	if isMock(token) {
-		jsonOK(w, map[string]string{"status": "ok"})
-		return
-	}
 	client := k8s.New(token, "")
 	if err := client.VerifyToken(); err != nil {
 		jsonError(w, "invalid token: "+err.Error(), http.StatusUnauthorized)

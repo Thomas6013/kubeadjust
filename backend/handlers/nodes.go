@@ -31,10 +31,6 @@ type NodeOverview struct {
 // ListNodes returns a cluster-wide node overview with resource aggregation.
 func ListNodes(w http.ResponseWriter, r *http.Request) {
 	token := middleware.TokenFromContext(r.Context())
-	if isMock(token) {
-		jsonOK(w, mockNodes())
-		return
-	}
 	client := k8s.New(token, "")
 
 	nodes, err := client.ListNodes()

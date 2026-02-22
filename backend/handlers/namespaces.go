@@ -14,10 +14,6 @@ type NamespaceItem struct {
 
 func ListNamespaces(w http.ResponseWriter, r *http.Request) {
 	token := middleware.TokenFromContext(r.Context())
-	if isMock(token) {
-		jsonOK(w, mockNamespaces())
-		return
-	}
 	client := k8s.New(token, "")
 	list, err := client.ListNamespaces()
 	if err != nil {

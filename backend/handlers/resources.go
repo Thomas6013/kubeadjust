@@ -82,10 +82,6 @@ type podStorageStats struct {
 func ListDeployments(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
 	token := middleware.TokenFromContext(r.Context())
-	if isMock(token) {
-		jsonOK(w, mockDeployments(ns))
-		return
-	}
 	client := k8s.New(token, "")
 
 	// 1. Fetch pods once (not per deployment)
