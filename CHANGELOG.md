@@ -2,6 +2,13 @@
 
 All notable changes to KubeAdjust are documented here.
 
+## [0.3.1] - 2026-02-22
+
+### Fixed
+- **Docker Publish workflow**: GHCR image tags failed with `repository name must be lowercase` — `GITHUB_REPOSITORY_OWNER` is now lowercased via bash `${,,}` expansion before being used in image tags
+
+---
+
 ## [0.3.0] - 2026-02-22
 
 ### Added
