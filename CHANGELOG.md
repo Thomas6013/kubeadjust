@@ -2,6 +2,14 @@
 
 All notable changes to KubeAdjust are documented here.
 
+## [0.4.0] - 2026-02-22
+
+### Fixed
+- **Helm sub-chart misconfiguration**: `metricsServer.args` was silently ignored because it was nested under the parent-chart key instead of the sub-chart key — moved to `metrics-server.args` in `values.yaml` so args (e.g. `--kubelet-insecure-tls`) are correctly forwarded to metrics-server
+- **Helm alias removed**: `alias: metricsServer` on the metrics-server dependency generated invalid Kubernetes resource names (`kubeadjust-metricsServer`) — alias reverted, two-key pattern restored (`metricsServer.enabled` to toggle, `metrics-server.*` for sub-chart config)
+
+---
+
 ## [0.3.1] - 2026-02-22
 
 ### Fixed
