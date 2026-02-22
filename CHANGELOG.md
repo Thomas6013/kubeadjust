@@ -2,6 +2,13 @@
 
 All notable changes to KubeAdjust are documented here.
 
+## [0.4.1] - 2026-02-22
+
+### Fixed
+- **Image path corrected**: GHCR image repositories updated to `ghcr.io/thomas6013/kubeadjust/kubeadjust-{backend,frontend}` — `docker-publish.yml` and `values.yaml` are now aligned on this path
+
+---
+
 ## [0.4.0] - 2026-02-22
 
 ### Fixed
