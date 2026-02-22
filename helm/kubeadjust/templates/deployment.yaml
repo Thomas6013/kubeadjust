@@ -19,16 +19,16 @@ spec:
         app.kubernetes.io/component: backend
     spec:
       serviceAccountName: {{ include "kubeadjust.serviceAccountName" . }}
+      {{- with .Values.backend.image.pullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
       containers:
         - name: backend
           image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
-          {{- with .Values.backend.image.pullSecrets }}
-          imagePullSecrets:
-            {{- range . }}
-            - name: {{ . }}
-            {{- end}}
-          {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.backend.port }}
@@ -80,6 +80,12 @@ spec:
         app.kubernetes.io/name: {{ include "kubeadjust.name" . }}
         app.kubernetes.io/component: frontend
     spec:
+      {{- with .Values.frontend.image.pullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
       containers:
         - name: frontend
           image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
