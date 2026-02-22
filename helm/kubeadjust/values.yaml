@@ -5,7 +5,7 @@ fullnameOverride: ""
 # Image registries — set to your registry
 backend:
   image:
-    repository: ghcr.io/thomas6013/kubeadjust/backend
+    repository: ghcr.io/thomas6013/kubeadjust/kubeadjust-backend
     tag: ""  # defaults to .Chart.AppVersion — set explicitly to pin a specific version
     pullPolicy: Always
     pullSecrets:
@@ -25,7 +25,7 @@ backend:
 
 frontend:
   image:
-    repository: ghcr.io/thomas6013/kubeadjust/frontend
+    repository: ghcr.io/thomas6013/kubeadjust/kubeadjust-frontend
     tag: ""  # defaults to .Chart.AppVersion — set explicitly to pin a specific version
     pullPolicy: Always
     pullSecrets:
