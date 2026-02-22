@@ -1,20 +1,20 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { PodDetail, HistoryResponse } from "@/lib/api";
-import { api } from "@/lib/api";
-import { resourceStatus } from "@/lib/suggestions";
+import type { PodDetail, HistoryResponse, EphemeralStorageInfo, ResourceValue } from "@/lib/api";
+import { api, fmtStorage, storagePct } from "@/lib/api";
+import { resourceStatus, storageStatus } from "@/lib/suggestions";
 import ResourceBar from "./ResourceBar";
 import VolumeSection from "./VolumeSection";
 import Sparkline from "./Sparkline";
 import styles from "./PodRow.module.css";
 
 const STATUS_COLOR: Record<string, string> = {
-  danger:  "var(--red)",
-  warning: "var(--orange)",
-  overkill:"var(--blue-over)",
-  healthy: "var(--green)",
-  none:    "var(--muted)",
+  danger:   "var(--red)",
+  warning:  "var(--orange)",
+  overkill: "var(--blue-over)",
+  healthy:  "var(--green)",
+  none:     "var(--muted)",
 };
 
 interface PodRowProps {
@@ -39,11 +39,9 @@ export default function PodRow({ pod, namespace, prometheusAvailable, token }: P
   }, [open, prometheusAvailable, pod, namespace, token, history]);
 
   const phaseColor =
-    pod.phase === "Running"
-      ? "var(--green)"
-      : pod.phase === "Pending"
-      ? "var(--yellow)"
-      : "var(--red)";
+    pod.phase === "Running"  ? "var(--green)"
+    : pod.phase === "Pending" ? "var(--yellow)"
+    : "var(--red)";
 
   return (
     <div className={styles.pod}>
@@ -70,10 +68,9 @@ export default function PodRow({ pod, namespace, prometheusAvailable, token }: P
               <div key={c.name} className={styles.container}>
                 <div className={styles.containerName}>{c.name}</div>
 
-                {/* CPU + Memory with optional sparklines */}
                 <div className={styles.resources}>
                   <div className={styles.resourceRow}>
-                    <ResourceBar label="CPU"    request={c.requests.cpu}    limit={c.limits.cpu}    usage={c.usage?.cpu}    isCPU={true} />
+                    <ResourceBar label="CPU" request={c.requests.cpu} limit={c.limits.cpu} usage={c.usage?.cpu} isCPU={true} />
                     {hist && hist.cpu.length >= 2 && (
                       <Sparkline points={hist.cpu.map((p) => p.v)} color={STATUS_COLOR[cpuStatus]} />
                     )}
@@ -86,15 +83,11 @@ export default function PodRow({ pod, namespace, prometheusAvailable, token }: P
                   </div>
                 </div>
 
-                {/* Ephemeral storage */}
-                {c.ephemeralStorage && (
-                  <EphemeralBar eph={c.ephemeralStorage} />
-                )}
+                {c.ephemeralStorage && <EphemeralBar eph={c.ephemeralStorage} />}
               </div>
             );
           })}
 
-          {/* Pod-level volumes (emptyDir, PVC) */}
           <VolumeSection volumes={pod.volumes ?? []} />
         </div>
       )}
@@ -103,17 +96,6 @@ export default function PodRow({ pod, namespace, prometheusAvailable, token }: P
 }
 
 // --- Inline ephemeral storage row ---
-
-import type { EphemeralStorageInfo, ResourceValue } from "@/lib/api";
-import { fmtStorage, storagePct } from "@/lib/api";
-import { storageStatus } from "@/lib/suggestions";
-
-const STATUS_COLOR: Record<string, string> = {
-  danger:  "var(--red)",
-  warning: "var(--orange)",
-  healthy: "var(--green)",
-  none:    "var(--border)",
-};
 
 function EphemeralBar({ eph }: { eph: EphemeralStorageInfo }) {
   const hasLimit = !!eph.limit;
