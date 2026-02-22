@@ -44,6 +44,7 @@ export interface PodDetail {
 }
 
 export interface DeploymentDetail {
+  kind: string; // "Deployment" | "StatefulSet" | "CronJob"
   name: string;
   namespace: string;
   replicas: number;

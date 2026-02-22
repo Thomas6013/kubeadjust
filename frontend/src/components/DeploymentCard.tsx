@@ -16,6 +16,9 @@ export default function DeploymentCard({ dep }: { dep: DeploymentDetail }) {
       <button className={styles.header} onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         <span className={styles.arrow}>{open ? "▾" : "▸"}</span>
         <span className={styles.name}>{dep.name}</span>
+        {dep.kind && dep.kind !== "Deployment" && (
+          <span className={styles.kindBadge}>{dep.kind}</span>
+        )}
         <span className={styles.replicas} style={{ color: statusColor }}>
           {dep.readyReplicas}/{dep.replicas} ready
         </span>

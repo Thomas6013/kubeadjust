@@ -71,7 +71,7 @@ function analyzeEphemeral(c: ContainerResources, depName: string): Suggestion[] 
 
   if (lim === 0) {
     // No limit set — always flag it
-    results.push({ deployment: depName, container: c.name, resource: "Ephemeral", kind: "warning",
+    results.push({ deployment: depName, container: c.name, resource: "Ephemeral — no limit", kind: "warning",
       message: "No ephemeral-storage limit set",
       current: "unlimited", suggested: fmtSuggested(Math.ceil(use * 2), false) });
   } else {

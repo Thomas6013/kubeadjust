@@ -178,7 +178,7 @@ export default function DashboardPage() {
               <div className={styles.mainHeader}>
                 <h2>{selectedNs || "—"}</h2>
                 <span className={styles.count}>
-                  {deployments.length} deployment{deployments.length !== 1 ? "s" : ""}
+                  {deployments.length} workload{deployments.length !== 1 ? "s" : ""}
                 </span>
               </div>
               {error && <p className={styles.error}>{error}</p>}

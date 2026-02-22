@@ -5,10 +5,37 @@ import { computeSuggestions, type Suggestion, type SuggestionKind } from "@/lib/
 import styles from "./SuggestionPanel.module.css";
 
 const KIND_META: Record<SuggestionKind, { icon: string; color: string; action: string }> = {
-  danger:  { icon: "▲", color: "var(--red)",      action: "Increase limit" },
-  warning: { icon: "●", color: "var(--orange)",   action: "Increase limit" },
+  danger:  { icon: "▲", color: "var(--red)",       action: "Increase limit" },
+  warning: { icon: "●", color: "var(--orange)",    action: "Increase limit" },
   overkill:{ icon: "▼", color: "var(--blue-over)", action: "Reduce request" },
 };
+
+const RESOURCE_ORDER = ["CPU", "Memory", "Ephemeral — no limit", "Ephemeral", "PVC", "EmptyDir"];
+const KIND_ORDER: Record<SuggestionKind, number> = { danger: 0, warning: 1, overkill: 2 };
+
+function groupSuggestions(suggestions: Suggestion[]): Array<{ resource: string; items: Suggestion[] }> {
+  const map = new Map<string, Suggestion[]>();
+  for (const s of suggestions) {
+    if (!map.has(s.resource)) map.set(s.resource, []);
+    map.get(s.resource)!.push(s);
+  }
+  // Sort within each group by severity
+  for (const items of map.values()) {
+    items.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
+  }
+  const groups: Array<{ resource: string; items: Suggestion[] }> = [];
+  for (const resource of RESOURCE_ORDER) {
+    if (map.has(resource)) {
+      groups.push({ resource, items: map.get(resource)! });
+      map.delete(resource);
+    }
+  }
+  // Any remaining resources not in the predefined order
+  for (const [resource, items] of map) {
+    groups.push({ resource, items });
+  }
+  return groups;
+}
 
 function SuggestionItem({ s }: { s: Suggestion }) {
   const meta = KIND_META[s.kind];
@@ -17,7 +44,6 @@ function SuggestionItem({ s }: { s: Suggestion }) {
       <div className={styles.itemHeader}>
         <span className={styles.icon} style={{ color: meta.color }}>{meta.icon}</span>
         <span className={styles.depName}>{s.deployment}</span>
-        <span className={styles.resource} style={{ color: meta.color }}>{s.resource}</span>
       </div>
       <p className={styles.itemMsg}>{s.message}</p>
       <div className={styles.itemAction}>
@@ -34,6 +60,7 @@ function SuggestionItem({ s }: { s: Suggestion }) {
 
 export default function SuggestionPanel({ deployments }: { deployments: DeploymentDetail[] }) {
   const suggestions = computeSuggestions(deployments);
+  const groups = groupSuggestions(suggestions);
 
   const danger  = suggestions.filter((s) => s.kind === "danger").length;
   const warning = suggestions.filter((s) => s.kind === "warning").length;
@@ -73,8 +100,16 @@ export default function SuggestionPanel({ deployments }: { deployments: Deployme
           </div>
 
           <div className={styles.list}>
-            {suggestions.map((s, i) => (
-              <SuggestionItem key={i} s={s} />
+            {groups.map(({ resource, items }) => (
+              <div key={resource} className={styles.group}>
+                <div className={styles.groupHeader}>
+                  <span>{resource}</span>
+                  <span className={styles.groupCount}>{items.length}</span>
+                </div>
+                {items.map((s, i) => (
+                  <SuggestionItem key={i} s={s} />
+                ))}
+              </div>
             ))}
           </div>
         </>

@@ -13,7 +13,11 @@ rules:
     verbs: ["get", "list", "watch"]
   # Apps
   - apiGroups: ["apps"]
-    resources: ["deployments", "replicasets"]
+    resources: ["deployments", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  # Batch (CronJobs + Jobs)
+  - apiGroups: ["batch"]
+    resources: ["cronjobs", "jobs"]
     verbs: ["get", "list", "watch"]
   # Metrics server (CPU/memory)
   - apiGroups: ["metrics.k8s.io"]

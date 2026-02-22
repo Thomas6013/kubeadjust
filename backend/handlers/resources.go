@@ -60,6 +60,7 @@ type PodDetail struct {
 }
 
 type DeploymentDetail struct {
+	Kind              string      `json:"kind"` // "Deployment" | "StatefulSet" | "CronJob"
 	Name              string      `json:"name"`
 	Namespace         string      `json:"namespace"`
 	Replicas          int32       `json:"replicas"`
@@ -79,27 +80,97 @@ type podStorageStats struct {
 
 // --- Handler ---
 
+// workloadKey identifies a workload by kind and name.
+type workloadKey struct {
+	kind string
+	name string
+}
+
+// buildOwnerMaps resolves pod → workload ownership using OwnerReferences.
+// Returns a map of podName → workloadKey.
+func buildOwnerMaps(pods []k8s.Pod, rsList *k8s.ReplicaSetList, jobs *k8s.JobList) map[string]workloadKey {
+	rsToDeployment := map[string]string{}
+	if rsList != nil {
+		for _, rs := range rsList.Items {
+			for _, ref := range rs.Metadata.OwnerReferences {
+				if ref.Kind == "Deployment" {
+					rsToDeployment[rs.Metadata.Name] = ref.Name
+				}
+			}
+		}
+	}
+	jobToCronJob := map[string]string{}
+	if jobs != nil {
+		for _, job := range jobs.Items {
+			for _, ref := range job.Metadata.OwnerReferences {
+				if ref.Kind == "CronJob" {
+					jobToCronJob[job.Metadata.Name] = ref.Name
+				}
+			}
+		}
+	}
+	podToWorkload := map[string]workloadKey{}
+	for _, pod := range pods {
+		for _, ref := range pod.Metadata.OwnerReferences {
+			switch ref.Kind {
+			case "ReplicaSet":
+				if depName, ok := rsToDeployment[ref.Name]; ok {
+					podToWorkload[pod.Metadata.Name] = workloadKey{"Deployment", depName}
+				}
+			case "StatefulSet":
+				podToWorkload[pod.Metadata.Name] = workloadKey{"StatefulSet", ref.Name}
+			case "Job":
+				if cronName, ok := jobToCronJob[ref.Name]; ok {
+					podToWorkload[pod.Metadata.Name] = workloadKey{"CronJob", cronName}
+				}
+			}
+		}
+	}
+	return podToWorkload
+}
+
 func ListDeployments(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
 	token := middleware.TokenFromContext(r.Context())
 	client := k8s.New(token, "")
 
-	// 1. Fetch pods once (not per deployment)
+	// 1. Fetch pods once
 	podList, err := client.ListPods(ns)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// 2. Fetch deployments
+	// 2. Fetch workload types (deployments required; others best-effort)
 	deployments, err := client.ListDeployments(ns)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	var statefulSets *k8s.StatefulSetList
+	if ss, err := client.ListStatefulSets(ns); err == nil {
+		statefulSets = ss
+	}
+	var cronJobs *k8s.CronJobList
+	if cj, err := client.ListCronJobs(ns); err == nil {
+		cronJobs = cj
+	}
 
-	// 3. Fetch CPU/memory metrics (best-effort)
-	metricsMap := map[string]map[string]k8s.ContainerUsage{} // podName → containerName → usage
+	// 3. Fetch ReplicaSets and Jobs for owner resolution (best-effort)
+	var rsList *k8s.ReplicaSetList
+	if rs, err := client.ListReplicaSets(ns); err == nil {
+		rsList = rs
+	}
+	var jobs *k8s.JobList
+	if jl, err := client.ListJobs(ns); err == nil {
+		jobs = jl
+	}
+
+	// 4. Build pod → workload ownership map
+	podToWorkload := buildOwnerMaps(podList.Items, rsList, jobs)
+
+	// 5. Fetch CPU/memory metrics (best-effort)
+	metricsMap := map[string]map[string]k8s.ContainerUsage{}
 	if metrics, err := client.ListPodMetrics(ns); err == nil {
 		for _, pm := range metrics.Items {
 			m := map[string]k8s.ContainerUsage{}
@@ -110,19 +181,18 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 4. Fetch node summaries (deduplicated, best-effort) for storage stats
+	// 6. Fetch node summaries for storage stats (best-effort)
 	nodeNames := map[string]struct{}{}
 	for _, pod := range podList.Items {
 		if pod.Spec.NodeName != "" {
 			nodeNames[pod.Spec.NodeName] = struct{}{}
 		}
 	}
-	// podName → storage stats
 	podStorageMap := map[string]podStorageStats{}
 	for node := range nodeNames {
 		summary, err := client.GetNodeSummary(node)
 		if err != nil {
-			continue // not fatal — RBAC may forbid it
+			continue
 		}
 		for _, ps := range summary.Pods {
 			if ps.PodRef.Namespace != ns {
@@ -149,128 +219,30 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 5. Fetch PVCs (best-effort)
-	pvcMap := map[string]k8s.PVC{} // claimName → PVC
+	// 7. Fetch PVCs (best-effort)
+	pvcMap := map[string]k8s.PVC{}
 	if pvcs, err := client.ListPVCs(ns); err == nil {
 		for _, pvc := range pvcs.Items {
 			pvcMap[pvc.Metadata.Name] = pvc
 		}
 	}
 
-	// 6. Build response
-	result := make([]DeploymentDetail, 0, len(deployments.Items))
-	for _, dep := range deployments.Items {
-		var pods []PodDetail
-		for _, pod := range podList.Items {
-			if !belongsToDeployment(pod, dep.Metadata.Name) {
-				continue
-			}
-			stoStats := podStorageMap[pod.Metadata.Name]
-
-			// Containers
-			var containers []ContainerResources
-			for _, c := range pod.Spec.Containers {
-				cr := ContainerResources{
-					Name: c.Name,
-					Requests: ResourcePair{
-						CPU:    parseResource(c.Resources.Requests["cpu"], true),
-						Memory: parseResource(c.Resources.Requests["memory"], false),
-					},
-					Limits: ResourcePair{
-						CPU:    parseResource(c.Resources.Limits["cpu"], true),
-						Memory: parseResource(c.Resources.Limits["memory"], false),
-					},
-				}
-				// CPU/mem usage from metrics-server
-				if podMetrics, ok := metricsMap[pod.Metadata.Name]; ok {
-					if cu, ok := podMetrics[c.Name]; ok {
-						cr.Usage = &ResourcePair{
-							CPU:    parseResource(cu.Usage["cpu"], true),
-							Memory: parseResource(cu.Usage["memory"], false),
-						}
-					}
-				}
-				// Ephemeral storage
-				ephInfo := &EphemeralStorageInfo{}
-				if reqRaw := c.Resources.Requests["ephemeral-storage"]; reqRaw != "" {
-					v := parseStorageBytes(reqRaw)
-					ephInfo.Request = &v
-				}
-				if limRaw := c.Resources.Limits["ephemeral-storage"]; limRaw != "" {
-					v := parseStorageBytes(limRaw)
-					ephInfo.Limit = &v
-				}
-				if stoStats.containerEphemeral != nil {
-					if used, ok := stoStats.containerEphemeral[c.Name]; ok {
-						v := ResourceValue{Bytes: used, Raw: fmtBytes(used)}
-						ephInfo.Usage = &v
-					}
-				}
-				cr.EphemeralStorage = ephInfo
-				containers = append(containers, cr)
-			}
-
-			// Volumes
-			var volumes []VolumeDetail
-			for _, vol := range pod.Spec.Volumes {
-				switch {
-				case vol.PersistentVolumeClaim != nil:
-					vd := VolumeDetail{
-						Name:    vol.Name,
-						Type:    "pvc",
-						PVCName: vol.PersistentVolumeClaim.ClaimName,
-					}
-					if pvc, ok := pvcMap[vol.PersistentVolumeClaim.ClaimName]; ok {
-						vd.StorageClass = pvc.Spec.StorageClassName
-						vd.AccessModes = pvc.Spec.AccessModes
-						if cap, ok := pvc.Status.Capacity["storage"]; ok {
-							v := parseStorageBytes(cap)
-							vd.Capacity = &v
-						}
-					}
-					if stoStats.volumes != nil {
-						if vs, ok := stoStats.volumes[vol.Name]; ok {
-							u := ResourceValue{Bytes: vs.UsedBytes, Raw: fmtBytes(vs.UsedBytes)}
-							a := ResourceValue{Bytes: vs.AvailableBytes, Raw: fmtBytes(vs.AvailableBytes)}
-							vd.Usage = &u
-							vd.Available = &a
-						}
-					}
-					volumes = append(volumes, vd)
-
-				case vol.EmptyDir != nil:
-					vd := VolumeDetail{
-						Name:   vol.Name,
-						Type:   "emptyDir",
-						Medium: vol.EmptyDir.Medium,
-					}
-					if vol.EmptyDir.SizeLimit != "" {
-						v := parseStorageBytes(vol.EmptyDir.SizeLimit)
-						vd.SizeLimit = &v
-					}
-					if stoStats.volumes != nil {
-						if vs, ok := stoStats.volumes[vol.Name]; ok {
-							u := ResourceValue{Bytes: vs.UsedBytes, Raw: fmtBytes(vs.UsedBytes)}
-							vd.Usage = &u
-							if vs.CapacityBytes > 0 {
-								c := ResourceValue{Bytes: vs.CapacityBytes, Raw: fmtBytes(vs.CapacityBytes)}
-								vd.Capacity = &c
-							}
-						}
-					}
-					volumes = append(volumes, vd)
-				}
-			}
-
-			pods = append(pods, PodDetail{
-				Name:       pod.Metadata.Name,
-				Phase:      pod.Status.Phase,
-				Containers: containers,
-				Volumes:    volumes,
-			})
+	// 8. Group pods by workload
+	podsByWorkload := map[workloadKey][]k8s.Pod{}
+	for _, pod := range podList.Items {
+		if wk, ok := podToWorkload[pod.Metadata.Name]; ok {
+			podsByWorkload[wk] = append(podsByWorkload[wk], pod)
 		}
+	}
 
+	// 9. Build response — Deployments, StatefulSets, CronJobs
+	var result []DeploymentDetail
+
+	for _, dep := range deployments.Items {
+		wk := workloadKey{"Deployment", dep.Metadata.Name}
+		pods := buildPodDetails(podsByWorkload[wk], metricsMap, podStorageMap, pvcMap)
 		result = append(result, DeploymentDetail{
+			Kind:              "Deployment",
 			Name:              dep.Metadata.Name,
 			Namespace:         dep.Metadata.Namespace,
 			Replicas:          dep.Spec.Replicas,
@@ -280,11 +252,158 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	if statefulSets != nil {
+		for _, ss := range statefulSets.Items {
+			wk := workloadKey{"StatefulSet", ss.Metadata.Name}
+			pods := buildPodDetails(podsByWorkload[wk], metricsMap, podStorageMap, pvcMap)
+			avail := ss.Status.AvailableReplicas
+			if avail == 0 {
+				avail = ss.Status.CurrentReplicas
+			}
+			result = append(result, DeploymentDetail{
+				Kind:              "StatefulSet",
+				Name:              ss.Metadata.Name,
+				Namespace:         ns,
+				Replicas:          ss.Spec.Replicas,
+				ReadyReplicas:     ss.Status.ReadyReplicas,
+				AvailableReplicas: avail,
+				Pods:              pods,
+			})
+		}
+	}
+
+	if cronJobs != nil {
+		for _, cj := range cronJobs.Items {
+			wk := workloadKey{"CronJob", cj.Metadata.Name}
+			pods := buildPodDetails(podsByWorkload[wk], metricsMap, podStorageMap, pvcMap)
+			active := int32(len(cj.Status.Active))
+			result = append(result, DeploymentDetail{
+				Kind:              "CronJob",
+				Name:              cj.Metadata.Name,
+				Namespace:         ns,
+				Replicas:          active,
+				ReadyReplicas:     active,
+				AvailableReplicas: active,
+				Pods:              pods,
+			})
+		}
+	}
+
+	if result == nil {
+		result = []DeploymentDetail{}
+	}
 	jsonOK(w, result)
 }
 
-func belongsToDeployment(pod k8s.Pod, deployName string) bool {
-	return strings.HasPrefix(pod.Metadata.Name, deployName+"-")
+// buildPodDetails builds PodDetail list for a set of pods.
+func buildPodDetails(
+	pods []k8s.Pod,
+	metricsMap map[string]map[string]k8s.ContainerUsage,
+	podStorageMap map[string]podStorageStats,
+	pvcMap map[string]k8s.PVC,
+) []PodDetail {
+	var result []PodDetail
+	for _, pod := range pods {
+		stoStats := podStorageMap[pod.Metadata.Name]
+		var containers []ContainerResources
+		for _, c := range pod.Spec.Containers {
+			cr := ContainerResources{
+				Name: c.Name,
+				Requests: ResourcePair{
+					CPU:    parseResource(c.Resources.Requests["cpu"], true),
+					Memory: parseResource(c.Resources.Requests["memory"], false),
+				},
+				Limits: ResourcePair{
+					CPU:    parseResource(c.Resources.Limits["cpu"], true),
+					Memory: parseResource(c.Resources.Limits["memory"], false),
+				},
+			}
+			if podMetrics, ok := metricsMap[pod.Metadata.Name]; ok {
+				if cu, ok := podMetrics[c.Name]; ok {
+					cr.Usage = &ResourcePair{
+						CPU:    parseResource(cu.Usage["cpu"], true),
+						Memory: parseResource(cu.Usage["memory"], false),
+					}
+				}
+			}
+			ephInfo := &EphemeralStorageInfo{}
+			if reqRaw := c.Resources.Requests["ephemeral-storage"]; reqRaw != "" {
+				v := parseStorageBytes(reqRaw)
+				ephInfo.Request = &v
+			}
+			if limRaw := c.Resources.Limits["ephemeral-storage"]; limRaw != "" {
+				v := parseStorageBytes(limRaw)
+				ephInfo.Limit = &v
+			}
+			if stoStats.containerEphemeral != nil {
+				if used, ok := stoStats.containerEphemeral[c.Name]; ok {
+					v := ResourceValue{Bytes: used, Raw: fmtBytes(used)}
+					ephInfo.Usage = &v
+				}
+			}
+			cr.EphemeralStorage = ephInfo
+			containers = append(containers, cr)
+		}
+
+		var volumes []VolumeDetail
+		for _, vol := range pod.Spec.Volumes {
+			switch {
+			case vol.PersistentVolumeClaim != nil:
+				vd := VolumeDetail{
+					Name:    vol.Name,
+					Type:    "pvc",
+					PVCName: vol.PersistentVolumeClaim.ClaimName,
+				}
+				if pvc, ok := pvcMap[vol.PersistentVolumeClaim.ClaimName]; ok {
+					vd.StorageClass = pvc.Spec.StorageClassName
+					vd.AccessModes = pvc.Spec.AccessModes
+					if cap, ok := pvc.Status.Capacity["storage"]; ok {
+						v := parseStorageBytes(cap)
+						vd.Capacity = &v
+					}
+				}
+				if stoStats.volumes != nil {
+					if vs, ok := stoStats.volumes[vol.Name]; ok {
+						u := ResourceValue{Bytes: vs.UsedBytes, Raw: fmtBytes(vs.UsedBytes)}
+						a := ResourceValue{Bytes: vs.AvailableBytes, Raw: fmtBytes(vs.AvailableBytes)}
+						vd.Usage = &u
+						vd.Available = &a
+					}
+				}
+				volumes = append(volumes, vd)
+
+			case vol.EmptyDir != nil:
+				vd := VolumeDetail{
+					Name:   vol.Name,
+					Type:   "emptyDir",
+					Medium: vol.EmptyDir.Medium,
+				}
+				if vol.EmptyDir.SizeLimit != "" {
+					v := parseStorageBytes(vol.EmptyDir.SizeLimit)
+					vd.SizeLimit = &v
+				}
+				if stoStats.volumes != nil {
+					if vs, ok := stoStats.volumes[vol.Name]; ok {
+						u := ResourceValue{Bytes: vs.UsedBytes, Raw: fmtBytes(vs.UsedBytes)}
+						vd.Usage = &u
+						if vs.CapacityBytes > 0 {
+							c := ResourceValue{Bytes: vs.CapacityBytes, Raw: fmtBytes(vs.CapacityBytes)}
+							vd.Capacity = &c
+						}
+					}
+				}
+				volumes = append(volumes, vd)
+			}
+		}
+
+		result = append(result, PodDetail{
+			Name:       pod.Metadata.Name,
+			Phase:      pod.Status.Phase,
+			Containers: containers,
+			Volumes:    volumes,
+		})
+	}
+	return result
 }
 
 // --- Resource parsing ---
@@ -311,6 +430,11 @@ func parseStorageBytes(raw string) ResourceValue {
 }
 
 func parseCPUMillicores(s string) int64 {
+	if strings.HasSuffix(s, "n") {
+		// nanocores (metrics-server returns e.g. "18447n") → millicores
+		v, _ := strconv.ParseInt(strings.TrimSuffix(s, "n"), 10, 64)
+		return v / 1_000_000
+	}
 	if strings.HasSuffix(s, "m") {
 		v, _ := strconv.ParseInt(strings.TrimSuffix(s, "m"), 10, 64)
 		return v

@@ -88,6 +88,54 @@ type Deployment struct {
 	} `json:"status"`
 }
 
+type ReplicaSetList struct {
+	Items []ReplicaSet `json:"items"`
+}
+type ReplicaSet struct {
+	Metadata ObjectMeta `json:"metadata"`
+}
+
+type StatefulSetList struct {
+	Items []StatefulSet `json:"items"`
+}
+type StatefulSet struct {
+	Metadata ObjectMeta `json:"metadata"`
+	Spec     struct {
+		Replicas int32 `json:"replicas"`
+	} `json:"spec"`
+	Status struct {
+		ReadyReplicas     int32 `json:"readyReplicas"`
+		AvailableReplicas int32 `json:"availableReplicas"`
+		CurrentReplicas   int32 `json:"currentReplicas"`
+	} `json:"status"`
+}
+
+type JobList struct {
+	Items []Job `json:"items"`
+}
+type Job struct {
+	Metadata ObjectMeta `json:"metadata"`
+	Status   struct {
+		Active    int32 `json:"active"`
+		Succeeded int32 `json:"succeeded"`
+		Failed    int32 `json:"failed"`
+	} `json:"status"`
+}
+
+type CronJobList struct {
+	Items []CronJob `json:"items"`
+}
+type CronJob struct {
+	Metadata ObjectMeta `json:"metadata"`
+	Status   struct {
+		Active []ObjectReference `json:"active,omitempty"`
+	} `json:"status"`
+}
+type ObjectReference struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+}
+
 type PodList struct {
 	Items []Pod `json:"items"`
 }
@@ -230,9 +278,18 @@ type ContainerUsage struct {
 }
 
 type ObjectMeta struct {
-	Name      string            `json:"name"`
-	Namespace string            `json:"namespace"`
-	Labels    map[string]string `json:"labels"`
+	Name            string            `json:"name"`
+	Namespace       string            `json:"namespace"`
+	Labels          map[string]string `json:"labels"`
+	UID             string            `json:"uid"`
+	OwnerReferences []OwnerReference  `json:"ownerReferences,omitempty"`
+}
+
+type OwnerReference struct {
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	Name       string `json:"name"`
+	UID        string `json:"uid"`
 }
 
 // --- API methods ---
@@ -276,6 +333,26 @@ func (c *Client) ListAllPods() (*PodList, error) {
 func (c *Client) ListPVCs(namespace string) (*PVCList, error) {
 	var out PVCList
 	return &out, c.get(fmt.Sprintf("/api/v1/namespaces/%s/persistentvolumeclaims", namespace), &out)
+}
+
+func (c *Client) ListReplicaSets(namespace string) (*ReplicaSetList, error) {
+	var out ReplicaSetList
+	return &out, c.get(fmt.Sprintf("/apis/apps/v1/namespaces/%s/replicasets", namespace), &out)
+}
+
+func (c *Client) ListStatefulSets(namespace string) (*StatefulSetList, error) {
+	var out StatefulSetList
+	return &out, c.get(fmt.Sprintf("/apis/apps/v1/namespaces/%s/statefulsets", namespace), &out)
+}
+
+func (c *Client) ListJobs(namespace string) (*JobList, error) {
+	var out JobList
+	return &out, c.get(fmt.Sprintf("/apis/batch/v1/namespaces/%s/jobs", namespace), &out)
+}
+
+func (c *Client) ListCronJobs(namespace string) (*CronJobList, error) {
+	var out CronJobList
+	return &out, c.get(fmt.Sprintf("/apis/batch/v1/namespaces/%s/cronjobs", namespace), &out)
 }
 
 // GetNodeSummary calls the kubelet stats/summary via the API server proxy.
