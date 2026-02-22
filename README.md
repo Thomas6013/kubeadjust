@@ -8,6 +8,14 @@
 
 ---
 
+![KubeAdjust dashboard](docs/screenshot.png)
+
+> **Solo project** — KubeAdjust is a personal tool I built to scratch my own itch and decided to open source.
+> It is maintained by a single developer in spare time, with the help of an AI coding agent.
+> Expect rough edges, and feel free to open issues or PRs — contributions are welcome but response times may vary.
+
+---
+
 ## What is KubeAdjust?
 
 KubeAdjust is a read-only Kubernetes dashboard focused on **resource efficiency**. It shows, for every Deployment, StatefulSet and CronJob in a namespace:

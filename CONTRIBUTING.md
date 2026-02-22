@@ -70,12 +70,26 @@ frontend/src/
 - **Suggestions**: Thresholds live in `frontend/src/lib/suggestions.ts`. Keep them configurable.
 - **RBAC**: Any new Kubernetes resource access must be added to `helm/kubeadjust/templates/rbac.yaml`.
 
+## Versioning
+
+The single source of truth for the version is `helm/kubeadjust/Chart.yaml`.
+When bumping a release, update **both** fields:
+
+```yaml
+version: 0.x.0       # Helm chart version
+appVersion: "0.x.0"  # Application version — used to tag Docker images in CI
+```
+
+The `docker-publish.yml` workflow reads `appVersion` automatically on every push to `main`.
+Forgetting to bump it means the `vX.Y.Z` Docker tag won't move.
+
 ## Pull request checklist
 
 - [ ] `go vet ./...` passes in `backend/`
 - [ ] `npm run build` passes in `frontend/`
 - [ ] New env vars are documented in README.md
 - [ ] Helm values are documented in `values.yaml`
+- [ ] `version` and `appVersion` bumped in `helm/kubeadjust/Chart.yaml` (if releasing)
 
 ## Reporting bugs
 
