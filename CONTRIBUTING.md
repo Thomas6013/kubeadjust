@@ -16,7 +16,7 @@ Thank you for taking the time to contribute!
 - Go 1.22+
 - Node.js 20+
 - Docker + Docker Compose (optional)
-- A Kubernetes cluster, or use `mock-dev-token` for local UI development
+- A Kubernetes cluster (required for the backend)
 
 ### Run locally
 
@@ -35,10 +35,6 @@ Or with Docker Compose:
 ```bash
 KUBE_API_SERVER=https://<your-cluster> docker compose up --build
 ```
-
-### Mock mode
-
-Use token `mock-dev-token` at the login screen to load hardcoded demo data without a real cluster.
 
 ## Project structure
 

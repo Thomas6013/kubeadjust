@@ -4,12 +4,12 @@ fullnameOverride: ""
 
 # Image registries — set to your registry
 backend:
+  replicaCount: 1
   image:
     repository: ghcr.io/thomas6013/kubeadjust/kubeadjust-backend
     tag: ""  # defaults to .Chart.AppVersion — set explicitly to pin a specific version
     pullPolicy: Always
-    pullSecrets:
-      - ghcr-login-secret
+    pullSecrets: []
   port: 8080
   resources:
     requests:
@@ -18,18 +18,19 @@ backend:
     limits:
       cpu: 200m
       memory: 128Mi
-  # Extra env vars
-  env: 
-  - name: KUBE_INSECURE_TLS
-    value: "true"
+  # Extra env vars — add overrides here, e.g.:
+  # env:
+  # - name: KUBE_INSECURE_TLS
+  #   value: "true"   # only if your cluster uses a self-signed certificate
+  env: []
 
 frontend:
+  replicaCount: 1
   image:
     repository: ghcr.io/thomas6013/kubeadjust/kubeadjust-frontend
     tag: ""  # defaults to .Chart.AppVersion — set explicitly to pin a specific version
     pullPolicy: Always
-    pullSecrets:
-      - ghcr-login-secret
+    pullSecrets: []
   port: 3000
   resources:
     requests:
@@ -64,8 +65,6 @@ ingress:
   annotations: {}
   host: kubeadjust.example.com
   tls: []
-
-replicaCount: 1
 
 # Optional: deploy metrics-server as a sub-chart (disabled by default)
 # Enable if your cluster does not already have metrics-server installed.

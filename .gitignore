@@ -1,7 +1,7 @@
 # Go
 backend/vendor/
 
-build 
+build
 
 # Claude workspace (project-specific AI instructions)
 .claude/

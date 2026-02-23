@@ -2,6 +2,21 @@
 
 All notable changes to KubeAdjust are documented here.
 
+## [0.6.0] - 2026-02-23
+
+### Changed
+- **Helm — independent replica counts**: `replicaCount` (top-level) replaced by `backend.replicaCount` and `frontend.replicaCount` — backend and frontend can now be scaled independently
+- **Helm — values.yaml defaults cleaned up**: `KUBE_INSECURE_TLS` is no longer set to `true` in the default values (TLS verification is enabled by default); `pullSecrets` defaults to `[]`
+
+### Fixed
+- **`.gitignore`**: trailing space on the `build` entry caused the file/directory to be silently un-ignored on some systems
+
+### Docs
+- Removed stale `mock-dev-token` references from README and CONTRIBUTING (feature not implemented)
+- SECURITY.md supported versions table updated to 0.6.x
+
+---
+
 ## [0.5.0] - 2026-02-22
 
 ### Changed

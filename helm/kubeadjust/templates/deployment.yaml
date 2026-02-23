@@ -7,7 +7,7 @@ metadata:
     {{- include "kubeadjust.labels" . | nindent 4 }}
     app.kubernetes.io/component: backend
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.backend.replicaCount }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "kubeadjust.name" . }}
@@ -73,7 +73,7 @@ metadata:
     {{- include "kubeadjust.labels" . | nindent 4 }}
     app.kubernetes.io/component: frontend
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.frontend.replicaCount }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "kubeadjust.name" . }}

@@ -59,8 +59,6 @@ docker compose up --build
 
 Open http://localhost:3000, paste a service account token, done.
 
-> **No cluster?** Use token `mock-dev-token` to explore the UI with hardcoded demo data.
-
 ### Option 2 — Local dev
 
 ```bash
