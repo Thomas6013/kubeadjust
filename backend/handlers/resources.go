@@ -80,19 +80,6 @@ type WorkloadResponse struct {
 	PrometheusAvailable bool              `json:"prometheusAvailable"`
 }
 
-// isMetricsServerUnavailable returns true when the error indicates metrics-server
-// is not installed (as opposed to an RBAC or transient error).
-func isMetricsServerUnavailable(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := err.Error()
-	return strings.Contains(s, "404") ||
-		strings.Contains(s, "503") ||
-		strings.Contains(s, "no kind is registered") ||
-		strings.Contains(s, "could not find the requested resource")
-}
-
 // --- storage lookup maps built from kubelet summary ---
 
 type podStorageStats struct {
@@ -297,7 +284,7 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 			return nil
 		})
 	}
-	storageG.Wait()
+	_ = storageG.Wait()
 
 	// 6. Build PVC lookup
 	pvcMap := map[string]k8s.PVC{}

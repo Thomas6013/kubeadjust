@@ -33,12 +33,12 @@ func ListNamespaces(w http.ResponseWriter, r *http.Request) {
 // jsonOK writes v as JSON with 200 OK.
 func jsonOK(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 // jsonError writes a JSON {"error": msg} response with the given HTTP status code.
 func jsonError(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }

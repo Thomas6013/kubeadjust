@@ -48,7 +48,7 @@ func main() {
 	// Health check (no auth required)
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	})
 
 	// API routes — all require a valid bearer token

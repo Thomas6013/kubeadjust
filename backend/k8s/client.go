@@ -54,7 +54,7 @@ func (c *Client) get(path string, out interface{}) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB cap
 	if resp.StatusCode >= 400 {
