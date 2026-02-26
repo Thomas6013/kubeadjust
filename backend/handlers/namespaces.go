@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/devops-kubeadjust/backend/k8s"
@@ -18,7 +19,8 @@ func ListNamespaces(w http.ResponseWriter, r *http.Request) {
 	client := k8s.New(token, "")
 	list, err := client.ListNamespaces()
 	if err != nil {
-		jsonError(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("failed to list namespaces: %v", err)
+		jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	result := make([]NamespaceItem, 0, len(list.Items))

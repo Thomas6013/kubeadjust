@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
@@ -19,13 +20,25 @@ func main() {
 		port = "8080"
 	}
 
+	if os.Getenv("KUBE_INSECURE_TLS") == "true" {
+		log.Println("WARN: TLS verification disabled (KUBE_INSECURE_TLS=true)")
+	}
+
+	// CORS origins: default to wildcard in dev, restrict via ALLOWED_ORIGINS in production
+	allowedOrigins := []string{"*"}
+	if origins := os.Getenv("ALLOWED_ORIGINS"); origins != "" {
+		allowedOrigins = strings.Split(origins, ",")
+	} else {
+		log.Println("WARN: ALLOWED_ORIGINS not set, defaulting to wildcard (*)")
+	}
+
 	r := chi.NewRouter()
 
 	// Global middleware
 	r.Use(chiMiddleware.Logger)
 	r.Use(chiMiddleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"},
+		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
 		AllowedHeaders:   []string{"Authorization", "Content-Type"},
 		AllowCredentials: false,

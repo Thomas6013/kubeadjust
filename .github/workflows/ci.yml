@@ -8,7 +8,7 @@ on:
 
 jobs:
   backend:
-    name: Go build & vet
+    name: Go build, vet, lint & test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -21,9 +21,14 @@ jobs:
           cache-dependency-path: backend/go.sum
       - run: go build ./...
       - run: go vet ./...
+      - run: go test ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: backend
 
   frontend:
-    name: Next.js build
+    name: Next.js build & lint
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -37,3 +42,4 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run build
+      - run: npm run lint
