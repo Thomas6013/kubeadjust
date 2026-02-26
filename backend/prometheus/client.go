@@ -58,9 +58,9 @@ func (c *Client) QueryRange(query string) ([]DataPoint, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB cap
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("prometheus: %d %s", resp.StatusCode, string(body))
 	}

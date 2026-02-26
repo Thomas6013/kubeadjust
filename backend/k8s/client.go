@@ -12,6 +12,16 @@ import (
 
 const defaultAPIServer = "https://kubernetes.default.svc"
 
+// sharedTransport is created once at package init and reused across all requests.
+var sharedTransport = &http.Transport{
+	TLSClientConfig: &tls.Config{
+		InsecureSkipVerify: envOr("KUBE_INSECURE_TLS", "false") == "true",
+	},
+	MaxIdleConns:        100,
+	MaxIdleConnsPerHost: 20,
+	IdleConnTimeout:     90 * time.Second,
+}
+
 type Client struct {
 	apiServer  string
 	token      string
@@ -26,12 +36,8 @@ func New(token, apiServer string) *Client {
 		apiServer: apiServer,
 		token:     token,
 		httpClient: &http.Client{
-			Timeout: 15 * time.Second,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: envOr("KUBE_INSECURE_TLS", "false") == "true",
-				},
-			},
+			Timeout:   15 * time.Second,
+			Transport: sharedTransport,
 		},
 	}
 }
@@ -48,9 +54,9 @@ func (c *Client) get(path string, out interface{}) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB cap
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("kubernetes api %s: %d %s", path, resp.StatusCode, string(body))
 	}

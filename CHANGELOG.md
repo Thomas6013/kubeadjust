@@ -2,6 +2,40 @@
 
 All notable changes to KubeAdjust are documented here.
 
+## [0.7.0] - 2026-02-26
+
+### Security
+- **CORS configurable**: `AllowedOrigins: ["*"]` replaced by `ALLOWED_ORIGINS` env var (comma-separated), with startup warning when unset
+- **K8s errors no longer leaked**: all handlers now log errors server-side with `log.Printf` and return generic messages to clients
+- **`io.LimitReader` (10 MB cap)**: applied to both `k8s/client.go` and `prometheus/client.go` to prevent OOM on large responses
+- **CSP + security headers**: `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy` added in `next.config.mjs`
+- **`KUBE_INSECURE_TLS` startup warning**: logs `WARN: TLS verification disabled` when enabled
+
+### Performance
+- **Parallel K8s API calls**: `ListDeployments` now fetches deployments, statefulsets, cronjobs, replicasets, jobs, metrics and PVCs concurrently via `errgroup`
+- **Parallel node summaries**: kubelet stats calls run concurrently with `errgroup.SetLimit(5)`
+- **Shared HTTP transport**: single `http.Transport` reused across all K8s client instances (connection pooling)
+
+### Added
+- **Unit tests**: `parseCPUMillicores`, `parseMemoryBytes` (`resources_test.go`) and `isValidLabelValue` (`prometheus_test.go`)
+- **golangci-lint** in CI backend job
+- **`npm run lint`** in CI frontend job
+- **`go test ./...`** in CI backend job
+- **SBOM generation**: `anchore/sbom-action` in Docker publish workflow
+- **Image signing**: `sigstore/cosign` keyless signing in Docker publish workflow
+- **`.env.example`**: documents all env vars at repo root
+- **`CODE_OF_CONDUCT.md`**: Contributor Covenant v2.1
+- **Code of Conduct reference** added to `CONTRIBUTING.md`
+
+### Docs
+- `CLAUDE.md` fully rewritten for v0.7.0 (env var table, updated security model, new backlog)
+- `improve.md` updated with v0.7.0 audit results (resolved items marked, new issues identified)
+
+### Dependencies
+- Added `golang.org/x/sync` (errgroup) to backend `go.mod`
+
+---
+
 ## [0.6.0] - 2026-02-23
 
 ### Changed

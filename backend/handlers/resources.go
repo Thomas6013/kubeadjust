@@ -2,12 +2,15 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/devops-kubeadjust/backend/k8s"
 	"github.com/devops-kubeadjust/backend/middleware"
@@ -75,19 +78,6 @@ type WorkloadResponse struct {
 	Workloads          []DeploymentDetail `json:"workloads"`
 	MetricsAvailable   bool               `json:"metricsAvailable"`
 	PrometheusAvailable bool              `json:"prometheusAvailable"`
-}
-
-// isMetricsServerUnavailable returns true when the error indicates metrics-server
-// is not installed (as opposed to an RBAC or transient error).
-func isMetricsServerUnavailable(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := err.Error()
-	return strings.Contains(s, "404") ||
-		strings.Contains(s, "503") ||
-		strings.Contains(s, "no kind is registered") ||
-		strings.Contains(s, "could not find the requested resource")
 }
 
 // --- storage lookup maps built from kubelet summary ---
@@ -160,47 +150,86 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 	// 1. Fetch pods once
 	podList, err := client.ListPods(ns)
 	if err != nil {
-		jsonError(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("failed to list pods in %s: %v", ns, err)
+		jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	// 2. Fetch workload types (deployments required; others best-effort)
-	deployments, err := client.ListDeployments(ns)
-	if err != nil {
-		jsonError(w, err.Error(), http.StatusInternalServerError)
+	// 2. Fetch workload types + auxiliary data in parallel
+	var (
+		deployments  *k8s.DeploymentList
+		statefulSets *k8s.StatefulSetList
+		cronJobs     *k8s.CronJobList
+		rsList       *k8s.ReplicaSetList
+		jobs         *k8s.JobList
+		podMetrics   *k8s.PodMetricsList
+		pvcList      *k8s.PVCList
+	)
+
+	g, _ := errgroup.WithContext(r.Context())
+
+	g.Go(func() error {
+		var err error
+		deployments, err = client.ListDeployments(ns)
+		return err // required — fail if deployments can't load
+	})
+	g.Go(func() error {
+		ss, err := client.ListStatefulSets(ns)
+		if err == nil {
+			statefulSets = ss
+		}
+		return nil // best-effort
+	})
+	g.Go(func() error {
+		cj, err := client.ListCronJobs(ns)
+		if err == nil {
+			cronJobs = cj
+		}
+		return nil
+	})
+	g.Go(func() error {
+		rs, err := client.ListReplicaSets(ns)
+		if err == nil {
+			rsList = rs
+		}
+		return nil
+	})
+	g.Go(func() error {
+		jl, err := client.ListJobs(ns)
+		if err == nil {
+			jobs = jl
+		}
+		return nil
+	})
+	g.Go(func() error {
+		pm, err := client.ListPodMetrics(ns)
+		if err == nil {
+			podMetrics = pm
+		}
+		return nil // best-effort
+	})
+	g.Go(func() error {
+		pvcs, err := client.ListPVCs(ns)
+		if err == nil {
+			pvcList = pvcs
+		}
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		log.Printf("failed to fetch workloads in %s: %v", ns, err)
+		jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	var statefulSets *k8s.StatefulSetList
-	if ss, err := client.ListStatefulSets(ns); err == nil {
-		statefulSets = ss
-	}
-	var cronJobs *k8s.CronJobList
-	if cj, err := client.ListCronJobs(ns); err == nil {
-		cronJobs = cj
-	}
 
-	// 3. Fetch ReplicaSets and Jobs for owner resolution (best-effort)
-	var rsList *k8s.ReplicaSetList
-	if rs, err := client.ListReplicaSets(ns); err == nil {
-		rsList = rs
-	}
-	var jobs *k8s.JobList
-	if jl, err := client.ListJobs(ns); err == nil {
-		jobs = jl
-	}
-
-	// 4. Build pod → workload ownership map
+	// 3. Build pod → workload ownership map
 	podToWorkload := buildOwnerMaps(podList.Items, rsList, jobs)
 
-	// 5. Fetch CPU/memory metrics (best-effort, track availability)
+	// 4. Build metrics lookup
 	metricsMap := map[string]map[string]k8s.ContainerUsage{}
-	metricsAvailable := true
-	if metrics, metricsErr := client.ListPodMetrics(ns); metricsErr != nil {
-		if isMetricsServerUnavailable(metricsErr) {
-			metricsAvailable = false
-		}
-	} else {
-		for _, pm := range metrics.Items {
+	metricsAvailable := podMetrics != nil
+	if podMetrics != nil {
+		for _, pm := range podMetrics.Items {
 			m := map[string]k8s.ContainerUsage{}
 			for _, cu := range pm.Containers {
 				m[cu.Name] = cu
@@ -209,7 +238,7 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 6. Fetch node summaries for storage stats (best-effort)
+	// 5. Fetch node summaries in parallel for storage stats (best-effort)
 	nodeNames := map[string]struct{}{}
 	for _, pod := range podList.Items {
 		if pod.Spec.NodeName != "" {
@@ -217,40 +246,50 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	podStorageMap := map[string]podStorageStats{}
+	var storageMu sync.Mutex
+	var storageG errgroup.Group
+	storageG.SetLimit(5) // bound concurrent kubelet calls
 	for node := range nodeNames {
-		summary, err := client.GetNodeSummary(node)
-		if err != nil {
-			continue
-		}
-		for _, ps := range summary.Pods {
-			if ps.PodRef.Namespace != ns {
-				continue
+		node := node
+		storageG.Go(func() error {
+			summary, err := client.GetNodeSummary(node)
+			if err != nil {
+				return nil // best-effort
 			}
-			stats := podStorageStats{
-				containerEphemeral: map[string]int64{},
-				volumes:            map[string]k8s.VolumeStatsSummary{},
-			}
-			for _, cs := range ps.Containers {
-				var used int64
-				if cs.Rootfs != nil {
-					used += cs.Rootfs.UsedBytes
+			storageMu.Lock()
+			defer storageMu.Unlock()
+			for _, ps := range summary.Pods {
+				if ps.PodRef.Namespace != ns {
+					continue
 				}
-				if cs.Logs != nil {
-					used += cs.Logs.UsedBytes
+				stats := podStorageStats{
+					containerEphemeral: map[string]int64{},
+					volumes:            map[string]k8s.VolumeStatsSummary{},
 				}
-				stats.containerEphemeral[cs.Name] = used
+				for _, cs := range ps.Containers {
+					var used int64
+					if cs.Rootfs != nil {
+						used += cs.Rootfs.UsedBytes
+					}
+					if cs.Logs != nil {
+						used += cs.Logs.UsedBytes
+					}
+					stats.containerEphemeral[cs.Name] = used
+				}
+				for _, vs := range ps.Volumes {
+					stats.volumes[vs.Name] = vs
+				}
+				podStorageMap[ps.PodRef.Name] = stats
 			}
-			for _, vs := range ps.Volumes {
-				stats.volumes[vs.Name] = vs
-			}
-			podStorageMap[ps.PodRef.Name] = stats
-		}
+			return nil
+		})
 	}
+	_ = storageG.Wait()
 
-	// 7. Fetch PVCs (best-effort)
+	// 6. Build PVC lookup
 	pvcMap := map[string]k8s.PVC{}
-	if pvcs, err := client.ListPVCs(ns); err == nil {
-		for _, pvc := range pvcs.Items {
+	if pvcList != nil {
+		for _, pvc := range pvcList.Items {
 			pvcMap[pvc.Metadata.Name] = pvc
 		}
 	}
@@ -532,7 +571,8 @@ func GetPodMetrics(w http.ResponseWriter, r *http.Request) {
 	client := k8s.New(middleware.TokenFromContext(r.Context()), "")
 	metrics, err := client.ListPodMetrics(ns)
 	if err != nil {
-		jsonError(w, fmt.Sprintf("metrics-server unavailable: %s", err.Error()), http.StatusServiceUnavailable)
+		log.Printf("metrics-server error for %s: %v", ns, err)
+		jsonError(w, "metrics-server unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	jsonOK(w, metrics)

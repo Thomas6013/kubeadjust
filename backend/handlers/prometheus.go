@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strings"
 
@@ -30,7 +31,8 @@ func GetContainerHistory(w http.ResponseWriter, r *http.Request) {
 
 	result, err := client.GetContainerHistory(ns, pod, container)
 	if err != nil {
-		jsonError(w, err.Error(), http.StatusBadGateway)
+		log.Printf("prometheus query failed for %s/%s/%s: %v", ns, pod, container, err)
+		jsonError(w, "failed to query prometheus", http.StatusBadGateway)
 		return
 	}
 
