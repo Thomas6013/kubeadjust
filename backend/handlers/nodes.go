@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -36,14 +37,16 @@ func ListNodes(w http.ResponseWriter, r *http.Request) {
 
 	nodes, err := client.ListNodes()
 	if err != nil {
-		jsonError(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("failed to list nodes: %v", err)
+		jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	// All pods across namespaces for request/limit aggregation per node
 	allPods, err := client.ListAllPods()
 	if err != nil {
-		jsonError(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("failed to list all pods: %v", err)
+		jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 

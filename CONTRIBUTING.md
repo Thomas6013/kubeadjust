@@ -87,6 +87,11 @@ Forgetting to bump it means the `vX.Y.Z` Docker tag won't move.
 - [ ] Helm values are documented in `values.yaml`
 - [ ] `version` and `appVersion` bumped in `helm/kubeadjust/Chart.yaml` (if releasing)
 
+## Code of Conduct
+
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
+Please read it before participating.
+
 ## Reporting bugs
 
 Please use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.yml).

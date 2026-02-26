@@ -11,6 +11,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write # required for cosign signing
 
     strategy:
       matrix:
@@ -41,6 +42,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
@@ -51,3 +53,17 @@ jobs:
             ghcr.io/${{ steps.version.outputs.owner }}/kubeadjust/${{ matrix.image }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ steps.version.outputs.owner }}/kubeadjust/${{ matrix.image }}:${{ github.sha }}
+          artifact-name: sbom-${{ matrix.image }}.spdx.json
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image
+        run: |
+          cosign sign --yes \
+            ghcr.io/${{ steps.version.outputs.owner }}/kubeadjust/${{ matrix.image }}@${{ steps.build.outputs.digest }}
