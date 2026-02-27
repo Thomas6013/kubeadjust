@@ -2,6 +2,17 @@
 
 All notable changes to KubeAdjust are documented here.
 
+## [0.8.2] - 2026-02-27
+
+### Fixed
+- **Backend URL uses FQDN**: frontend `BACKEND_URL` now includes the release namespace (`<name>-backend.<namespace>:<port>`) for reliable DNS resolution
+- **Runtime backend proxy**: replaced Next.js build-time rewrite with an API route catch-all proxy that reads `BACKEND_URL` at runtime — fixes proxy failures when the Helm release name differs from the default (e.g. `nonprod-kubeadjust`)
+
+### Changed
+- **Dockerfile cleaned up**: removed build-time `BACKEND_URL` ARG from frontend Dockerfile — no longer needed since proxy is resolved at runtime
+
+---
+
 ## [0.8.1] - 2026-02-27
 
 ### Added

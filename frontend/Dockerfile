@@ -8,9 +8,6 @@ FROM node:24-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# BACKEND_URL is baked at build time for the rewrite — override via env at runtime
-ARG BACKEND_URL=http://kubeadjust-backend:8080
-ENV BACKEND_URL=$BACKEND_URL
 RUN npm run build
 
 FROM node:24-alpine AS runner
