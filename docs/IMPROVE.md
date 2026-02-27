@@ -191,6 +191,7 @@ Some use `errgroup.WithContext()`, others `new(errgroup.Group)`.
 - [x] ~~`go mod tidy` in Dockerfile~~ — v0.12.0 (replaced with `go mod download`)
 - [x] ~~No `readinessProbe` on frontend~~ — v0.12.0 (added to Helm deployment)
 - [x] ~~Suggestion action labels wrong~~ — v0.12.0 (per-suggestion `action` field)
+<<<<<<< HEAD
 - [x] ~~PromQL injection blacklist too weak~~ — v0.12.0 (whitelist `[a-zA-Z0-9._-]`)
 - [x] ~~LimitReader silent truncation~~ — v0.12.0 (explicit error + size check)
 - [x] ~~Namespace list non-deterministic order~~ — v0.12.0 (sorted before response)
@@ -199,3 +200,5 @@ Some use `errgroup.WithContext()`, others `new(errgroup.Group)`.
 - [x] ~~Double Prometheus namespace fetch~~ — v0.12.0 (removed eager fetch)
 - [x] ~~ResourceBar headroom at 100%~~ — v0.12.0 (clean ResourceValue)
 - [x] ~~Auth middleware returns text/plain~~ — v0.12.0 (JSON Content-Type)
+=======
+>>>>>>> 5dde069aedc71e031c3ad62560bde5f36e15ee2d
