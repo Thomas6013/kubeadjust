@@ -1,139 +1,201 @@
-# KubeAdjust — Audit v0.7.0
+# KubeAdjust — Audit v0.12.0
 
-Post-hardening scan. All items from the v0.6.0 audit have been resolved.
-Below are remaining and newly identified issues.
+Post-v0.12.0 scan. Covers security, performance, robustness, and maintainability.
 
 ---
 
 ## Security
 
-### S-1 — CSP uses `'unsafe-inline'` and `'unsafe-eval'` (Medium)
+### S-1 — CSP uses `'unsafe-inline'` and `'unsafe-eval'` (High)
 
-**File:** `frontend/next.config.mjs:31`
+**File:** `frontend/next.config.mjs:23`
 
-`'unsafe-eval'` is required by Next.js dev mode but should not ship to production. `'unsafe-inline'` on scripts undermines XSS protection. Next.js 14 supports nonce-based CSP via `middleware.ts`.
+`'unsafe-eval'` is required by Next.js dev mode but should not ship to production. `'unsafe-inline'` on scripts undermines XSS protection.
 
 **Fix:** Implement nonce-based CSP using Next.js middleware, or at minimum remove `'unsafe-eval'` in production.
 
-### S-2 — No rate limiting on backend endpoints (Medium)
+### S-2 — PromQL injection: blacklist too weak (Medium)
 
-**File:** `backend/main.go`
+**File:** `backend/handlers/prometheus.go:73`
 
-No rate limit on any endpoint. Each `/api/namespaces/{ns}/deployments` request fans out 7+ K8s API calls via errgroup. An attacker with a valid token could saturate the K8s API server.
+`isValidLabelValue()` only blocks `"{}\\` — newlines or unexpected chars could bypass.
 
-**Fix:** Add `golang.org/x/time/rate` middleware or `chi/middleware.Throttle`.
+**Fix:** Whitelist `^[a-zA-Z0-9._-]+$` instead of blacklist.
 
-### S-3 — Token in `sessionStorage` — no auto-clear on 401 (Low)
+### S-3 — No path validation in frontend proxy (Medium)
 
-**File:** `frontend/src/app/dashboard/page.tsx:35`
+**File:** `frontend/src/app/api/[...path]/route.ts:22`
 
-An expired token stays in sessionStorage causing 401 loops. The frontend should clear sessionStorage and redirect to `/` on 401.
+SSRF mitigated by env-controlled `BACKEND_URL`, but path traversal (`../`) not validated.
 
-### S-4 — `isValidLabelValue` allows newline characters (Low)
+**Fix:** Reject paths containing `..`, `//`, or null bytes.
 
-**File:** `backend/handlers/prometheus.go:44`
+### S-4 — No NetworkPolicy in Helm chart (Medium)
 
-The blocklist does not include `\n`/`\r`. Safer to use an allowlist regex: `^[a-zA-Z0-9_.\-]+$`.
+**File:** missing `templates/networkpolicy.yaml`
 
-### S-5 — `ALLOWED_ORIGINS` not validated at startup (Low)
+No network segmentation — backend accessible from any pod in the cluster.
 
-**File:** `backend/main.go:29-33`
+**Fix:** Optional NetworkPolicy template: frontend→backend:8080, backend→K8s API outbound.
 
-Trailing spaces or malformed origins silently fail to match. No startup validation.
+### S-5 — `ALLOWED_ORIGINS` not in Helm deployment template (Medium)
 
-### S-6 — `go mod tidy` in Dockerfile reduces build reproducibility (Low)
+**File:** `helm/kubeadjust/templates/deployment.yaml`
 
-**File:** `backend/Dockerfile:5`
+Users must remember to set CORS origins manually via `backend.env`. Easy to forget.
 
-`go mod tidy` at build time can silently modify `go.sum`. Use `go mod download` instead.
+**Fix:** Add dedicated `backend.allowedOrigins` values key, injected in deployment template.
+
+### S-6 — CORS origin split doesn't trim whitespace (Low)
+
+**File:** `backend/main.go:30`
+
+`"https://a.com, https://b.com"` → space breaks match.
+
+**Fix:** Add `strings.TrimSpace()` when splitting.
+
+### S-7 — Frontend missing `readOnlyRootFilesystem` (Low)
+
+**File:** `helm/kubeadjust/templates/deployment.yaml`
+
+Backend has it, frontend doesn't.
+
+**Fix:** Add securityContext with emptyDir for Next.js temp writes.
 
 ---
 
 ## Performance
 
-### P-1 — `ListAllPods` fetches every pod on every `/api/nodes` request (Medium)
+### P-1 — `ListAllPods` fetches all cluster pods per `/api/nodes` request (Medium)
 
 **File:** `backend/handlers/nodes.go:46`
 
-No caching, full cluster pod list loaded per request. Also `ListNodes`, `ListAllPods` and `ListNodeMetrics` run sequentially — should use `errgroup` like `ListDeployments`.
+No caching — full cluster pod list loaded per request. O(cluster size).
 
-### P-2 — Prometheus client creates new `http.Client` per request (Minor)
+**Fix:** Short TTL in-memory cache (30s), or field-selector to exclude terminated pods.
 
-**File:** `backend/prometheus/client.go:39-42`
+### P-2 — No virtualisation/pagination for large clusters (Medium)
 
-Unlike the K8s client which now uses `sharedTransport`, the Prometheus client recreates the transport each time `prometheus.New()` is called, defeating TCP connection reuse.
+**File:** `frontend/src/app/dashboard/page.tsx`
 
-**Fix:** Create the Prometheus client once at startup and pass it to handlers.
+100+ workloads/nodes render in a single list without virtualisation.
 
-### P-3 — No `Cache-Control` headers (Minor)
+**Fix:** `react-window` or "load more" pagination.
 
-The backend serves no cache headers. A short `Cache-Control: private, max-age=30` for namespace lists would reduce API load.
+### P-3 — No retry on transient K8s API failures (Medium)
 
-### P-4 — Nodes view only auto-loads once (Minor)
+**File:** `backend/k8s/client.go:45`
 
-**File:** `frontend/src/app/dashboard/page.tsx:89`
+Single network hiccup = full request failure.
 
-`if (nodes.length === 0) loadNodes()` — switching away and back never triggers a reload. Stale data shown silently.
+**Fix:** Exponential backoff (max 3 attempts, 5xx only).
+
+### P-4 — Sparkline min/max recalculated every render (Low)
+
+**File:** `frontend/src/components/Sparkline.tsx:11`
+
+**Fix:** Wrap in `useMemo`.
+
+### P-5 — No connection pooling on Prometheus client (Low)
+
+**File:** `backend/prometheus/client.go:84`
+
+**Fix:** Custom Transport with `MaxIdleConnsPerHost: 10`.
+
+---
+
+## Robustness
+
+### R-1 — Helm chart not linted in CI (Medium)
+
+**File:** `.github/workflows/ci.yml`
+
+YAML errors or missing values could reach production undetected.
+
+**Fix:** Add `helm lint helm/kubeadjust` and optionally `ct lint`.
+
+### R-2 — ESLint disabled in CI (Medium)
+
+**File:** `.github/workflows/ci.yml:46`
+
+`next lint` removed in Next.js 16, linting step skipped.
+
+**Fix:** Configure `eslint .` directly with `eslint-config-next`.
+
+### R-3 — `openCards` sessionStorage can grow unbounded (Low)
+
+**File:** `frontend/src/app/dashboard/page.tsx`
+
+**Fix:** Cap at ~100 entries, or clear on namespace switch.
+
+### R-4 — sessionStorage writes not wrapped in try-catch (Low)
+
+**File:** `frontend/src/app/dashboard/page.tsx`
+
+**Fix:** Wrap `sessionStorage.setItem` for `QuotaExceededError`.
+
+### R-5 — Silent `.catch(() => {})` on background fetches (Low)
+
+**File:** `frontend/src/app/dashboard/page.tsx:106,143`
+
+**Fix:** `console.warn` in dev, optional UI indicator when Prometheus fails.
 
 ---
 
 ## Maintainability
 
-### M-1 — `frontend/Dockerfile` misleading `BACKEND_URL` ARG/ENV comment (Medium)
+### M-1 — Magic strings for sessionStorage keys (Low)
 
-**File:** `frontend/Dockerfile:12-13`
+**File:** `frontend/src/app/dashboard/page.tsx:47-70`
 
-Comment says "baked at build time" but `next.config.mjs` reads it at runtime in standalone mode. Remove the ARG/ENV and rely on runtime env var only.
+Storage keys repeated as strings throughout.
 
-### M-2 — ESLint strictness not enforced (Low)
+**Fix:** Extract to `const STORAGE_KEYS = { TOKEN: "kube-token", ... }`.
 
-**File:** `.github/workflows/ci.yml:45`
-
-`npm run lint` does not use `--max-warnings=0`. Warnings pass silently.
-
-**Fix:** `npm run lint -- --max-warnings=0` or update package.json lint script.
-
-### M-3 — `SuggestionPanel` uses array index as React key (Low)
-
-**File:** `frontend/src/components/SuggestionPanel.tsx:71`
-
-Use a composite key like `${s.deployment}/${s.container}/${s.resource}/${s.kind}`.
-
-### M-4 — `ResourceBar` headroom sets both `millicores` and `bytes` simultaneously (Low)
-
-**File:** `frontend/src/components/ResourceBar.tsx:99`
-
-Constructed object carries a wrong field for the non-active unit. Cosmetic but misleading.
-
-### M-5 — `nodes.go` reuses `parseMemoryBytes` to parse pod count (Low)
+### M-2 — `parseMemoryBytes` reused to parse pod count (Low)
 
 **File:** `backend/handlers/nodes.go:98`
 
-`MaxPods: int(parseMemoryBytes(...))` — works because plain integers fall through, but semantically fragile.
+Works but semantically fragile.
 
-### M-6 — No `readinessProbe` on frontend container (Low)
+**Fix:** Dedicated `parsePodCount()` or `parseInt()`.
 
-**File:** `helm/kubeadjust/templates/deployment.yaml:103-107`
+### M-3 — Suggestion thresholds hardcoded (Low)
 
-Only `livenessProbe` present. Traffic can arrive before Next.js finishes startup, causing 502s during rolling updates.
+**File:** `frontend/src/lib/suggestions.ts:86,90,96,102`
 
-### M-7 — `ResourceBar.tsx` missing `"use client"` directive (Low)
+0.90, 0.70, 0.35, 3× not configurable.
 
-Inconsistent with other components in the same directory. Works today but fragile.
+**Fix:** Extract to config object.
+
+### M-4 — Inconsistent errgroup initialisation (Low)
+
+**Files:** `handlers/resources.go:169` vs `handlers/namespaces.go:31`
+
+Some use `errgroup.WithContext()`, others `new(errgroup.Group)`.
+
+**Fix:** Standardise across codebase.
 
 ---
 
-## Resolved in v0.7.0
+## Resolved
 
-- [x] CORS configurable via `ALLOWED_ORIGINS`
-- [x] K8s errors no longer leaked to clients
-- [x] `io.LimitReader` 10 MB cap on all response bodies
-- [x] Sequential K8s calls parallelized with `errgroup`
-- [x] Shared `http.Transport` for K8s client
-- [x] `KUBE_INSECURE_TLS` startup warning
-- [x] Unit tests for parsers and PromQL validation
-- [x] golangci-lint + eslint in CI
-- [x] CSP + security headers added
-- [x] `.env.example` created
-- [x] Code of Conduct added
-- [x] SBOM + cosign image signing in Docker publish
+- [x] ~~CORS configurable via `ALLOWED_ORIGINS`~~ — v0.7.0
+- [x] ~~K8s errors no longer leaked to clients~~ — v0.7.0
+- [x] ~~`io.LimitReader` 10 MB cap~~ — v0.7.0
+- [x] ~~Sequential K8s calls parallelized with `errgroup`~~ — v0.7.0
+- [x] ~~Shared `http.Transport` for K8s client~~ — v0.7.0
+- [x] ~~Unit tests for parsers and PromQL validation~~ — v0.7.0
+- [x] ~~golangci-lint + eslint in CI~~ — v0.7.0
+- [x] ~~CSP + security headers added~~ — v0.7.0
+- [x] ~~SBOM + cosign image signing~~ — v0.7.0
+- [x] ~~`SuggestionPanel` array index as React key~~ — v0.8.0
+- [x] ~~`ResourceBar.tsx` missing `"use client"`~~ — v0.8.0
+- [x] ~~`BACKEND_URL` baked at build time~~ — v0.9.0 (runtime API proxy)
+- [x] ~~Suggestions based on snapshot only~~ — v0.10.0 (Prometheus P95/mean)
+- [x] ~~No rate limiting~~ — v0.11.0 (Chi Throttle 20 concurrent)
+- [x] ~~No auto-clear of expired token on 401~~ — v0.11.0 (auto-logout + redirect)
+- [x] ~~Prometheus client created per request~~ — v0.11.0 (global singleton at startup)
+- [x] ~~`go mod tidy` in Dockerfile~~ — v0.12.0 (replaced with `go mod download`)
+- [x] ~~No `readinessProbe` on frontend~~ — v0.12.0 (added to Helm deployment)
+- [x] ~~Suggestion action labels wrong~~ — v0.12.0 (per-suggestion `action` field)

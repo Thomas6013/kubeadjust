@@ -2,6 +2,21 @@
 
 All notable changes to KubeAdjust are documented here.
 
+## [0.12.0] - 2026-02-27
+
+### Fixed
+- **Suggestion action labels**: each suggestion now has its own action label — "Reduce limit" for over-provisioned limits (was incorrectly showing "Reduce request"), "Set limit" for missing limits, "Set request" for missing requests, "Expand PVC" for volumes, "Set sizeLimit" for emptyDir
+- **Namespace ordering**: namespaces now sorted alphabetically in the sidebar (both visible and hidden sections)
+
+### Added
+- **No-request warning**: containers without a CPU or Memory request now generate a warning — the scheduler cannot guarantee resources without requests
+- **Frontend readinessProbe**: Helm deployment now includes a readiness probe, preventing 503 errors during rolling updates
+
+### Changed
+- **Backend Dockerfile**: replaced `go mod tidy` with `go mod download` for better build reproducibility and Docker cache hits
+
+---
+
 ## [0.11.0] - 2026-02-27
 
 ### Added

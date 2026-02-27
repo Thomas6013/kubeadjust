@@ -7,13 +7,13 @@ import styles from "./SuggestionPanel.module.css";
 
 const ALL_KINDS: SuggestionKind[] = ["danger", "warning", "overkill"];
 
-const KIND_META: Record<SuggestionKind, { icon: string; color: string; action: string; label: string; bg: string }> = {
-  danger:   { icon: "▲", color: "var(--red)",       action: "Increase limit", label: "critical",  bg: "rgba(252,129,129,0.15)" },
-  warning:  { icon: "●", color: "var(--orange)",    action: "Increase limit", label: "warning",   bg: "rgba(246,166,35,0.15)" },
-  overkill: { icon: "▼", color: "var(--blue-over)", action: "Reduce request", label: "over-prov", bg: "rgba(99,179,237,0.15)" },
+const KIND_META: Record<SuggestionKind, { icon: string; color: string; label: string; bg: string }> = {
+  danger:   { icon: "▲", color: "var(--red)",       label: "critical",  bg: "rgba(252,129,129,0.15)" },
+  warning:  { icon: "●", color: "var(--orange)",    label: "warning",   bg: "rgba(246,166,35,0.15)" },
+  overkill: { icon: "▼", color: "var(--blue-over)", label: "over-prov", bg: "rgba(99,179,237,0.15)" },
 };
 
-const RESOURCE_ORDER = ["CPU", "Memory", "Ephemeral — no limit", "Ephemeral", "PVC", "EmptyDir"];
+const RESOURCE_ORDER = ["CPU", "Memory", "CPU — no limit", "Memory — no limit", "CPU — no request", "Memory — no request", "Ephemeral — no limit", "Ephemeral", "PVC", "EmptyDir"];
 const KIND_ORDER: Record<SuggestionKind, number> = { danger: 0, warning: 1, overkill: 2 };
 
 const STORAGE_KEY_EXCLUDED = "kubeadjust:excludedKinds";
@@ -66,7 +66,7 @@ function SuggestionItem({ s }: { s: Suggestion }) {
       </div>
       <p className={styles.itemMsg}>{s.message}</p>
       <div className={styles.itemAction}>
-        <span className={styles.actionLabel}>{meta.action}</span>
+        <span className={styles.actionLabel}>{s.action}</span>
         <span className={styles.arrow}>→</span>
         <span className={styles.current}>{s.current}</span>
         <span className={styles.arrow}>→</span>
