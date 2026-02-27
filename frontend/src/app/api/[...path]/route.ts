@@ -20,7 +20,7 @@ export async function POST(
 }
 
 async function proxy(req: NextRequest, path: string[]) {
-  const target = `${BACKEND_URL}/api/${path.join("/")}`;
+  const target = `${BACKEND_URL}/api/${path.join("/")}${req.nextUrl.search}`;
   const headers = new Headers();
 
   const auth = req.headers.get("authorization");

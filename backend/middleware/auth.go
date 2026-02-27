@@ -15,10 +15,18 @@ func BearerToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
 		if auth == "" || !strings.HasPrefix(auth, "Bearer ") {
-			http.Error(w, `{"error":"missing bearer token"}`, http.StatusUnauthorized)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"missing bearer token"}`))
 			return
 		}
 		token := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+		if token == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"missing bearer token"}`))
+			return
+		}
 		ctx := context.WithValue(r.Context(), TokenKey, token)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

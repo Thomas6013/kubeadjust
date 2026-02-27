@@ -2,6 +2,22 @@
 
 All notable changes to KubeAdjust are documented here.
 
+## [0.12.1] - 2026-02-27
+
+### Fixed
+- **CRITICAL — Proxy drops query parameters**: time range selector (`?range=6h`) was silently dropped by the frontend API proxy — Prometheus history always used default range
+- **HIGH — PodRow infinite fetch loop**: failed Prometheus fetches caused an infinite re-render loop due to `history` in useEffect deps — replaced with ref-based tracking
+- **Double Prometheus fetch**: namespace history was fetched both eagerly in `loadDeployments` and again via the `prometheusAvailable` useEffect — removed the duplicate eager fetch
+- **ResourceBar headroom at 100% usage**: headroom display showed the limit's raw string instead of "0m" / "0" when usage equaled the limit
+- **Auth middleware Content-Type**: `BearerToken` middleware returned `text/plain` error responses instead of `application/json`; also added empty-token check after prefix stripping
+- **PromQL injection hardened**: replaced weak blacklist (`"{}\\`) with strict whitelist (`[a-zA-Z0-9._-]`) for label value validation
+- **LimitReader silent truncation**: `io.ReadAll` errors were ignored and 10MB truncation produced misleading JSON parse errors — now returns explicit error messages
+- **Namespace list non-deterministic order**: backend goroutine scheduling caused random namespace ordering — now sorted alphabetically before responding
+- **Stale suggestions on namespace switch**: deployments from previous namespace briefly shown during loading — now cleared immediately
+- **View resets to nodes on refresh**: persistence race condition — useEffects overwrote saved values before restoration completed — fixed with `restored` flag
+
+---
+
 ## [0.12.0] - 2026-02-27
 
 ### Fixed

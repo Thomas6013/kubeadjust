@@ -96,7 +96,10 @@ export default function ResourceBar({ label, request, limit, usage, isCPU }: Pro
         {usage && limitVal > 0 && (
           <span className={styles.val} style={{ color: "var(--muted)" }}>
             <span className={styles.valLabel}>headroom</span>
-            <strong>{fmt({ ...limit, millicores: Math.max(0, limitVal - useVal), bytes: Math.max(0, limitVal - useVal) })}</strong>
+            <strong>{fmt(isCPU
+              ? { raw: `${Math.max(0, limitVal - useVal)}m`, millicores: Math.max(0, limitVal - useVal) }
+              : { raw: `${Math.max(0, limitVal - useVal)}`, bytes: Math.max(0, limitVal - useVal) }
+            )}</strong>
           </span>
         )}
       </div>
