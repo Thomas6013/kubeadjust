@@ -2,8 +2,8 @@ apiVersion: v2
 name: kubeadjust
 description: Lightweight Kubernetes resource limits/requests dashboard
 type: application
-version: 0.8.2
-appVersion: "0.8.2"
+version: 0.9.0
+appVersion: "0.9.0"
 keywords:
   - kubernetes
   - resources

@@ -135,13 +135,53 @@
 }
 .nsRow:hover .nsHide { opacity: 1; }
 .nsHide:hover { color: var(--red); }
-.showAll {
+/* Namespace search */
+.nsSearch {
+  width: 100%;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-family: monospace;
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+}
+.nsSearch:focus { border-color: var(--accent); }
+.nsSearch::placeholder { color: var(--muted); }
+
+/* Hidden namespaces section */
+.hiddenSection { margin-top: 8px; }
+.hiddenSummary {
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 10px;
+}
+.hiddenSummary:hover { color: var(--text); }
+.hiddenName {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--muted);
+  padding: 4px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nsRestore {
   background: none;
   border: none;
   cursor: pointer;
   color: var(--accent);
-  font-size: 11px;
-  padding: 4px 10px;
-  margin-top: 4px;
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
 }
-.showAll:hover { text-decoration: underline; }
+.nsRow:hover .nsRestore { opacity: 1; }
+.nsRestore:hover { color: var(--green, #4ade80); }

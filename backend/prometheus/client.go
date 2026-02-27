@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -36,6 +37,11 @@ func New() *Client {
 	if u == "" {
 		return nil
 	}
+	// Ensure scheme is present (common misconfiguration)
+	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+		u = "http://" + u
+	}
+	u = strings.TrimRight(u, "/")
 	return &Client{
 		baseURL: u,
 		httpClient: &http.Client{Timeout: 10 * time.Second},

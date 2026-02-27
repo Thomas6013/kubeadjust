@@ -2,11 +2,23 @@
 
 All notable changes to KubeAdjust are documented here.
 
+## [0.9.0] - 2026-02-27
+
+### Added
+- **Namespace search bar**: filter namespaces in the sidebar with a search input
+- **Individual namespace restore**: hidden namespaces can now be restored one by one via a collapsible "hidden" section (replaces the old "Show all" button)
+- **Empty namespace filtering**: namespaces with no running pods are automatically hidden from the sidebar (checked server-side in parallel)
+
+### Fixed
+- **Prometheus URL without scheme**: `PROMETHEUS_URL` values like `prometheus.monitoring:9090` (without `http://`) now work — the backend auto-prepends `http://` if missing
+
+---
+
 ## [0.8.2] - 2026-02-27
 
 ### Fixed
+- **Runtime backend proxy**: replaced Next.js build-time rewrite with an API route catch-all proxy (`/api/[...path]/route.ts`) that reads `BACKEND_URL` at runtime — fixes proxy failures when the Helm release name differs from the default
 - **Backend URL uses FQDN**: frontend `BACKEND_URL` now includes the release namespace (`<name>-backend.<namespace>:<port>`) for reliable DNS resolution
-- **Runtime backend proxy**: replaced Next.js build-time rewrite with an API route catch-all proxy that reads `BACKEND_URL` at runtime — fixes proxy failures when the Helm release name differs from the default (e.g. `nonprod-kubeadjust`)
 
 ### Changed
 - **Dockerfile cleaned up**: removed build-time `BACKEND_URL` ARG from frontend Dockerfile — no longer needed since proxy is resolved at runtime

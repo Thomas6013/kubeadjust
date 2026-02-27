@@ -99,7 +99,7 @@ spec:
               containerPort: {{ .Values.frontend.port }}
           env:
             - name: BACKEND_URL
-              value: "http://{{ include "kubeadjust.fullname" . }}-backend:{{ .Values.backend.port }}"
+              value: {{ printf "http://%s-backend.%s:%v" (include "kubeadjust.fullname" .) .Release.Namespace .Values.backend.port | quote }}
           livenessProbe:
             httpGet:
               path: /
