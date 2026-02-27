@@ -2,6 +2,22 @@
 
 All notable changes to KubeAdjust are documented here.
 
+## [0.11.0] - 2026-02-27
+
+### Added
+- **No-limit warning**: containers without a CPU or Memory limit now generate a "warning" suggestion with a recommended limit based on P95 usage (or 2× current usage if no Prometheus)
+- **Confidence indicator**: suggestions now display a confidence level (low / medium / high) based on the amount of Prometheus data available — no tag when using snapshot only
+- **Rate limiting**: API routes throttled to 20 concurrent requests via Chi Throttle middleware
+
+### Fixed
+- **401 auto-logout**: expired or invalid tokens now automatically clear sessionStorage and redirect to the login page (previously showed a generic error)
+- **Time range selector hidden**: the 1h/6h/24h/7d selector is no longer displayed when Prometheus is unavailable
+
+### Changed
+- **Global Prometheus client**: Prometheus HTTP client is now created once at startup and injected into handlers (previously created per request)
+
+---
+
 ## [0.10.0] - 2026-02-27
 
 ### Added

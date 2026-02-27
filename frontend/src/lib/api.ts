@@ -88,6 +88,11 @@ async function apiFetch<T>(path: string, token: string): Promise<T> {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
+    if (res.status === 401) {
+      sessionStorage.removeItem("kube-token");
+      window.location.href = "/";
+      throw new APIError(401, "Session expired");
+    }
     let msg = res.statusText;
     try { msg = (await res.json()).error ?? msg; } catch { /* non-JSON error body */ }
     throw new APIError(res.status, msg);

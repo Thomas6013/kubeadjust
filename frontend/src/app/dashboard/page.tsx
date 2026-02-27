@@ -184,17 +184,19 @@ export default function DashboardPage() {
         <div className={styles.brand}><span>⎈</span> KubeAdjust</div>
         <div className={styles.actions}>
           {lastRefresh && <span className={styles.refreshed}>Refreshed {lastRefresh.toLocaleTimeString()}</span>}
-          <div className={styles.rangeSelector}>
-            {(["1h", "6h", "24h", "7d"] as TimeRange[]).map((r) => (
-              <button
-                key={r}
-                className={`${styles.rangeBtn} ${timeRange === r ? styles.rangeBtnActive : ""}`}
-                onClick={() => setTimeRange(r)}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
+          {prometheusAvailable && (
+            <div className={styles.rangeSelector}>
+              {(["1h", "6h", "24h", "7d"] as TimeRange[]).map((r) => (
+                <button
+                  key={r}
+                  className={`${styles.rangeBtn} ${timeRange === r ? styles.rangeBtnActive : ""}`}
+                  onClick={() => setTimeRange(r)}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          )}
           <button className="ghost" onClick={handleRefresh} disabled={loading}>
             {loading ? "Loading…" : "↺ Refresh"}
           </button>
