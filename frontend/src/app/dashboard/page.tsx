@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { api, type NamespaceItem, type DeploymentDetail, type NodeOverview } from "@/lib/api";
+import { api, type NamespaceItem, type DeploymentDetail, type NodeOverview, type TimeRange, type ContainerHistory } from "@/lib/api";
 import DeploymentCard from "@/components/DeploymentCard";
 import SuggestionPanel from "@/components/SuggestionPanel";
 import NodeCard from "@/components/NodeCard";
@@ -31,17 +31,42 @@ export default function DashboardPage() {
   // Namespace exclusion (persisted in sessionStorage)
   const [excludedNs, setExcludedNs] = useState<Set<string>>(new Set());
 
+  // Time range for Prometheus queries
+  const [timeRange, setTimeRange] = useState<TimeRange>("1h");
+
+  // Namespace-level Prometheus history (eager fetch)
+  const [nsHistory, setNsHistory] = useState<ContainerHistory[]>([]);
+
+  // Opened deployments/pods (persisted in sessionStorage)
+  const [openCards, setOpenCards] = useState<Set<string>>(new Set());
+
   const [error, setError] = useState("");
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+
+  // Persist view/namespace/timeRange on change
+  useEffect(() => { sessionStorage.setItem("kubeadjust:view", view); }, [view]);
+  useEffect(() => { if (selectedNs) sessionStorage.setItem("kubeadjust:selectedNs", selectedNs); }, [selectedNs]);
+  useEffect(() => { sessionStorage.setItem("kubeadjust:timeRange", timeRange); }, [timeRange]);
+  useEffect(() => { sessionStorage.setItem("kubeadjust:openCards", JSON.stringify([...openCards])); }, [openCards]);
 
   useEffect(() => {
     const t = sessionStorage.getItem("kube-token");
     if (!t) { router.replace("/"); return; }
     setToken(t);
-    // Restore excluded namespaces
+    // Restore persisted state
     try {
       const raw = sessionStorage.getItem("kubeadjust:excludedNs");
       if (raw) setExcludedNs(new Set(JSON.parse(raw) as string[]));
+    } catch { /* ignore */ }
+    const savedView = sessionStorage.getItem("kubeadjust:view") as View | null;
+    if (savedView) setView(savedView);
+    const savedNs = sessionStorage.getItem("kubeadjust:selectedNs");
+    if (savedNs) setSelectedNs(savedNs);
+    const savedRange = sessionStorage.getItem("kubeadjust:timeRange") as TimeRange | null;
+    if (savedRange) setTimeRange(savedRange);
+    try {
+      const rawCards = sessionStorage.getItem("kubeadjust:openCards");
+      if (rawCards) setOpenCards(new Set(JSON.parse(rawCards) as string[]));
     } catch { /* ignore */ }
   }, [router]);
 
@@ -51,7 +76,13 @@ export default function DashboardPage() {
     api.namespaces(token)
       .then((ns) => {
         setNamespaces(ns);
-        if (ns.length > 0) setSelectedNs(ns[0].name);
+        // Keep persisted namespace if it still exists, otherwise pick first
+        const saved = sessionStorage.getItem("kubeadjust:selectedNs");
+        if (saved && ns.some((n) => n.name === saved)) {
+          setSelectedNs(saved);
+        } else if (ns.length > 0) {
+          setSelectedNs(ns[0].name);
+        }
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoadingNs(false));
@@ -61,18 +92,25 @@ export default function DashboardPage() {
     if (!token || !ns) return;
     setLoadingDeps(true);
     setError("");
+    setNsHistory([]);
     try {
       const resp = await api.deployments(token, ns);
       setDeployments(resp.workloads);
       setMetricsAvailable(resp.metricsAvailable);
       setPrometheusAvailable(resp.prometheusAvailable);
       setLastRefresh(new Date());
+      // Eager fetch Prometheus history for suggestions
+      if (resp.prometheusAvailable) {
+        api.namespaceHistory(token, ns, timeRange)
+          .then((h) => setNsHistory(h.containers))
+          .catch(() => { /* best-effort */ });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load deployments");
     } finally {
       setLoadingDeps(false);
     }
-  }, [token]);
+  }, [token, timeRange]);
 
   const loadNodes = useCallback(async () => {
     if (!token) return;
@@ -96,6 +134,14 @@ export default function DashboardPage() {
   useEffect(() => {
     if (token && view === "nodes" && nodes.length === 0) loadNodes();
   }, [view, token, loadNodes, nodes.length]);
+
+  // Re-fetch history when time range changes
+  useEffect(() => {
+    if (!token || !selectedNs || !prometheusAvailable || view !== "namespaces") return;
+    api.namespaceHistory(token, selectedNs, timeRange)
+      .then((h) => setNsHistory(h.containers))
+      .catch(() => { /* best-effort */ });
+  }, [timeRange, token, selectedNs, prometheusAvailable, view]);
 
   function handleRefresh() {
     if (view === "nodes") loadNodes();
@@ -138,6 +184,17 @@ export default function DashboardPage() {
         <div className={styles.brand}><span>⎈</span> KubeAdjust</div>
         <div className={styles.actions}>
           {lastRefresh && <span className={styles.refreshed}>Refreshed {lastRefresh.toLocaleTimeString()}</span>}
+          <div className={styles.rangeSelector}>
+            {(["1h", "6h", "24h", "7d"] as TimeRange[]).map((r) => (
+              <button
+                key={r}
+                className={`${styles.rangeBtn} ${timeRange === r ? styles.rangeBtnActive : ""}`}
+                onClick={() => setTimeRange(r)}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
           <button className="ghost" onClick={handleRefresh} disabled={loading}>
             {loading ? "Loading…" : "↺ Refresh"}
           </button>
@@ -275,6 +332,13 @@ export default function DashboardPage() {
                       namespace={selectedNs}
                       prometheusAvailable={prometheusAvailable}
                       token={token}
+                      timeRange={timeRange}
+                      openCards={openCards}
+                      onToggleCard={(id) => setOpenCards((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(id)) next.delete(id); else next.add(id);
+                        return next;
+                      })}
                     />
                   ))}
                 </div>
@@ -284,7 +348,7 @@ export default function DashboardPage() {
         </main>
 
         {/* Suggestions — only in namespace view */}
-        {view === "namespaces" && <SuggestionPanel deployments={deployments} />}
+        {view === "namespaces" && <SuggestionPanel deployments={deployments} history={nsHistory} />}
       </div>
     </div>
   );

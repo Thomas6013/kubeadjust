@@ -71,6 +71,7 @@ func main() {
 		r.Get("/namespaces/{namespace}/metrics", handlers.GetPodMetrics)
 
 		// Prometheus history (requires PROMETHEUS_URL env var)
+		r.Get("/namespaces/{namespace}/prometheus", handlers.GetNamespaceHistory)
 		r.Get("/namespaces/{namespace}/prometheus/{pod}/{container}", handlers.GetContainerHistory)
 	})
 
