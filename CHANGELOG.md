@@ -2,6 +2,26 @@
 
 All notable changes to KubeAdjust are documented here.
 
+## [0.8.0] - 2026-02-27
+
+### Added
+- **Clickable severity chips**: click critical/warning/over-prov chips to filter the suggestion list (multi-select, panel only)
+- **Suggestion type exclusion**: settings dropdown in panel header to permanently hide suggestion categories (persisted in sessionStorage)
+- **Namespace exclusion**: hide namespaces from sidebar via hover button, with "Show all (N hidden)" restore link (persisted in sessionStorage)
+- **Default view set to Nodes**: dashboard opens on node overview instead of namespaces
+
+### Fixed
+- **Stable React keys** in SuggestionPanel (replaced array index with composite key)
+- **golangci-lint errcheck** warnings resolved across all backend handlers
+- **Removed dead code**: unused `isMetricsServerUnavailable` function
+
+### CI
+- Upgraded golangci-lint to v2.10 / action v7 (Go 1.26 support)
+- Disabled `next lint` step (removed in Next.js 16)
+- Added missing `go.sum` entry for `golang.org/x/sync/errgroup`
+
+---
+
 ## [0.7.0] - 2026-02-26
 
 ### Security

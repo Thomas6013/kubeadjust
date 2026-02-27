@@ -13,7 +13,7 @@ type View = "namespaces" | "nodes";
 export default function DashboardPage() {
   const router = useRouter();
   const [token, setToken] = useState<string>("");
-  const [view, setView] = useState<View>("namespaces");
+  const [view, setView] = useState<View>("nodes");
 
   // Namespace view state
   const [namespaces, setNamespaces] = useState<NamespaceItem[]>([]);
@@ -28,6 +28,9 @@ export default function DashboardPage() {
   const [nodes, setNodes] = useState<NodeOverview[]>([]);
   const [loadingNodes, setLoadingNodes] = useState(false);
 
+  // Namespace exclusion (persisted in sessionStorage)
+  const [excludedNs, setExcludedNs] = useState<Set<string>>(new Set());
+
   const [error, setError] = useState("");
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
@@ -35,6 +38,11 @@ export default function DashboardPage() {
     const t = sessionStorage.getItem("kube-token");
     if (!t) { router.replace("/"); return; }
     setToken(t);
+    // Restore excluded namespaces
+    try {
+      const raw = sessionStorage.getItem("kubeadjust:excludedNs");
+      if (raw) setExcludedNs(new Set(JSON.parse(raw) as string[]));
+    } catch { /* ignore */ }
   }, [router]);
 
   useEffect(() => {
@@ -99,6 +107,27 @@ export default function DashboardPage() {
     router.push("/");
   }
 
+  function hideNamespace(name: string) {
+    setExcludedNs((prev) => {
+      const next = new Set(prev);
+      next.add(name);
+      sessionStorage.setItem("kubeadjust:excludedNs", JSON.stringify([...next]));
+      return next;
+    });
+    // If hiding the currently selected namespace, switch to another
+    if (selectedNs === name) {
+      const remaining = namespaces.find((ns) => ns.name !== name && !excludedNs.has(ns.name));
+      if (remaining) setSelectedNs(remaining.name);
+    }
+  }
+
+  function showAllNamespaces() {
+    setExcludedNs(new Set());
+    sessionStorage.removeItem("kubeadjust:excludedNs");
+  }
+
+  const visibleNamespaces = namespaces.filter((ns) => !excludedNs.has(ns.name));
+
   const loading = view === "nodes" ? loadingNodes : loadingDeps;
 
   return (
@@ -141,17 +170,27 @@ export default function DashboardPage() {
             <p className={styles.muted}>Loading…</p>
           ) : (
             <ul className={styles.nsList}>
-              {namespaces.map((ns) => (
-                <li key={ns.name}>
+              {visibleNamespaces.map((ns) => (
+                <li key={ns.name} className={styles.nsRow}>
                   <button
                     className={`${styles.nsBtn} ${view === "namespaces" && selectedNs === ns.name ? styles.active : ""}`}
                     onClick={() => { setView("namespaces"); setSelectedNs(ns.name); }}
                   >
                     {ns.name}
                   </button>
+                  <button
+                    className={styles.nsHide}
+                    onClick={(e) => { e.stopPropagation(); hideNamespace(ns.name); }}
+                    title={`Hide ${ns.name}`}
+                  >✕</button>
                 </li>
               ))}
             </ul>
+            {excludedNs.size > 0 && (
+              <button className={styles.showAll} onClick={showAllNamespaces}>
+                Show all ({excludedNs.size} hidden)
+              </button>
+            )}
           )}
         </aside>
 

@@ -47,6 +47,57 @@
   font-weight: 700;
   padding: 3px 8px;
   border-radius: 4px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  user-select: none;
+}
+.chip:hover { opacity: 0.8; }
+.chipActive {
+  outline: 2px solid currentColor;
+  outline-offset: -1px;
+}
+.chipDimmed {
+  opacity: 0.35;
+}
+
+/* Exclusion dropdown */
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.filterBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--muted);
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+.filterBtn:hover { color: var(--text); }
+.filterBtnActive { color: var(--accent); }
+.dropdown {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.dropdownRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.dropdownRow input {
+  margin: 0;
+  cursor: pointer;
 }
 
 .list {
