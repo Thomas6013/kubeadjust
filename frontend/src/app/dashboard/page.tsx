@@ -169,28 +169,30 @@ export default function DashboardPage() {
           {loadingNs ? (
             <p className={styles.muted}>Loading…</p>
           ) : (
-            <ul className={styles.nsList}>
-              {visibleNamespaces.map((ns) => (
-                <li key={ns.name} className={styles.nsRow}>
-                  <button
-                    className={`${styles.nsBtn} ${view === "namespaces" && selectedNs === ns.name ? styles.active : ""}`}
-                    onClick={() => { setView("namespaces"); setSelectedNs(ns.name); }}
-                  >
-                    {ns.name}
-                  </button>
-                  <button
-                    className={styles.nsHide}
-                    onClick={(e) => { e.stopPropagation(); hideNamespace(ns.name); }}
-                    title={`Hide ${ns.name}`}
-                  >✕</button>
-                </li>
-              ))}
-            </ul>
-            {excludedNs.size > 0 && (
-              <button className={styles.showAll} onClick={showAllNamespaces}>
-                Show all ({excludedNs.size} hidden)
-              </button>
-            )}
+            <>
+              <ul className={styles.nsList}>
+                {visibleNamespaces.map((ns) => (
+                  <li key={ns.name} className={styles.nsRow}>
+                    <button
+                      className={`${styles.nsBtn} ${view === "namespaces" && selectedNs === ns.name ? styles.active : ""}`}
+                      onClick={() => { setView("namespaces"); setSelectedNs(ns.name); }}
+                    >
+                      {ns.name}
+                    </button>
+                    <button
+                      className={styles.nsHide}
+                      onClick={(e) => { e.stopPropagation(); hideNamespace(ns.name); }}
+                      title={`Hide ${ns.name}`}
+                    >✕</button>
+                  </li>
+                ))}
+              </ul>
+              {excludedNs.size > 0 && (
+                <button className={styles.showAll} onClick={showAllNamespaces}>
+                  Show all ({excludedNs.size} hidden)
+                </button>
+              )}
+            </>
           )}
         </aside>
 
