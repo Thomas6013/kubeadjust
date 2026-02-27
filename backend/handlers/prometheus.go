@@ -10,14 +10,12 @@ import (
 	"github.com/devops-kubeadjust/backend/prometheus"
 )
 
-// GetContainerHistory returns last-1h CPU/memory history from Prometheus.
-// Returns 503 if PROMETHEUS_URL is not configured.
+// GetContainerHistory returns CPU/memory history from Prometheus for a single container.
 func GetContainerHistory(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
 	pod := chi.URLParam(r, "pod")
 	container := chi.URLParam(r, "container")
 
-	// Reject values containing Prometheus label-breaking characters to prevent PromQL injection.
 	if !isValidLabelValue(ns) || !isValidLabelValue(pod) || !isValidLabelValue(container) {
 		jsonError(w, "invalid parameter", http.StatusBadRequest)
 		return
@@ -29,9 +27,38 @@ func GetContainerHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := client.GetContainerHistory(ns, pod, container)
+	tr := prometheus.ParseTimeRange(r.URL.Query().Get("range"))
+
+	result, err := client.GetContainerHistory(ns, pod, container, tr)
 	if err != nil {
 		log.Printf("prometheus query failed for %s/%s/%s: %v", ns, pod, container, err)
+		jsonError(w, "failed to query prometheus", http.StatusBadGateway)
+		return
+	}
+
+	jsonOK(w, result)
+}
+
+// GetNamespaceHistory returns CPU/memory history for all containers in a namespace.
+func GetNamespaceHistory(w http.ResponseWriter, r *http.Request) {
+	ns := chi.URLParam(r, "namespace")
+
+	if !isValidLabelValue(ns) {
+		jsonError(w, "invalid parameter", http.StatusBadRequest)
+		return
+	}
+
+	client := prometheus.New()
+	if client == nil {
+		jsonError(w, "prometheus not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	tr := prometheus.ParseTimeRange(r.URL.Query().Get("range"))
+
+	result, err := client.GetNamespaceHistory(ns, tr)
+	if err != nil {
+		log.Printf("prometheus namespace query failed for %s: %v", ns, err)
 		jsonError(w, "failed to query prometheus", http.StatusBadGateway)
 		return
 	}

@@ -2,6 +2,26 @@
 
 All notable changes to KubeAdjust are documented here.
 
+## [0.10.0] - 2026-02-27
+
+### Added
+- **Time range selector**: 1h / 6h / 24h / 7d toggle in the header — controls Prometheus query range for sparklines and suggestions, with adaptive step sizes (60s → 900s)
+- **Prometheus-weighted suggestions**: when Prometheus is available, suggestions now use **P95** for danger/warning thresholds and **mean** for overkill detection instead of the metrics-server snapshot; falls back to snapshot when Prometheus is unavailable
+- **Over-provisioned limit detection**: new overkill suggestion when a limit exceeds 3x the P95 usage, suggesting a reduced limit value
+- **Namespace history endpoint**: new `GET /api/namespaces/{ns}/prometheus?range=X` returns CPU/memory history for all containers in a namespace in a single request (parallelized with errgroup)
+- **Eager Prometheus fetch**: dashboard fetches namespace-wide history automatically when Prometheus is available (no longer requires opening individual pods)
+- **Persistent dashboard state**: view, selected namespace, time range, and opened cards/pods are preserved across page refreshes (via sessionStorage)
+
+### Fixed
+- **Suggestion filter dropdown**: improved readability — larger checkboxes with accent colors, distinct background, only icon colored (label text now uses standard text color)
+
+### Changed
+- **Sparklines enlarged**: default size increased from 72×20 to 120×32 for better readability
+- **Prometheus client timeout**: increased from 10s to 30s to accommodate longer range queries (7d)
+- **Rate window adapts to range**: `rate()` window scales from 5m (1h) to 15m (7d) to avoid gaps in sparse data
+
+---
+
 ## [0.9.0] - 2026-02-27
 
 ### Added

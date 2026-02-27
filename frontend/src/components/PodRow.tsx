@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { PodDetail, HistoryResponse, EphemeralStorageInfo, ResourceValue } from "@/lib/api";
+import type { PodDetail, HistoryResponse, EphemeralStorageInfo, ResourceValue, TimeRange } from "@/lib/api";
 import { api, fmtStorage, storagePct } from "@/lib/api";
 import { resourceStatus, storageStatus } from "@/lib/suggestions";
 import ResourceBar from "./ResourceBar";
@@ -22,21 +22,34 @@ interface PodRowProps {
   namespace: string;
   prometheusAvailable: boolean;
   token: string;
+  timeRange?: TimeRange;
+  openCards?: Set<string>;
+  onToggleCard?: (id: string) => void;
 }
 
-export default function PodRow({ pod, namespace, prometheusAvailable, token }: PodRowProps) {
-  const [open, setOpen] = useState(false);
+export default function PodRow({ pod, namespace, prometheusAvailable, token, timeRange = "1h", openCards, onToggleCard }: PodRowProps) {
+  const podId = `pod:${pod.name}`;
+  const open = openCards?.has(podId) ?? false;
   const [history, setHistory] = useState<Record<string, HistoryResponse>>({});
+  const [lastRange, setLastRange] = useState<TimeRange>(timeRange);
+
+  // Invalidate cache when time range changes
+  useEffect(() => {
+    if (timeRange !== lastRange) {
+      setHistory({});
+      setLastRange(timeRange);
+    }
+  }, [timeRange, lastRange]);
 
   useEffect(() => {
     if (!open || !prometheusAvailable) return;
     for (const c of pod.containers) {
       if (history[c.name]) continue;
-      api.containerHistory(token, namespace, pod.name, c.name)
+      api.containerHistory(token, namespace, pod.name, c.name, timeRange)
         .then((h) => setHistory((prev) => ({ ...prev, [c.name]: h })))
         .catch(() => { /* best-effort */ });
     }
-  }, [open, prometheusAvailable, pod, namespace, token, history]);
+  }, [open, prometheusAvailable, pod, namespace, token, history, timeRange]);
 
   const phaseColor =
     pod.phase === "Running"  ? "var(--green)"
@@ -47,7 +60,7 @@ export default function PodRow({ pod, namespace, prometheusAvailable, token }: P
     <div className={styles.pod}>
       <button
         className={styles.header}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => onToggleCard?.(podId)}
         aria-expanded={open}
       >
         <span className={styles.arrow}>{open ? "▾" : "▸"}</span>

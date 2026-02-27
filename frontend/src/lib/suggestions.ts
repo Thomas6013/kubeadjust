@@ -1,4 +1,4 @@
-import type { DeploymentDetail, ContainerResources, ResourceValue, VolumeDetail } from "./api";
+import type { DeploymentDetail, ContainerResources, ResourceValue, VolumeDetail, ContainerHistory } from "./api";
 
 export type SuggestionKind = "danger" | "warning" | "overkill";
 
@@ -10,6 +10,29 @@ export interface Suggestion {
   message: string;
   current: string;
   suggested: string;
+}
+
+/** Map of "pod/container" → ContainerHistory for quick lookup. */
+export type HistoryMap = Map<string, ContainerHistory>;
+
+export function buildHistoryMap(history: ContainerHistory[]): HistoryMap {
+  const map = new Map<string, ContainerHistory>();
+  for (const h of history) {
+    map.set(`${h.pod}/${h.container}`, h);
+  }
+  return map;
+}
+
+function mean(values: number[]): number {
+  if (values.length === 0) return 0;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+function percentile95(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = Math.ceil(sorted.length * 0.95) - 1;
+  return sorted[Math.max(0, idx)];
 }
 
 /** Extracts the numeric value from a ResourceValue (millicores for CPU, bytes for memory). */
@@ -31,33 +54,47 @@ function fmtSuggested(v: number, isCPU: boolean): string {
   return `${Math.ceil(v / 1024)} KiB`;
 }
 
-/** Generates CPU and memory suggestions for a container: danger/warning when near limit, overkill when far below request. */
-function analyzeCpuMem(c: ContainerResources, depName: string): Suggestion[] {
+/** Generates CPU and memory suggestions for a container: danger/warning when near limit, overkill when far below request.
+ *  When Prometheus history is available, uses P95 for danger/warning thresholds and mean for overkill detection. */
+function analyzeCpuMem(c: ContainerResources, depName: string, hist?: ContainerHistory): Suggestion[] {
   const results: Suggestion[] = [];
   for (const isCPU of [true, false]) {
     const label = isCPU ? "CPU" : "Memory";
     const req = val(isCPU ? c.requests.cpu : c.requests.memory, isCPU);
     const lim = val(isCPU ? c.limits.cpu : c.limits.memory, isCPU);
     if (!c.usage) continue;
-    const use = val(isCPU ? c.usage.cpu : c.usage.memory, isCPU);
-    if (use === 0) continue;
+    const snapshotUse = val(isCPU ? c.usage.cpu : c.usage.memory, isCPU);
+    if (snapshotUse === 0) continue;
+
+    // Use Prometheus history if available, otherwise fall back to snapshot
+    const histPoints = hist ? (isCPU ? hist.cpu : hist.memory).map((p) => p.v) : [];
+    const hasHistory = histPoints.length >= 2;
+    const p95Use = hasHistory ? percentile95(histPoints) : snapshotUse;
+    const meanUse = hasHistory ? mean(histPoints) : snapshotUse;
+    const source = hasHistory ? "avg" : "current";
 
     if (lim > 0) {
-      const pct = use / lim;
+      const pct = p95Use / lim;
       if (pct >= 0.90) {
         results.push({ deployment: depName, container: c.name, resource: label, kind: "danger",
-          message: `${label} usage at ${Math.round(pct * 100)}% of limit`,
-          current: fmtSuggested(lim, isCPU), suggested: fmtSuggested(Math.ceil(use * 1.4), isCPU) });
+          message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${hasHistory ? " (historical)" : ""}`,
+          current: fmtSuggested(lim, isCPU), suggested: fmtSuggested(Math.ceil(p95Use * 1.4), isCPU) });
       } else if (pct >= 0.70) {
         results.push({ deployment: depName, container: c.name, resource: label, kind: "warning",
-          message: `${label} usage at ${Math.round(pct * 100)}% of limit`,
-          current: fmtSuggested(lim, isCPU), suggested: fmtSuggested(Math.ceil(use * 1.4), isCPU) });
+          message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${hasHistory ? " (historical)" : ""}`,
+          current: fmtSuggested(lim, isCPU), suggested: fmtSuggested(Math.ceil(p95Use * 1.4), isCPU) });
       }
     }
-    if (req > 0 && use / req <= 0.35) {
+    if (req > 0 && meanUse / req <= 0.35) {
       results.push({ deployment: depName, container: c.name, resource: label, kind: "overkill",
-        message: `${label} request is ${(req / use).toFixed(1)}× actual usage`,
-        current: fmtSuggested(req, isCPU), suggested: fmtSuggested(Math.ceil(use * 1.3), isCPU) });
+        message: `${label} ${source} request is ${(req / meanUse).toFixed(1)}× actual usage${hasHistory ? " (historical)" : ""}`,
+        current: fmtSuggested(req, isCPU), suggested: fmtSuggested(Math.ceil(meanUse * 1.3), isCPU) });
+    }
+    // Limit over-provisioned: limit is more than 3× P95 usage
+    if (lim > 0 && p95Use > 0 && lim / p95Use >= 3) {
+      results.push({ deployment: depName, container: c.name, resource: label, kind: "overkill",
+        message: `${label} limit is ${(lim / p95Use).toFixed(1)}× P95 usage${hasHistory ? " (historical)" : ""}`,
+        current: fmtSuggested(lim, isCPU), suggested: fmtSuggested(Math.ceil(p95Use * 1.5), isCPU) });
     }
   }
   return results;
@@ -125,13 +162,16 @@ function analyzeVolumes(volumes: VolumeDetail[], depName: string): Suggestion[] 
   return results;
 }
 
-/** Computes all suggestions across all workloads, sorted by severity (danger → warning → overkill). */
-export function computeSuggestions(deployments: DeploymentDetail[]): Suggestion[] {
+/** Computes all suggestions across all workloads, sorted by severity (danger → warning → overkill).
+ *  When history is provided, suggestions are weighted with Prometheus P95/mean data. */
+export function computeSuggestions(deployments: DeploymentDetail[], history?: ContainerHistory[]): Suggestion[] {
+  const histMap = history && history.length > 0 ? buildHistoryMap(history) : undefined;
   const out: Suggestion[] = [];
   for (const dep of deployments) {
     for (const pod of dep.pods ?? []) {
       for (const c of pod.containers) {
-        out.push(...analyzeCpuMem(c, dep.name));
+        const hist = histMap?.get(`${pod.name}/${c.name}`);
+        out.push(...analyzeCpuMem(c, dep.name, hist));
         out.push(...analyzeEphemeral(c, dep.name));
       }
       out.push(...analyzeVolumes(pod.volumes ?? [], dep.name));

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { DeploymentDetail } from "@/lib/api";
+import type { DeploymentDetail, ContainerHistory } from "@/lib/api";
 import { computeSuggestions, type Suggestion, type SuggestionKind } from "@/lib/suggestions";
 import styles from "./SuggestionPanel.module.css";
 
@@ -91,7 +91,7 @@ function SuggestionGroup({ resource, items }: { resource: string; items: Suggest
   );
 }
 
-export default function SuggestionPanel({ deployments }: { deployments: DeploymentDetail[] }) {
+export default function SuggestionPanel({ deployments, history }: { deployments: DeploymentDetail[]; history?: ContainerHistory[] }) {
   // --- Exclusion state (persisted) ---
   const [excludedKinds, setExcludedKinds] = useState<Set<SuggestionKind>>(new Set());
   const [showDropdown, setShowDropdown] = useState(false);
@@ -121,7 +121,7 @@ export default function SuggestionPanel({ deployments }: { deployments: Deployme
   }
 
   // --- Compute suggestions ---
-  const allSuggestions = computeSuggestions(deployments);
+  const allSuggestions = computeSuggestions(deployments, history);
   // 1) Remove excluded kinds
   const suggestions = allSuggestions.filter((s) => !excludedKinds.has(s.kind));
   // 2) Apply chip filter (if any active)
@@ -151,13 +151,15 @@ export default function SuggestionPanel({ deployments }: { deployments: Deployme
       {showDropdown && (
         <div className={styles.dropdown}>
           {ALL_KINDS.map((kind) => (
-            <label key={kind} className={styles.dropdownRow} style={{ color: KIND_META[kind].color }}>
+            <label key={kind} className={styles.dropdownRow}>
               <input
                 type="checkbox"
                 checked={!excludedKinds.has(kind)}
                 onChange={() => toggleExcluded(kind)}
+                style={{ accentColor: KIND_META[kind].color }}
               />
-              {KIND_META[kind].icon} {KIND_META[kind].label}
+              <span style={{ color: KIND_META[kind].color }}>{KIND_META[kind].icon}</span>
+              <span>{KIND_META[kind].label}</span>
             </label>
           ))}
         </div>

@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import type { DeploymentDetail } from "@/lib/api";
+import type { DeploymentDetail, TimeRange } from "@/lib/api";
 import PodRow from "./PodRow";
 import styles from "./DeploymentCard.module.css";
 
@@ -10,17 +9,21 @@ interface DeploymentCardProps {
   namespace: string;
   prometheusAvailable: boolean;
   token: string;
+  timeRange?: TimeRange;
+  openCards?: Set<string>;
+  onToggleCard?: (id: string) => void;
 }
 
-export default function DeploymentCard({ dep, namespace, prometheusAvailable, token }: DeploymentCardProps) {
-  const [open, setOpen] = useState(false);
+export default function DeploymentCard({ dep, namespace, prometheusAvailable, token, timeRange, openCards, onToggleCard }: DeploymentCardProps) {
+  const cardId = `dep:${dep.name}`;
+  const open = openCards?.has(cardId) ?? false;
 
   const healthy = dep.readyReplicas === dep.replicas;
   const statusColor = healthy ? "var(--green)" : "var(--yellow)";
 
   return (
     <div id={`dep-${dep.name}`} className={styles.card}>
-      <button className={styles.header} onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+      <button className={styles.header} onClick={() => onToggleCard?.(cardId)} aria-expanded={open}>
         <span className={styles.arrow}>{open ? "▾" : "▸"}</span>
         <span className={styles.name}>{dep.name}</span>
         {dep.kind && dep.kind !== "Deployment" && (
@@ -46,6 +49,9 @@ export default function DeploymentCard({ dep, namespace, prometheusAvailable, to
                 namespace={namespace}
                 prometheusAvailable={prometheusAvailable}
                 token={token}
+                timeRange={timeRange}
+                openCards={openCards}
+                onToggleCard={onToggleCard}
               />
             ))
           )}
