@@ -172,9 +172,12 @@ export default function DashboardPage() {
 
   const visibleNamespaces = namespaces
     .filter((ns) => !excludedNs.has(ns.name))
-    .filter((ns) => ns.name.toLowerCase().includes(nsSearch.toLowerCase()));
+    .filter((ns) => ns.name.toLowerCase().includes(nsSearch.toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
-  const hiddenNamespaces = namespaces.filter((ns) => excludedNs.has(ns.name));
+  const hiddenNamespaces = namespaces
+    .filter((ns) => excludedNs.has(ns.name))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const loading = view === "nodes" ? loadingNodes : loadingDeps;
 

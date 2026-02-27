@@ -106,6 +106,12 @@ spec:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
           securityContext:

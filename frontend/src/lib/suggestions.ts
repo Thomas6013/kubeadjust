@@ -7,6 +7,7 @@ export interface Suggestion {
   container: string;
   resource: string;
   kind: SuggestionKind;
+  action: string;
   message: string;
   current: string;
   suggested: string;
@@ -74,10 +75,19 @@ function analyzeCpuMem(c: ContainerResources, depName: string, hist?: ContainerH
     const source = hasHistory ? "avg" : "current";
     const confidence = !hasHistory ? "" : histPoints.length >= 400 ? " · high confidence" : histPoints.length >= 60 ? " · medium confidence" : " · low confidence";
 
+    // No request defined — flag it
+    if (req === 0) {
+      const suggested = meanUse > 0 ? Math.ceil(meanUse * 1.3) : Math.ceil(snapshotUse * 1.3);
+      results.push({ deployment: depName, container: c.name, resource: `${label} — no request`, kind: "warning",
+        action: "Set request",
+        message: `No ${label} request set — scheduler cannot guarantee resources`,
+        current: "none", suggested: fmtSuggested(suggested, isCPU) });
+    }
     // No limit defined — flag it
     if (lim === 0) {
       const suggested = p95Use > 0 ? Math.ceil(p95Use * 1.5) : Math.ceil(snapshotUse * 2);
       results.push({ deployment: depName, container: c.name, resource: `${label} — no limit`, kind: "warning",
+        action: "Set limit",
         message: `No ${label} limit set — container can consume unbounded ${label.toLowerCase()}`,
         current: "unlimited", suggested: fmtSuggested(suggested, isCPU) });
     }
@@ -85,22 +95,26 @@ function analyzeCpuMem(c: ContainerResources, depName: string, hist?: ContainerH
       const pct = p95Use / lim;
       if (pct >= 0.90) {
         results.push({ deployment: depName, container: c.name, resource: label, kind: "danger",
+          action: "Increase limit",
           message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${confidence}`,
           current: fmtSuggested(lim, isCPU), suggested: fmtSuggested(Math.ceil(p95Use * 1.4), isCPU) });
       } else if (pct >= 0.70) {
         results.push({ deployment: depName, container: c.name, resource: label, kind: "warning",
+          action: "Increase limit",
           message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${confidence}`,
           current: fmtSuggested(lim, isCPU), suggested: fmtSuggested(Math.ceil(p95Use * 1.4), isCPU) });
       }
     }
     if (req > 0 && meanUse / req <= 0.35) {
       results.push({ deployment: depName, container: c.name, resource: label, kind: "overkill",
+        action: "Reduce request",
         message: `${label} ${source} request is ${(req / meanUse).toFixed(1)}× actual usage${confidence}`,
         current: fmtSuggested(req, isCPU), suggested: fmtSuggested(Math.ceil(meanUse * 1.3), isCPU) });
     }
     // Limit over-provisioned: limit is more than 3× P95 usage
     if (lim > 0 && p95Use > 0 && lim / p95Use >= 3) {
       results.push({ deployment: depName, container: c.name, resource: label, kind: "overkill",
+        action: "Reduce limit",
         message: `${label} limit is ${(lim / p95Use).toFixed(1)}× P95 usage${confidence}`,
         current: fmtSuggested(lim, isCPU), suggested: fmtSuggested(Math.ceil(p95Use * 1.5), isCPU) });
     }
@@ -121,16 +135,19 @@ function analyzeEphemeral(c: ContainerResources, depName: string): Suggestion[] 
   if (lim === 0) {
     // No limit set — always flag it
     results.push({ deployment: depName, container: c.name, resource: "Ephemeral — no limit", kind: "warning",
+      action: "Set limit",
       message: "No ephemeral-storage limit set",
       current: "unlimited", suggested: fmtSuggested(Math.ceil(use * 2), false) });
   } else {
     const pct = use / lim;
     if (pct >= 0.90) {
       results.push({ deployment: depName, container: c.name, resource: "Ephemeral", kind: "danger",
+        action: "Increase limit",
         message: `Ephemeral usage at ${Math.round(pct * 100)}% of limit`,
         current: fmtSuggested(lim, false), suggested: fmtSuggested(Math.ceil(use * 1.5), false) });
     } else if (pct >= 0.70) {
       results.push({ deployment: depName, container: c.name, resource: "Ephemeral", kind: "warning",
+        action: "Increase limit",
         message: `Ephemeral usage at ${Math.round(pct * 100)}% of limit`,
         current: fmtSuggested(lim, false), suggested: fmtSuggested(Math.ceil(use * 1.5), false) });
     }
@@ -151,11 +168,13 @@ function analyzeVolumes(volumes: VolumeDetail[], depName: string): Suggestion[] 
         const pct = use / cap;
         if (pct >= 0.90) {
           results.push({ deployment: depName, container: vol.pvcName ?? vol.name, resource: "PVC",
-            kind: "danger", message: `PVC "${vol.pvcName}" at ${Math.round(pct * 100)}% capacity`,
+            kind: "danger", action: "Expand PVC",
+            message: `PVC "${vol.pvcName}" at ${Math.round(pct * 100)}% capacity`,
             current: fmtSuggested(cap, false), suggested: fmtSuggested(Math.ceil(cap * 1.5), false) });
         } else if (pct >= 0.75) {
           results.push({ deployment: depName, container: vol.pvcName ?? vol.name, resource: "PVC",
-            kind: "warning", message: `PVC "${vol.pvcName}" at ${Math.round(pct * 100)}% capacity`,
+            kind: "warning", action: "Expand PVC",
+            message: `PVC "${vol.pvcName}" at ${Math.round(pct * 100)}% capacity`,
             current: fmtSuggested(cap, false), suggested: fmtSuggested(Math.ceil(cap * 1.5), false) });
         }
       }
@@ -163,7 +182,8 @@ function analyzeVolumes(volumes: VolumeDetail[], depName: string): Suggestion[] 
 
     if (vol.type === "emptyDir" && !vol.sizeLimit) {
       results.push({ deployment: depName, container: vol.name, resource: "EmptyDir",
-        kind: "warning", message: `EmptyDir "${vol.name}" has no sizeLimit`,
+        kind: "warning", action: "Set sizeLimit",
+        message: `EmptyDir "${vol.name}" has no sizeLimit`,
         current: "unlimited", suggested: fmtSuggested(Math.ceil(use * 2), false) });
     }
   }
