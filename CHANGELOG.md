@@ -2,6 +2,15 @@
 
 All notable changes to KubeAdjust are documented here.
 
+## [0.8.1] - 2026-02-27
+
+### Added
+- **Multi-architecture Docker images**: builds now produce `linux/amd64` and `linux/arm64` manifests, enabling deployment on ARM-based clusters (Raspberry Pi, AWS Graviton, Apple Silicon, etc.)
+- **QEMU emulation** in CI for cross-platform builds (`docker/setup-qemu-action`)
+- **Native Go cross-compilation**: backend Dockerfile uses `--platform=$BUILDPLATFORM` with `TARGETOS`/`TARGETARCH` for fast ARM builds without emulation
+
+---
+
 ## [0.8.0] - 2026-02-27
 
 ### Added
