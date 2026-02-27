@@ -114,3 +114,34 @@
   font-size: 13px;
 }
 .muted { color: var(--muted); font-size: 13px; }
+
+/* Namespace exclusion */
+.nsRow {
+  display: flex;
+  align-items: center;
+}
+.nsRow .nsBtn { flex: 1; min-width: 0; }
+.nsHide {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+.nsRow:hover .nsHide { opacity: 1; }
+.nsHide:hover { color: var(--red); }
+.showAll {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 11px;
+  padding: 4px 10px;
+  margin-top: 4px;
+}
+.showAll:hover { text-decoration: underline; }
