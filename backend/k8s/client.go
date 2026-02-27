@@ -315,6 +315,12 @@ func (c *Client) ListPods(namespace string) (*PodList, error) {
 	return &out, c.get(fmt.Sprintf("/api/v1/namespaces/%s/pods", namespace), &out)
 }
 
+// ListPodsLimit lists up to `limit` pods in a namespace (useful for existence checks).
+func (c *Client) ListPodsLimit(namespace string, limit int) (*PodList, error) {
+	var out PodList
+	return &out, c.get(fmt.Sprintf("/api/v1/namespaces/%s/pods?limit=%d", namespace, limit), &out)
+}
+
 func (c *Client) ListPodMetrics(namespace string) (*PodMetricsList, error) {
 	var out PodMetricsList
 	return &out, c.get(fmt.Sprintf("/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods", namespace), &out)

@@ -121,12 +121,14 @@ export default function DashboardPage() {
     }
   }
 
-  function showAllNamespaces() {
-    setExcludedNs(new Set());
-    sessionStorage.removeItem("kubeadjust:excludedNs");
-  }
 
-  const visibleNamespaces = namespaces.filter((ns) => !excludedNs.has(ns.name));
+  const [nsSearch, setNsSearch] = useState("");
+
+  const visibleNamespaces = namespaces
+    .filter((ns) => !excludedNs.has(ns.name))
+    .filter((ns) => ns.name.toLowerCase().includes(nsSearch.toLowerCase()));
+
+  const hiddenNamespaces = namespaces.filter((ns) => excludedNs.has(ns.name));
 
   const loading = view === "nodes" ? loadingNodes : loadingDeps;
 
@@ -170,6 +172,13 @@ export default function DashboardPage() {
             <p className={styles.muted}>Loading…</p>
           ) : (
             <>
+              <input
+                className={styles.nsSearch}
+                type="text"
+                placeholder="Search namespaces…"
+                value={nsSearch}
+                onChange={(e) => setNsSearch(e.target.value)}
+              />
               <ul className={styles.nsList}>
                 {visibleNamespaces.map((ns) => (
                   <li key={ns.name} className={styles.nsRow}>
@@ -187,10 +196,31 @@ export default function DashboardPage() {
                   </li>
                 ))}
               </ul>
-              {excludedNs.size > 0 && (
-                <button className={styles.showAll} onClick={showAllNamespaces}>
-                  Show all ({excludedNs.size} hidden)
-                </button>
+              {hiddenNamespaces.length > 0 && (
+                <details className={styles.hiddenSection}>
+                  <summary className={styles.hiddenSummary}>
+                    {hiddenNamespaces.length} hidden
+                  </summary>
+                  <ul className={styles.nsList}>
+                    {hiddenNamespaces.map((ns) => (
+                      <li key={ns.name} className={styles.nsRow}>
+                        <span className={styles.hiddenName}>{ns.name}</span>
+                        <button
+                          className={styles.nsRestore}
+                          onClick={() => {
+                            setExcludedNs((prev) => {
+                              const next = new Set(prev);
+                              next.delete(ns.name);
+                              sessionStorage.setItem("kubeadjust:excludedNs", JSON.stringify([...next]));
+                              return next;
+                            });
+                          }}
+                          title={`Restore ${ns.name}`}
+                        >+</button>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               )}
             </>
           )}
