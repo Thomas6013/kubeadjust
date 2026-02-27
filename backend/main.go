@@ -12,6 +12,7 @@ import (
 
 	"github.com/devops-kubeadjust/backend/handlers"
 	"github.com/devops-kubeadjust/backend/middleware"
+	"github.com/devops-kubeadjust/backend/prometheus"
 )
 
 func main() {
@@ -30,6 +31,12 @@ func main() {
 		allowedOrigins = strings.Split(origins, ",")
 	} else {
 		log.Println("WARN: ALLOWED_ORIGINS not set, defaulting to wildcard (*)")
+	}
+
+	// Create Prometheus client once at startup (nil if PROMETHEUS_URL not set)
+	promClient := prometheus.New()
+	if promClient != nil {
+		log.Println("Prometheus client configured")
 	}
 
 	r := chi.NewRouter()
@@ -54,6 +61,7 @@ func main() {
 	// API routes — all require a valid bearer token
 	r.Route("/api", func(r chi.Router) {
 		r.Use(middleware.BearerToken)
+		r.Use(chiMiddleware.Throttle(20)) // max 20 concurrent requests
 
 		// Auth
 		r.Get("/auth/verify", handlers.VerifyToken)
@@ -71,8 +79,8 @@ func main() {
 		r.Get("/namespaces/{namespace}/metrics", handlers.GetPodMetrics)
 
 		// Prometheus history (requires PROMETHEUS_URL env var)
-		r.Get("/namespaces/{namespace}/prometheus", handlers.GetNamespaceHistory)
-		r.Get("/namespaces/{namespace}/prometheus/{pod}/{container}", handlers.GetContainerHistory)
+		r.Get("/namespaces/{namespace}/prometheus", handlers.NewNamespaceHistoryHandler(promClient))
+		r.Get("/namespaces/{namespace}/prometheus/{pod}/{container}", handlers.NewContainerHistoryHandler(promClient))
 	})
 
 	log.Printf("kubeadjust backend listening on :%s", port)

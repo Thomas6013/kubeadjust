@@ -72,28 +72,36 @@ function analyzeCpuMem(c: ContainerResources, depName: string, hist?: ContainerH
     const p95Use = hasHistory ? percentile95(histPoints) : snapshotUse;
     const meanUse = hasHistory ? mean(histPoints) : snapshotUse;
     const source = hasHistory ? "avg" : "current";
+    const confidence = !hasHistory ? "" : histPoints.length >= 400 ? " · high confidence" : histPoints.length >= 60 ? " · medium confidence" : " · low confidence";
 
+    // No limit defined — flag it
+    if (lim === 0) {
+      const suggested = p95Use > 0 ? Math.ceil(p95Use * 1.5) : Math.ceil(snapshotUse * 2);
+      results.push({ deployment: depName, container: c.name, resource: `${label} — no limit`, kind: "warning",
+        message: `No ${label} limit set — container can consume unbounded ${label.toLowerCase()}`,
+        current: "unlimited", suggested: fmtSuggested(suggested, isCPU) });
+    }
     if (lim > 0) {
       const pct = p95Use / lim;
       if (pct >= 0.90) {
         results.push({ deployment: depName, container: c.name, resource: label, kind: "danger",
-          message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${hasHistory ? " (historical)" : ""}`,
+          message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${confidence}`,
           current: fmtSuggested(lim, isCPU), suggested: fmtSuggested(Math.ceil(p95Use * 1.4), isCPU) });
       } else if (pct >= 0.70) {
         results.push({ deployment: depName, container: c.name, resource: label, kind: "warning",
-          message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${hasHistory ? " (historical)" : ""}`,
+          message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${confidence}`,
           current: fmtSuggested(lim, isCPU), suggested: fmtSuggested(Math.ceil(p95Use * 1.4), isCPU) });
       }
     }
     if (req > 0 && meanUse / req <= 0.35) {
       results.push({ deployment: depName, container: c.name, resource: label, kind: "overkill",
-        message: `${label} ${source} request is ${(req / meanUse).toFixed(1)}× actual usage${hasHistory ? " (historical)" : ""}`,
+        message: `${label} ${source} request is ${(req / meanUse).toFixed(1)}× actual usage${confidence}`,
         current: fmtSuggested(req, isCPU), suggested: fmtSuggested(Math.ceil(meanUse * 1.3), isCPU) });
     }
     // Limit over-provisioned: limit is more than 3× P95 usage
     if (lim > 0 && p95Use > 0 && lim / p95Use >= 3) {
       results.push({ deployment: depName, container: c.name, resource: label, kind: "overkill",
-        message: `${label} limit is ${(lim / p95Use).toFixed(1)}× P95 usage${hasHistory ? " (historical)" : ""}`,
+        message: `${label} limit is ${(lim / p95Use).toFixed(1)}× P95 usage${confidence}`,
         current: fmtSuggested(lim, isCPU), suggested: fmtSuggested(Math.ceil(p95Use * 1.5), isCPU) });
     }
   }
