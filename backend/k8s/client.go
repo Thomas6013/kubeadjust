@@ -56,7 +56,13 @@ func (c *Client) get(path string, out interface{}) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB cap
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB cap
+	if err != nil {
+		return fmt.Errorf("reading response for %s: %w", path, err)
+	}
+	if len(body) == 10<<20 {
+		return fmt.Errorf("kubernetes api %s: response exceeded 10 MB limit", path)
+	}
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("kubernetes api %s: %d %s", path, resp.StatusCode, string(body))
 	}

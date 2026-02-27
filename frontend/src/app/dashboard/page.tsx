@@ -42,18 +42,13 @@ export default function DashboardPage() {
 
   const [error, setError] = useState("");
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [restored, setRestored] = useState(false);
 
-  // Persist view/namespace/timeRange on change
-  useEffect(() => { sessionStorage.setItem("kubeadjust:view", view); }, [view]);
-  useEffect(() => { if (selectedNs) sessionStorage.setItem("kubeadjust:selectedNs", selectedNs); }, [selectedNs]);
-  useEffect(() => { sessionStorage.setItem("kubeadjust:timeRange", timeRange); }, [timeRange]);
-  useEffect(() => { sessionStorage.setItem("kubeadjust:openCards", JSON.stringify([...openCards])); }, [openCards]);
-
+  // Restore persisted state on mount (before persistence effects run)
   useEffect(() => {
     const t = sessionStorage.getItem("kube-token");
     if (!t) { router.replace("/"); return; }
     setToken(t);
-    // Restore persisted state
     try {
       const raw = sessionStorage.getItem("kubeadjust:excludedNs");
       if (raw) setExcludedNs(new Set(JSON.parse(raw) as string[]));
@@ -68,7 +63,14 @@ export default function DashboardPage() {
       const rawCards = sessionStorage.getItem("kubeadjust:openCards");
       if (rawCards) setOpenCards(new Set(JSON.parse(rawCards) as string[]));
     } catch { /* ignore */ }
+    setRestored(true);
   }, [router]);
+
+  // Persist state on change — only after initial restore to avoid overwriting saved values
+  useEffect(() => { if (restored) sessionStorage.setItem("kubeadjust:view", view); }, [view, restored]);
+  useEffect(() => { if (restored && selectedNs) sessionStorage.setItem("kubeadjust:selectedNs", selectedNs); }, [selectedNs, restored]);
+  useEffect(() => { if (restored) sessionStorage.setItem("kubeadjust:timeRange", timeRange); }, [timeRange, restored]);
+  useEffect(() => { if (restored) sessionStorage.setItem("kubeadjust:openCards", JSON.stringify([...openCards])); }, [openCards, restored]);
 
   useEffect(() => {
     if (!token) return;
@@ -92,6 +94,7 @@ export default function DashboardPage() {
     if (!token || !ns) return;
     setLoadingDeps(true);
     setError("");
+    setDeployments([]);
     setNsHistory([]);
     try {
       const resp = await api.deployments(token, ns);
@@ -99,12 +102,6 @@ export default function DashboardPage() {
       setMetricsAvailable(resp.metricsAvailable);
       setPrometheusAvailable(resp.prometheusAvailable);
       setLastRefresh(new Date());
-      // Eager fetch Prometheus history for suggestions
-      if (resp.prometheusAvailable) {
-        api.namespaceHistory(token, ns, timeRange)
-          .then((h) => setNsHistory(h.containers))
-          .catch(() => { /* best-effort */ });
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load deployments");
     } finally {

@@ -102,7 +102,13 @@ func (c *Client) QueryRange(query string, tr TimeRange) ([]DataPoint, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB cap
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB cap
+	if err != nil {
+		return nil, fmt.Errorf("reading prometheus response: %w", err)
+	}
+	if len(body) == 10<<20 {
+		return nil, fmt.Errorf("prometheus response exceeded 10 MB limit")
+	}
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("prometheus: %d %s", resp.StatusCode, string(body))
 	}
@@ -154,7 +160,13 @@ func (c *Client) QueryRangeMulti(query string, tr TimeRange) ([]promSeriesResult
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB cap
+	if err != nil {
+		return nil, fmt.Errorf("reading prometheus response: %w", err)
+	}
+	if len(body) == 10<<20 {
+		return nil, fmt.Errorf("prometheus response exceeded 10 MB limit")
+	}
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("prometheus: %d %s", resp.StatusCode, string(body))
 	}

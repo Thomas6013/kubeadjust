@@ -1,6 +1,6 @@
-# KubeAdjust — Audit v0.12.0
+# KubeAdjust — Audit v0.12.1
 
-Post-v0.12.0 scan. Covers security, performance, robustness, and maintainability.
+Post-v0.12.1 scan. Covers security, performance, robustness, and maintainability.
 
 ---
 
@@ -14,15 +14,7 @@ Post-v0.12.0 scan. Covers security, performance, robustness, and maintainability
 
 **Fix:** Implement nonce-based CSP using Next.js middleware, or at minimum remove `'unsafe-eval'` in production.
 
-### S-2 — PromQL injection: blacklist too weak (Medium)
-
-**File:** `backend/handlers/prometheus.go:73`
-
-`isValidLabelValue()` only blocks `"{}\\` — newlines or unexpected chars could bypass.
-
-**Fix:** Whitelist `^[a-zA-Z0-9._-]+$` instead of blacklist.
-
-### S-3 — No path validation in frontend proxy (Medium)
+### S-2 — No path validation in frontend proxy (Medium)
 
 **File:** `frontend/src/app/api/[...path]/route.ts:22`
 
@@ -199,3 +191,11 @@ Some use `errgroup.WithContext()`, others `new(errgroup.Group)`.
 - [x] ~~`go mod tidy` in Dockerfile~~ — v0.12.0 (replaced with `go mod download`)
 - [x] ~~No `readinessProbe` on frontend~~ — v0.12.0 (added to Helm deployment)
 - [x] ~~Suggestion action labels wrong~~ — v0.12.0 (per-suggestion `action` field)
+- [x] ~~PromQL injection blacklist too weak~~ — v0.12.0 (whitelist `[a-zA-Z0-9._-]`)
+- [x] ~~LimitReader silent truncation~~ — v0.12.0 (explicit error + size check)
+- [x] ~~Namespace list non-deterministic order~~ — v0.12.0 (sorted before response)
+- [x] ~~Proxy drops query parameters~~ — v0.12.0 (appends `req.nextUrl.search`)
+- [x] ~~PodRow infinite fetch loop~~ — v0.12.0 (ref-based tracking)
+- [x] ~~Double Prometheus namespace fetch~~ — v0.12.0 (removed eager fetch)
+- [x] ~~ResourceBar headroom at 100%~~ — v0.12.0 (clean ResourceValue)
+- [x] ~~Auth middleware returns text/plain~~ — v0.12.0 (JSON Content-Type)

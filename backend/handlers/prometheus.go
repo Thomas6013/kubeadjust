@@ -3,7 +3,6 @@ package handlers
 import (
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -68,7 +67,15 @@ func NewNamespaceHistoryHandler(client *prometheus.Client) http.HandlerFunc {
 	}
 }
 
-// isValidLabelValue rejects strings that contain characters which would break PromQL label syntax.
+// isValidLabelValue allows only safe characters for PromQL label values (whitelist approach).
 func isValidLabelValue(s string) bool {
-	return s != "" && !strings.ContainsAny(s, `"{}\\`)
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-') {
+			return false
+		}
+	}
+	return true
 }

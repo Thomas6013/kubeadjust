@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { PodDetail, HistoryResponse, EphemeralStorageInfo, ResourceValue, TimeRange } from "@/lib/api";
 import { api, fmtStorage, storagePct } from "@/lib/api";
 import { resourceStatus, storageStatus } from "@/lib/suggestions";
@@ -31,25 +31,24 @@ export default function PodRow({ pod, namespace, prometheusAvailable, token, tim
   const podId = `pod:${pod.name}`;
   const open = openCards?.has(podId) ?? false;
   const [history, setHistory] = useState<Record<string, HistoryResponse>>({});
-  const [lastRange, setLastRange] = useState<TimeRange>(timeRange);
+  const fetchedRef = useRef<Set<string>>(new Set());
 
   // Invalidate cache when time range changes
   useEffect(() => {
-    if (timeRange !== lastRange) {
-      setHistory({});
-      setLastRange(timeRange);
-    }
-  }, [timeRange, lastRange]);
+    fetchedRef.current.clear();
+    setHistory({});
+  }, [timeRange]);
 
   useEffect(() => {
     if (!open || !prometheusAvailable) return;
     for (const c of pod.containers) {
-      if (history[c.name]) continue;
+      if (fetchedRef.current.has(c.name)) continue;
+      fetchedRef.current.add(c.name);
       api.containerHistory(token, namespace, pod.name, c.name, timeRange)
         .then((h) => setHistory((prev) => ({ ...prev, [c.name]: h })))
-        .catch(() => { /* best-effort */ });
+        .catch(() => { fetchedRef.current.delete(c.name); });
     }
-  }, [open, prometheusAvailable, pod, namespace, token, history, timeRange]);
+  }, [open, prometheusAvailable, pod, namespace, token, timeRange]);
 
   const phaseColor =
     pod.phase === "Running"  ? "var(--green)"

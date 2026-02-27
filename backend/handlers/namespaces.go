@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sort"
 	"sync"
 
 	"github.com/devops-kubeadjust/backend/k8s"
@@ -49,6 +50,7 @@ func ListNamespaces(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = g.Wait()
+	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	jsonOK(w, result)
 }
 
