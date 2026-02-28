@@ -1,19 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { DeploymentDetail } from "@/lib/api";
+import type { DeploymentDetail, ContainerHistory } from "@/lib/api";
 import { computeSuggestions, type Suggestion, type SuggestionKind } from "@/lib/suggestions";
 import styles from "./SuggestionPanel.module.css";
 
 const ALL_KINDS: SuggestionKind[] = ["danger", "warning", "overkill"];
 
-const KIND_META: Record<SuggestionKind, { icon: string; color: string; action: string; label: string; bg: string }> = {
-  danger:   { icon: "▲", color: "var(--red)",       action: "Increase limit", label: "critical",  bg: "rgba(252,129,129,0.15)" },
-  warning:  { icon: "●", color: "var(--orange)",    action: "Increase limit", label: "warning",   bg: "rgba(246,166,35,0.15)" },
-  overkill: { icon: "▼", color: "var(--blue-over)", action: "Reduce request", label: "over-prov", bg: "rgba(99,179,237,0.15)" },
+const KIND_META: Record<SuggestionKind, { icon: string; color: string; label: string; bg: string }> = {
+  danger:   { icon: "▲", color: "var(--red)",       label: "critical",  bg: "rgba(252,129,129,0.15)" },
+  warning:  { icon: "●", color: "var(--orange)",    label: "warning",   bg: "rgba(246,166,35,0.15)" },
+  overkill: { icon: "▼", color: "var(--blue-over)", label: "over-prov", bg: "rgba(99,179,237,0.15)" },
 };
 
-const RESOURCE_ORDER = ["CPU", "Memory", "Ephemeral — no limit", "Ephemeral", "PVC", "EmptyDir"];
+const RESOURCE_ORDER = ["CPU", "Memory", "CPU — no limit", "Memory — no limit", "CPU — no request", "Memory — no request", "Ephemeral — no limit", "Ephemeral", "PVC", "EmptyDir"];
 const KIND_ORDER: Record<SuggestionKind, number> = { danger: 0, warning: 1, overkill: 2 };
 
 const STORAGE_KEY_EXCLUDED = "kubeadjust:excludedKinds";
@@ -66,7 +66,7 @@ function SuggestionItem({ s }: { s: Suggestion }) {
       </div>
       <p className={styles.itemMsg}>{s.message}</p>
       <div className={styles.itemAction}>
-        <span className={styles.actionLabel}>{meta.action}</span>
+        <span className={styles.actionLabel}>{s.action}</span>
         <span className={styles.arrow}>→</span>
         <span className={styles.current}>{s.current}</span>
         <span className={styles.arrow}>→</span>
@@ -91,7 +91,7 @@ function SuggestionGroup({ resource, items }: { resource: string; items: Suggest
   );
 }
 
-export default function SuggestionPanel({ deployments }: { deployments: DeploymentDetail[] }) {
+export default function SuggestionPanel({ deployments, history }: { deployments: DeploymentDetail[]; history?: ContainerHistory[] }) {
   // --- Exclusion state (persisted) ---
   const [excludedKinds, setExcludedKinds] = useState<Set<SuggestionKind>>(new Set());
   const [showDropdown, setShowDropdown] = useState(false);
@@ -121,7 +121,7 @@ export default function SuggestionPanel({ deployments }: { deployments: Deployme
   }
 
   // --- Compute suggestions ---
-  const allSuggestions = computeSuggestions(deployments);
+  const allSuggestions = computeSuggestions(deployments, history);
   // 1) Remove excluded kinds
   const suggestions = allSuggestions.filter((s) => !excludedKinds.has(s.kind));
   // 2) Apply chip filter (if any active)
@@ -151,13 +151,15 @@ export default function SuggestionPanel({ deployments }: { deployments: Deployme
       {showDropdown && (
         <div className={styles.dropdown}>
           {ALL_KINDS.map((kind) => (
-            <label key={kind} className={styles.dropdownRow} style={{ color: KIND_META[kind].color }}>
+            <label key={kind} className={styles.dropdownRow}>
               <input
                 type="checkbox"
                 checked={!excludedKinds.has(kind)}
                 onChange={() => toggleExcluded(kind)}
+                style={{ accentColor: KIND_META[kind].color }}
               />
-              {KIND_META[kind].icon} {KIND_META[kind].label}
+              <span style={{ color: KIND_META[kind].color }}>{KIND_META[kind].icon}</span>
+              <span>{KIND_META[kind].label}</span>
             </label>
           ))}
         </div>

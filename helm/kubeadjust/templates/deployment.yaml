@@ -99,13 +99,19 @@ spec:
               containerPort: {{ .Values.frontend.port }}
           env:
             - name: BACKEND_URL
-              value: "http://{{ include "kubeadjust.fullname" . }}-backend:{{ .Values.backend.port }}"
+              value: {{ printf "http://%s-backend.%s:%v" (include "kubeadjust.fullname" .) .Release.Namespace .Values.backend.port | quote }}
           livenessProbe:
             httpGet:
               path: /
               port: http
             initialDelaySeconds: 10
             periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
           securityContext:

@@ -56,7 +56,13 @@ func (c *Client) get(path string, out interface{}) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB cap
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB cap
+	if err != nil {
+		return fmt.Errorf("reading response for %s: %w", path, err)
+	}
+	if len(body) == 10<<20 {
+		return fmt.Errorf("kubernetes api %s: response exceeded 10 MB limit", path)
+	}
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("kubernetes api %s: %d %s", path, resp.StatusCode, string(body))
 	}
@@ -313,6 +319,12 @@ func (c *Client) ListDeployments(namespace string) (*DeploymentList, error) {
 func (c *Client) ListPods(namespace string) (*PodList, error) {
 	var out PodList
 	return &out, c.get(fmt.Sprintf("/api/v1/namespaces/%s/pods", namespace), &out)
+}
+
+// ListPodsLimit lists up to `limit` pods in a namespace (useful for existence checks).
+func (c *Client) ListPodsLimit(namespace string, limit int) (*PodList, error) {
+	var out PodList
+	return &out, c.get(fmt.Sprintf("/api/v1/namespaces/%s/pods?limit=%d", namespace, limit), &out)
 }
 
 func (c *Client) ListPodMetrics(namespace string) (*PodMetricsList, error) {

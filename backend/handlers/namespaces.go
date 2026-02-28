@@ -4,16 +4,19 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sort"
+	"sync"
 
 	"github.com/devops-kubeadjust/backend/k8s"
 	"github.com/devops-kubeadjust/backend/middleware"
+	"golang.org/x/sync/errgroup"
 )
 
 type NamespaceItem struct {
 	Name string `json:"name"`
 }
 
-// ListNamespaces returns all namespaces the token has access to.
+// ListNamespaces returns namespaces that contain at least one pod.
 func ListNamespaces(w http.ResponseWriter, r *http.Request) {
 	token := middleware.TokenFromContext(r.Context())
 	client := k8s.New(token, "")
@@ -23,10 +26,31 @@ func ListNamespaces(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+
+	var mu sync.Mutex
 	result := make([]NamespaceItem, 0, len(list.Items))
+	g, _ := errgroup.WithContext(r.Context())
+	g.SetLimit(10)
+
 	for _, ns := range list.Items {
-		result = append(result, NamespaceItem{Name: ns.Metadata.Name})
+		name := ns.Metadata.Name
+		g.Go(func() error {
+			pods, err := client.ListPodsLimit(name, 1)
+			if err != nil {
+				log.Printf("failed to check pods in %s: %v", name, err)
+				return nil // skip namespace, don't fail the whole request
+			}
+			if len(pods.Items) > 0 {
+				mu.Lock()
+				result = append(result, NamespaceItem{Name: name})
+				mu.Unlock()
+			}
+			return nil
+		})
 	}
+
+	_ = g.Wait()
+	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	jsonOK(w, result)
 }
 

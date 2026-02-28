@@ -88,6 +88,11 @@ async function apiFetch<T>(path: string, token: string): Promise<T> {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
+    if (res.status === 401) {
+      sessionStorage.removeItem("kube-token");
+      window.location.href = "/";
+      throw new APIError(401, "Session expired");
+    }
     let msg = res.statusText;
     try { msg = (await res.json()).error ?? msg; } catch { /* non-JSON error body */ }
     throw new APIError(res.status, msg);
@@ -105,6 +110,19 @@ export interface HistoryResponse {
   memory: DataPoint[];
 }
 
+export type TimeRange = "1h" | "6h" | "24h" | "7d";
+
+export interface ContainerHistory {
+  pod: string;
+  container: string;
+  cpu: DataPoint[];
+  memory: DataPoint[];
+}
+
+export interface NamespaceHistoryResponse {
+  containers: ContainerHistory[];
+}
+
 export interface WorkloadResponse {
   workloads: DeploymentDetail[];
   metricsAvailable: boolean;
@@ -120,8 +138,10 @@ export const api = {
     apiFetch<WorkloadResponse>(`/namespaces/${namespace}/deployments`, token),
   nodes: (token: string) =>
     apiFetch<NodeOverview[]>("/nodes", token),
-  containerHistory: (token: string, namespace: string, pod: string, container: string) =>
-    apiFetch<HistoryResponse>(`/namespaces/${namespace}/prometheus/${encodeURIComponent(pod)}/${encodeURIComponent(container)}`, token),
+  containerHistory: (token: string, namespace: string, pod: string, container: string, range?: TimeRange) =>
+    apiFetch<HistoryResponse>(`/namespaces/${namespace}/prometheus/${encodeURIComponent(pod)}/${encodeURIComponent(container)}${range ? `?range=${range}` : ""}`, token),
+  namespaceHistory: (token: string, namespace: string, range?: TimeRange) =>
+    apiFetch<NamespaceHistoryResponse>(`/namespaces/${namespace}/prometheus${range ? `?range=${range}` : ""}`, token),
 };
 
 // --- Formatting helpers ---

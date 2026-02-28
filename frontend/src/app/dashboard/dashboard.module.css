@@ -24,6 +24,29 @@
 .actions { display: flex; align-items: center; gap: 10px; }
 .refreshed { font-size: 12px; color: var(--muted); }
 
+/* Time range selector */
+.rangeSelector {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.rangeBtn {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-right: 1px solid var(--border);
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.rangeBtn:last-child { border-right: none; }
+.rangeBtn:hover { background: var(--surface2); color: var(--text); }
+.rangeBtnActive { background: rgba(108, 142, 247, 0.15); color: var(--accent); }
+
 .body {
   display: flex;
   flex: 1;
@@ -135,13 +158,53 @@
 }
 .nsRow:hover .nsHide { opacity: 1; }
 .nsHide:hover { color: var(--red); }
-.showAll {
+/* Namespace search */
+.nsSearch {
+  width: 100%;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-family: monospace;
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+}
+.nsSearch:focus { border-color: var(--accent); }
+.nsSearch::placeholder { color: var(--muted); }
+
+/* Hidden namespaces section */
+.hiddenSection { margin-top: 8px; }
+.hiddenSummary {
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 10px;
+}
+.hiddenSummary:hover { color: var(--text); }
+.hiddenName {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--muted);
+  padding: 4px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nsRestore {
   background: none;
   border: none;
   cursor: pointer;
   color: var(--accent);
-  font-size: 11px;
-  padding: 4px 10px;
-  margin-top: 4px;
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
 }
-.showAll:hover { text-decoration: underline; }
+.nsRow:hover .nsRestore { opacity: 1; }
+.nsRestore:hover { color: var(--green, #4ade80); }

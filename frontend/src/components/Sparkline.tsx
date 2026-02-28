@@ -5,7 +5,7 @@ interface SparklineProps {
   height?: number;
 }
 
-export default function Sparkline({ points, color, width = 72, height = 20 }: SparklineProps) {
+export default function Sparkline({ points, color, width = 120, height = 32 }: SparklineProps) {
   if (points.length < 2) return null;
 
   const min = Math.min(...points);
