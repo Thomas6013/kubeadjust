@@ -1,4 +1,4 @@
-package handlers
+package resources
 
 import "testing"
 
@@ -32,9 +32,9 @@ func TestIsValidLabelValue(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := isValidLabelValue(tt.input)
+			got := IsValidLabelValue(tt.input)
 			if got != tt.want {
-				t.Errorf("isValidLabelValue(%q) = %v, want %v", tt.input, got, tt.want)
+				t.Errorf("IsValidLabelValue(%q) = %v, want %v", tt.input, got, tt.want)
 			}
 		})
 	}

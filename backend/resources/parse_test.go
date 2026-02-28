@@ -1,4 +1,4 @@
-package handlers
+package resources
 
 import "testing"
 
@@ -18,9 +18,9 @@ func TestParseCPUMillicores(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := parseCPUMillicores(tt.input)
+			got := ParseCPUMillicores(tt.input)
 			if got != tt.want {
-				t.Errorf("parseCPUMillicores(%q) = %d, want %d", tt.input, got, tt.want)
+				t.Errorf("ParseCPUMillicores(%q) = %d, want %d", tt.input, got, tt.want)
 			}
 		})
 	}
@@ -42,9 +42,9 @@ func TestParseMemoryBytes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := parseMemoryBytes(tt.input)
+			got := ParseMemoryBytes(tt.input)
 			if got != tt.want {
-				t.Errorf("parseMemoryBytes(%q) = %d, want %d", tt.input, got, tt.want)
+				t.Errorf("ParseMemoryBytes(%q) = %d, want %d", tt.input, got, tt.want)
 			}
 		})
 	}

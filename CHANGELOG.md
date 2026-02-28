@@ -2,102 +2,53 @@
 
 All notable changes to KubeAdjust are documented here.
 
-## [0.12.1] - 2026-02-27
-
-### Fixed
-- **CRITICAL — Proxy drops query parameters**: time range selector (`?range=6h`) was silently dropped by the frontend API proxy — Prometheus history always used default range
-- **HIGH — PodRow infinite fetch loop**: failed Prometheus fetches caused an infinite re-render loop due to `history` in useEffect deps — replaced with ref-based tracking
-- **Double Prometheus fetch**: namespace history was fetched both eagerly in `loadDeployments` and again via the `prometheusAvailable` useEffect — removed the duplicate eager fetch
-- **ResourceBar headroom at 100% usage**: headroom display showed the limit's raw string instead of "0m" / "0" when usage equaled the limit
-- **Auth middleware Content-Type**: `BearerToken` middleware returned `text/plain` error responses instead of `application/json`; also added empty-token check after prefix stripping
-- **PromQL injection hardened**: replaced weak blacklist (`"{}\\`) with strict whitelist (`[a-zA-Z0-9._-]`) for label value validation
-- **LimitReader silent truncation**: `io.ReadAll` errors were ignored and 10MB truncation produced misleading JSON parse errors — now returns explicit error messages
-- **Namespace list non-deterministic order**: backend goroutine scheduling caused random namespace ordering — now sorted alphabetically before responding
-- **Stale suggestions on namespace switch**: deployments from previous namespace briefly shown during loading — now cleared immediately
-- **View resets to nodes on refresh**: persistence race condition — useEffects overwrote saved values before restoration completed — fixed with `restored` flag
-
----
-
-## [0.12.0] - 2026-02-27
-
-### Fixed
-- **Suggestion action labels**: each suggestion now has its own action label — "Reduce limit" for over-provisioned limits (was incorrectly showing "Reduce request"), "Set limit" for missing limits, "Set request" for missing requests, "Expand PVC" for volumes, "Set sizeLimit" for emptyDir
-- **Namespace ordering**: namespaces now sorted alphabetically in the sidebar (both visible and hidden sections)
+## [0.9.0] - 2026-02-28
 
 ### Added
-- **No-request warning**: containers without a CPU or Memory request now generate a warning — the scheduler cannot guarantee resources without requests
-- **Frontend readinessProbe**: Helm deployment now includes a readiness probe, preventing 503 errors during rolling updates
-
-### Changed
-- **Backend Dockerfile**: replaced `go mod tidy` with `go mod download` for better build reproducibility and Docker cache hits
-
----
-
-## [0.11.0] - 2026-02-27
-
-### Added
-- **No-limit warning**: containers without a CPU or Memory limit now generate a "warning" suggestion with a recommended limit based on P95 usage (or 2× current usage if no Prometheus)
-- **Confidence indicator**: suggestions now display a confidence level (low / medium / high) based on the amount of Prometheus data available — no tag when using snapshot only
-- **Rate limiting**: API routes throttled to 20 concurrent requests via Chi Throttle middleware
-
-### Fixed
-- **401 auto-logout**: expired or invalid tokens now automatically clear sessionStorage and redirect to the login page (previously showed a generic error)
-- **Time range selector hidden**: the 1h/6h/24h/7d selector is no longer displayed when Prometheus is unavailable
-
-### Changed
-- **Global Prometheus client**: Prometheus HTTP client is now created once at startup and injected into handlers (previously created per request)
-
----
-
-## [0.10.0] - 2026-02-27
-
-### Added
-- **Time range selector**: 1h / 6h / 24h / 7d toggle in the header — controls Prometheus query range for sparklines and suggestions, with adaptive step sizes (60s → 900s)
-- **Prometheus-weighted suggestions**: when Prometheus is available, suggestions now use **P95** for danger/warning thresholds and **mean** for overkill detection instead of the metrics-server snapshot; falls back to snapshot when Prometheus is unavailable
-- **Over-provisioned limit detection**: new overkill suggestion when a limit exceeds 3x the P95 usage, suggesting a reduced limit value
-- **Namespace history endpoint**: new `GET /api/namespaces/{ns}/prometheus?range=X` returns CPU/memory history for all containers in a namespace in a single request (parallelized with errgroup)
-- **Eager Prometheus fetch**: dashboard fetches namespace-wide history automatically when Prometheus is available (no longer requires opening individual pods)
-- **Persistent dashboard state**: view, selected namespace, time range, and opened cards/pods are preserved across page refreshes (via sessionStorage)
-
-### Fixed
-- **Suggestion filter dropdown**: improved readability — larger checkboxes with accent colors, distinct background, only icon colored (label text now uses standard text color)
-
-### Changed
-- **Sparklines enlarged**: default size increased from 72×20 to 120×32 for better readability
-- **Prometheus client timeout**: increased from 10s to 30s to accommodate longer range queries (7d)
-- **Rate window adapts to range**: `rate()` window scales from 5m (1h) to 15m (7d) to avoid gaps in sparse data
-
----
-
-## [0.9.0] - 2026-02-27
-
-### Added
+- **Multi-architecture Docker images**: `linux/amd64` and `linux/arm64` manifests via QEMU + native Go cross-compilation
+- **Runtime backend proxy**: API route catch-all proxy (`/api/[...path]/route.ts`) reads `BACKEND_URL` at runtime — no more build-time baking
 - **Namespace search bar**: filter namespaces in the sidebar with a search input
-- **Individual namespace restore**: hidden namespaces can now be restored one by one via a collapsible "hidden" section (replaces the old "Show all" button)
-- **Empty namespace filtering**: namespaces with no running pods are automatically hidden from the sidebar (checked server-side in parallel)
+- **Individual namespace restore**: hidden namespaces can be restored one by one via a collapsible "hidden" section
+- **Empty namespace filtering**: namespaces with no running pods are automatically hidden (checked server-side in parallel)
+- **Time range selector**: 1h / 6h / 24h / 7d toggle controlling Prometheus query range for sparklines and suggestions, with adaptive step sizes (60s → 900s)
+- **Prometheus-weighted suggestions**: suggestions use **P95** for danger/warning thresholds and **mean** for overkill detection when Prometheus is available; falls back to metrics-server snapshot
+- **Over-provisioned limit detection**: overkill suggestion when a limit exceeds 3× P95 usage
+- **Namespace history endpoint**: `GET /api/namespaces/{ns}/prometheus?range=X` returns CPU/memory history for all containers in a single request (parallelized with errgroup)
+- **Eager Prometheus fetch**: dashboard fetches namespace-wide history automatically when Prometheus is available
+- **Persistent dashboard state**: view, namespace, time range, opened cards/pods preserved across page refreshes (via sessionStorage)
+- **No-limit warning**: containers without a CPU or Memory limit generate a suggestion with a recommended limit based on P95 usage (or 2× current if no Prometheus)
+- **No-request warning**: containers without a CPU or Memory request generate a warning — the scheduler cannot guarantee resources without requests
+- **Confidence indicator**: suggestions display confidence level (low / medium / high) based on Prometheus data availability
+- **Rate limiting**: API routes throttled to 20 concurrent requests via Chi Throttle middleware
+- **Frontend readinessProbe**: Helm deployment includes a readiness probe, preventing 503 errors during rolling updates
 
 ### Fixed
-- **Prometheus URL without scheme**: `PROMETHEUS_URL` values like `prometheus.monitoring:9090` (without `http://`) now work — the backend auto-prepends `http://` if missing
-
----
-
-## [0.8.2] - 2026-02-27
-
-### Fixed
-- **Runtime backend proxy**: replaced Next.js build-time rewrite with an API route catch-all proxy (`/api/[...path]/route.ts`) that reads `BACKEND_URL` at runtime — fixes proxy failures when the Helm release name differs from the default
-- **Backend URL uses FQDN**: frontend `BACKEND_URL` now includes the release namespace (`<name>-backend.<namespace>:<port>`) for reliable DNS resolution
+- **Proxy drops query parameters**: time range selector (`?range=6h`) was silently dropped by the frontend API proxy — now appends `req.nextUrl.search`
+- **PodRow infinite fetch loop**: failed Prometheus fetches caused infinite re-render loop — replaced with ref-based tracking
+- **Double Prometheus fetch**: namespace history fetched both eagerly and via useEffect — removed duplicate
+- **ResourceBar headroom at 100% usage**: headroom showed raw limit string instead of "0m" / "0"
+- **Auth middleware Content-Type**: returned `text/plain` instead of `application/json`; added empty-token check
+- **PromQL injection hardened**: replaced weak blacklist with strict whitelist (`[a-zA-Z0-9._-]`)
+- **LimitReader silent truncation**: 10MB truncation produced misleading JSON parse errors — now returns explicit error
+- **Namespace list non-deterministic order**: goroutine scheduling caused random ordering — now sorted alphabetically
+- **Stale suggestions on namespace switch**: deployments from previous namespace briefly shown during loading — now cleared immediately
+- **View resets on refresh**: persistence race condition fixed with `restored` flag
+- **Suggestion action labels**: each suggestion now has its own action label (was incorrectly reusing "Reduce request" for all)
+- **401 auto-logout**: expired tokens now auto-clear sessionStorage and redirect to login
+- **Time range selector hidden**: no longer displayed when Prometheus is unavailable
+- **Suggestion filter dropdown**: improved readability with accent colors and distinct background
+- **Prometheus URL without scheme**: auto-prepends `http://` if missing
+- **Backend URL uses FQDN**: includes release namespace for reliable DNS resolution
 
 ### Changed
-- **Dockerfile cleaned up**: removed build-time `BACKEND_URL` ARG from frontend Dockerfile — no longer needed since proxy is resolved at runtime
+- **Backend Dockerfile**: replaced `go mod tidy` with `go mod download` for better reproducibility
+- **Global Prometheus client**: created once at startup, injected into handlers (was per-request)
+- **Sparklines enlarged**: 72×20 → 120×32 for better readability
+- **Prometheus client timeout**: 10s → 30s for longer range queries
+- **Rate window adapts to range**: `rate()` window scales from 5m (1h) to 15m (7d)
 
----
-
-## [0.8.1] - 2026-02-27
-
-### Added
-- **Multi-architecture Docker images**: builds now produce `linux/amd64` and `linux/arm64` manifests, enabling deployment on ARM-based clusters (Raspberry Pi, AWS Graviton, Apple Silicon, etc.)
-- **QEMU emulation** in CI for cross-platform builds (`docker/setup-qemu-action`)
-- **Native Go cross-compilation**: backend Dockerfile uses `--platform=$BUILDPLATFORM` with `TARGETOS`/`TARGETARCH` for fast ARM builds without emulation
+### Refactored
+- **Backend package separation**: extracted resource calculation logic (parsing, formatting, aggregation, validation) into a dedicated `resources/` package — handlers now only orchestrate K8s API calls
 
 ---
 
