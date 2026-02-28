@@ -1,6 +1,6 @@
-# KubeAdjust — Audit v0.9.0
+# KubeAdjust — Audit v0.13.0
 
-Post-v0.9.0 scan. Covers security, performance, robustness, and maintainability.
+Post-v0.13.0 scan. Covers security, performance, robustness, and maintainability.
 
 ---
 
@@ -183,19 +183,19 @@ Some use `errgroup.WithContext()`, others `new(errgroup.Group)`.
 - [x] ~~SBOM + cosign image signing~~ — v0.7.0
 - [x] ~~`SuggestionPanel` array index as React key~~ — v0.8.0
 - [x] ~~`ResourceBar.tsx` missing `"use client"`~~ — v0.8.0
-- [x] ~~`BACKEND_URL` baked at build time~~ — v0.9.0 (runtime API proxy)
-- [x] ~~Suggestions based on snapshot only~~ — v0.9.0 (Prometheus P95/mean)
-- [x] ~~No rate limiting~~ — v0.9.0 (Chi Throttle 20 concurrent)
-- [x] ~~No auto-clear of expired token on 401~~ — v0.9.0 (auto-logout + redirect)
-- [x] ~~Prometheus client created per request~~ — v0.9.0 (global singleton at startup)
-- [x] ~~`go mod tidy` in Dockerfile~~ — v0.9.0 (replaced with `go mod download`)
-- [x] ~~No `readinessProbe` on frontend~~ — v0.9.0 (added to Helm deployment)
-- [x] ~~Suggestion action labels wrong~~ — v0.9.0 (per-suggestion `action` field)
-- [x] ~~PromQL injection blacklist too weak~~ — v0.9.0 (whitelist `[a-zA-Z0-9._-]`)
-- [x] ~~LimitReader silent truncation~~ — v0.9.0 (explicit error + size check)
-- [x] ~~Namespace list non-deterministic order~~ — v0.9.0 (sorted before response)
-- [x] ~~Proxy drops query parameters~~ — v0.9.0 (appends `req.nextUrl.search`)
-- [x] ~~PodRow infinite fetch loop~~ — v0.9.0 (ref-based tracking)
-- [x] ~~Double Prometheus namespace fetch~~ — v0.9.0 (removed eager fetch)
-- [x] ~~ResourceBar headroom at 100%~~ — v0.9.0 (clean ResourceValue)
-- [x] ~~Auth middleware returns text/plain~~ — v0.9.0 (JSON Content-Type)
+- [x] ~~`BACKEND_URL` baked at build time~~ — v0.13.0 (runtime API proxy)
+- [x] ~~Suggestions based on snapshot only~~ — v0.13.0 (Prometheus P95/mean)
+- [x] ~~No rate limiting~~ — v0.13.0 (Chi Throttle 20 concurrent)
+- [x] ~~No auto-clear of expired token on 401~~ — v0.13.0 (auto-logout + redirect)
+- [x] ~~Prometheus client created per request~~ — v0.13.0 (global singleton at startup)
+- [x] ~~`go mod tidy` in Dockerfile~~ — v0.13.0 (replaced with `go mod download`)
+- [x] ~~No `readinessProbe` on frontend~~ — v0.13.0 (added to Helm deployment)
+- [x] ~~Suggestion action labels wrong~~ — v0.13.0 (per-suggestion `action` field)
+- [x] ~~PromQL injection blacklist too weak~~ — v0.13.0 (whitelist `[a-zA-Z0-9._-]`)
+- [x] ~~LimitReader silent truncation~~ — v0.13.0 (explicit error + size check)
+- [x] ~~Namespace list non-deterministic order~~ — v0.13.0 (sorted before response)
+- [x] ~~Proxy drops query parameters~~ — v0.13.0 (appends `req.nextUrl.search`)
+- [x] ~~PodRow infinite fetch loop~~ — v0.13.0 (ref-based tracking)
+- [x] ~~Double Prometheus namespace fetch~~ — v0.13.0 (removed eager fetch)
+- [x] ~~ResourceBar headroom at 100%~~ — v0.13.0 (clean ResourceValue)
+- [x] ~~Auth middleware returns text/plain~~ — v0.13.0 (JSON Content-Type)

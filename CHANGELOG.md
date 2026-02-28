@@ -2,7 +2,9 @@
 
 All notable changes to KubeAdjust are documented here.
 
-## [0.9.0] - 2026-02-28
+## [0.13.0] - 2026-02-28
+
+> **Note:** versions 0.9.0 through 0.12.1 were consolidated into this release. The version jump from 0.8.0 to 0.13.0 is intentional — previous minor versions were used during development and their tags remain immutable on GitHub.
 
 ### Added
 - **Multi-architecture Docker images**: `linux/amd64` and `linux/arm64` manifests via QEMU + native Go cross-compilation
