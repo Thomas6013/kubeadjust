@@ -38,6 +38,7 @@ export interface ContainerResources {
 
 export interface PodDetail {
   name: string;
+  namespace?: string;
   phase: string;
   containers: ContainerResources[];
   volumes?: VolumeDetail[];
@@ -84,9 +85,12 @@ class APIError extends Error {
 
 /** Generic authenticated fetch helper. Throws APIError on non-2xx responses. */
 async function apiFetch<T>(path: string, token: string): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const reqHeaders: Record<string, string> = { Authorization: `Bearer ${token}` };
+  if (typeof window !== "undefined") {
+    const cluster = sessionStorage.getItem("kube-cluster");
+    if (cluster) reqHeaders["X-Cluster"] = cluster;
+  }
+  const res = await fetch(`/api${path}`, { headers: reqHeaders });
   if (!res.ok) {
     if (res.status === 401) {
       sessionStorage.removeItem("kube-token");
@@ -98,6 +102,21 @@ async function apiFetch<T>(path: string, token: string): Promise<T> {
     throw new APIError(res.status, msg);
   }
   return res.json() as Promise<T>;
+}
+
+export interface ClusterItem {
+  name: string;
+}
+
+/** Fetches configured cluster names — no auth required. Returns [] on error. */
+async function fetchClusters(): Promise<ClusterItem[]> {
+  try {
+    const res = await fetch("/api/clusters", { headers: { Accept: "application/json" } });
+    if (!res.ok) return [];
+    return res.json() as Promise<ClusterItem[]>;
+  } catch {
+    return [];
+  }
 }
 
 export interface DataPoint {
@@ -130,6 +149,7 @@ export interface WorkloadResponse {
 }
 
 export const api = {
+  clusters: () => fetchClusters(),
   verify: (token: string) =>
     apiFetch<{ status: string }>("/auth/verify", token),
   namespaces: (token: string) =>
@@ -138,6 +158,8 @@ export const api = {
     apiFetch<WorkloadResponse>(`/namespaces/${namespace}/deployments`, token),
   nodes: (token: string) =>
     apiFetch<NodeOverview[]>("/nodes", token),
+  nodePods: (token: string, nodeName: string) =>
+    apiFetch<PodDetail[]>(`/nodes/${encodeURIComponent(nodeName)}/pods`, token),
   containerHistory: (token: string, namespace: string, pod: string, container: string, range?: TimeRange) =>
     apiFetch<HistoryResponse>(`/namespaces/${namespace}/prometheus/${encodeURIComponent(pod)}/${encodeURIComponent(container)}${range ? `?range=${range}` : ""}`, token),
   namespaceHistory: (token: string, namespace: string, range?: TimeRange) =>

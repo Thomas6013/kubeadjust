@@ -332,6 +332,12 @@ func (c *Client) ListPodMetrics(namespace string) (*PodMetricsList, error) {
 	return &out, c.get(fmt.Sprintf("/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods", namespace), &out)
 }
 
+// ListAllPodMetrics returns pod metrics for all pods across all namespaces.
+func (c *Client) ListAllPodMetrics() (*PodMetricsList, error) {
+	var out PodMetricsList
+	return &out, c.get("/apis/metrics.k8s.io/v1beta1/pods", &out)
+}
+
 func (c *Client) ListNodes() (*NodeList, error) {
 	var out NodeList
 	return &out, c.get("/api/v1/nodes", &out)

@@ -2,6 +2,33 @@
 
 All notable changes to KubeAdjust are documented here.
 
+---
+
+## [0.14.0] - 2026-03-02
+
+### Added
+- **Node pod drill-down** — click "Pods (n)" on any node card to lazy-load the list of running pods on that node, each with per-container CPU/memory requests, limits, and live usage. Uses `GET /api/nodes/{node}/pods`; pods include their namespace for cross-namespace nodes.
+- **Multi-cluster support** — set `CLUSTERS=prod=https://...,staging=https://...` on the backend; a cluster selector appears on the login page when more than one cluster is configured. The selected cluster is persisted in `sessionStorage` and shown as a badge in the dashboard topbar.
+- **`GET /api/clusters`** — new public endpoint (no auth required) returning the list of configured cluster names.
+- **Auto-refresh** — configurable interval (30 s / 60 s / 5 min) in the topbar. Silently updates data without clearing the current view; pauses automatically when the browser tab is hidden (Page Visibility API). Persisted in `sessionStorage`.
+- **ServiceAccount YAML for remote clusters** — `deploy/viewer-serviceaccount.yaml`: a standalone manifest to apply on any cluster, creating a `kubeadjust-viewer` SA + read-only ClusterRole + ClusterRoleBinding with usage instructions.
+- **Helm `networkPolicy.enabled`** — optional NetworkPolicy restricting traffic to frontend↔backend:8080 and backend→K8s API (443/6443).
+- **Helm `backend.allowedOrigins`** — dedicated values key for CORS origins, injected as `ALLOWED_ORIGINS` env var in the backend deployment.
+- **Helm `backend.clusters`** — dedicated values key for multi-cluster configuration, injected as `CLUSTERS` env var.
+
+### Changed
+- **CSP is now nonce-based** (`src/proxy.ts`, Next.js 16) — removes `'unsafe-inline'` and `'unsafe-eval'` from `script-src`. Uses `'strict-dynamic'` so trusted scripts can load sub-resources without listing them individually.
+- **Container cards in pod view** — each container block now has a distinct card appearance (background, border, rounded corners, uppercase header separator) for clearer visual separation.
+- **`middleware.ts` renamed to `proxy.ts`** — following Next.js 16 file convention rename (`middleware` → `proxy`).
+
+### Fixed
+- **CORS whitespace** — `ALLOWED_ORIGINS="https://a.com, https://b.com"` now trims spaces before splitting; a space in the env var no longer breaks CORS matches.
+- **Frontend proxy path traversal** — the Next.js API proxy now rejects paths containing `..`, `//`, or null bytes with 400 Bad Request.
+- **Frontend `readOnlyRootFilesystem`** — added `readOnlyRootFilesystem: true` to Helm frontend deployment along with an `emptyDir` volume at `/tmp` for Next.js write access.
+- **`X-Cluster` header** — added to the CORS `AllowedHeaders` list so browsers do not block preflight requests.
+
+---
+
 ## [0.13.0] - 2026-02-28
 
 > **Note:** versions 0.9.0 through 0.12.1 were consolidated into this release. The version jump from 0.8.0 to 0.13.0 is intentional — previous minor versions were used during development and their tags remain immutable on GitHub.

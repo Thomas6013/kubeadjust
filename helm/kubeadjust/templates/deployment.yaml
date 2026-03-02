@@ -35,6 +35,14 @@ spec:
           env:
             - name: PORT
               value: "{{ .Values.backend.port }}"
+          {{- if .Values.backend.allowedOrigins }}
+            - name: ALLOWED_ORIGINS
+              value: {{ .Values.backend.allowedOrigins | quote }}
+          {{- end }}
+          {{- if .Values.backend.clusters }}
+            - name: CLUSTERS
+              value: {{ .Values.backend.clusters | quote }}
+          {{- end }}
           {{- with .Values.backend.env }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -115,8 +123,15 @@ spec:
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
           securityContext:
+            readOnlyRootFilesystem: true
             runAsNonRoot: true
             runAsUser: 1001
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

@@ -43,6 +43,7 @@ type ContainerResources struct {
 
 type PodDetail struct {
 	Name       string               `json:"name"`
+	Namespace  string               `json:"namespace,omitempty"`
 	Phase      string               `json:"phase"`
 	Containers []ContainerResources `json:"containers"`
 	Volumes    []VolumeDetail       `json:"volumes,omitempty"`

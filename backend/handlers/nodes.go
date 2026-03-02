@@ -3,6 +3,9 @@ package handlers
 import (
 	"log"
 	"net/http"
+	"sort"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/devops-kubeadjust/backend/k8s"
 	"github.com/devops-kubeadjust/backend/middleware"
@@ -12,7 +15,7 @@ import (
 // ListNodes returns a cluster-wide node overview with resource aggregation.
 func ListNodes(w http.ResponseWriter, r *http.Request) {
 	token := middleware.TokenFromContext(r.Context())
-	client := k8s.New(token, "")
+	client := k8s.New(token, middleware.ClusterURLFromContext(r.Context()))
 
 	nodes, err := client.ListNodes()
 	if err != nil {
@@ -105,5 +108,76 @@ func ListNodes(w http.ResponseWriter, r *http.Request) {
 		result = append(result, overview)
 	}
 
+	jsonOK(w, result)
+}
+
+// GetNodePods returns the list of non-terminal pods running on a given node,
+// with per-container resource requests, limits, and live usage (best-effort).
+func GetNodePods(w http.ResponseWriter, r *http.Request) {
+	nodeName := chi.URLParam(r, "node")
+	token := middleware.TokenFromContext(r.Context())
+	client := k8s.New(token, middleware.ClusterURLFromContext(r.Context()))
+
+	allPods, err := client.ListAllPods()
+	if err != nil {
+		log.Printf("failed to list pods for node %s: %v", nodeName, err)
+		jsonError(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Pod metrics — cluster-wide, best-effort (not fatal if unavailable)
+	// metricsMap: pod name -> container name -> usage
+	metricsMap := map[string]map[string]k8s.ContainerUsage{}
+	if pm, err := client.ListAllPodMetrics(); err == nil {
+		for _, pm := range pm.Items {
+			containers := make(map[string]k8s.ContainerUsage, len(pm.Containers))
+			for _, c := range pm.Containers {
+				containers[c.Name] = c
+			}
+			metricsMap[pm.Metadata.Name] = containers
+		}
+	}
+
+	result := make([]resources.PodDetail, 0)
+	for _, pod := range allPods.Items {
+		if pod.Spec.NodeName != nodeName {
+			continue
+		}
+		if pod.Status.Phase == "Succeeded" || pod.Status.Phase == "Failed" {
+			continue
+		}
+
+		containerMetrics := metricsMap[pod.Metadata.Name]
+		containers := make([]resources.ContainerResources, 0, len(pod.Spec.Containers))
+		for _, c := range pod.Spec.Containers {
+			cr := resources.ContainerResources{
+				Name: c.Name,
+				Requests: resources.ResourcePair{
+					CPU:    resources.ParseResource(c.Resources.Requests["cpu"], true),
+					Memory: resources.ParseResource(c.Resources.Requests["memory"], false),
+				},
+				Limits: resources.ResourcePair{
+					CPU:    resources.ParseResource(c.Resources.Limits["cpu"], true),
+					Memory: resources.ParseResource(c.Resources.Limits["memory"], false),
+				},
+			}
+			if m, ok := containerMetrics[c.Name]; ok {
+				cr.Usage = &resources.ResourcePair{
+					CPU:    resources.ParseResource(m.Usage["cpu"], true),
+					Memory: resources.ParseResource(m.Usage["memory"], false),
+				}
+			}
+			containers = append(containers, cr)
+		}
+
+		result = append(result, resources.PodDetail{
+			Name:       pod.Metadata.Name,
+			Namespace:  pod.Metadata.Namespace,
+			Phase:      pod.Status.Phase,
+			Containers: containers,
+		})
+	}
+
+	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	jsonOK(w, result)
 }

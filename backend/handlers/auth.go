@@ -12,7 +12,7 @@ import (
 // VerifyToken checks whether the provided token can reach the Kubernetes API.
 func VerifyToken(w http.ResponseWriter, r *http.Request) {
 	token := middleware.TokenFromContext(r.Context())
-	client := k8s.New(token, "")
+	client := k8s.New(token, middleware.ClusterURLFromContext(r.Context()))
 	if err := client.VerifyToken(); err != nil {
 		log.Printf("token verification failed: %v", err)
 		jsonError(w, "authentication failed", http.StatusUnauthorized)
