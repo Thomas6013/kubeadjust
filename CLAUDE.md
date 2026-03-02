@@ -136,51 +136,55 @@ _(All High priority issues resolved in v0.14.0 — see Resolved section below.)_
 
 ### Performance — Medium Priority
 
-8. **`ListAllPods` fetches all cluster pods per `/api/nodes` request** — `handlers/nodes.go:46`
-   - Fix: short TTL in-memory cache (30s), or field-selector to exclude terminated pods.
+- **`ListAllPods` fetches all cluster pods per `/api/nodes` request** — `handlers/nodes.go`
+  - Fix: short TTL in-memory cache (30s), or field-selector to exclude terminated pods.
 
-9. **No virtualisation/pagination for large clusters** — `dashboard/page.tsx`
-   - 100+ workloads render in a single list. Fix: react-window or "load more" pagination.
+- **No virtualisation/pagination for large clusters** — `dashboard/page.tsx`
+  - 100+ workloads render in a single list. Fix: react-window or "load more" pagination.
 
-10. **No retry on transient K8s API failures** — `k8s/client.go:45`
-    - Single network hiccup = request failure. Fix: exponential backoff (max 3 attempts, 5xx only).
+- **No retry on transient K8s API failures** — `k8s/client.go`
+  - Single network hiccup = request failure. Fix: exponential backoff (max 3 attempts, 5xx only).
 
-11. **Sparkline min/max recalculated every render** — `Sparkline.tsx:11`
-    - Fix: wrap in `useMemo`.
+### Performance — Low Priority
 
-13. **No connection pooling on Prometheus client** — `prometheus/client.go:84`
-    - Fix: custom Transport with `MaxIdleConnsPerHost: 10`.
+- **Sparkline min/max recalculated every render** — `Sparkline.tsx`
+  - Fix: wrap in `useMemo`.
+
+- **No connection pooling on Prometheus client** — `prometheus/client.go`
+  - Fix: custom Transport with `MaxIdleConnsPerHost: 10`.
 
 ### Robustness — Medium Priority
 
-13. **Helm chart not linted in CI** — `.github/workflows/ci.yml`
-    - Fix: add `helm lint helm/kubeadjust` and optionally `ct lint`.
+- **Helm chart not linted in CI** — `.github/workflows/ci.yml`
+  - Fix: add `helm lint helm/kubeadjust` and optionally `ct lint`.
 
-14. **ESLint disabled in CI** — `.github/workflows/ci.yml:46`
-    - `next lint` removed in Next.js 16. Fix: configure `eslint .` directly.
+- **ESLint disabled in CI** — `.github/workflows/ci.yml`
+  - `next lint` removed in Next.js 16. Fix: configure `eslint .` directly.
 
-15. **`openCards` sessionStorage can grow unbounded** — `dashboard/page.tsx`
-    - Fix: cap at ~100 entries, or clear on namespace switch.
+### Robustness — Low Priority
 
-16. **sessionStorage writes not wrapped in try-catch** — `dashboard/page.tsx`
-    - Fix: wrap all `sessionStorage.setItem` for `QuotaExceededError`.
+- **`openCards` sessionStorage can grow unbounded** — `dashboard/page.tsx`
+  - Fix: cap at ~100 entries, or clear on namespace switch.
 
-17. **Silent `.catch(() => {})` on background fetches** — `dashboard/page.tsx:106,143`
-    - Fix: `console.warn` in dev, optional UI indicator when Prometheus fails.
+- **sessionStorage writes not wrapped in try-catch** — `dashboard/page.tsx`
+  - Fix: wrap all `sessionStorage.setItem` for `QuotaExceededError`.
+
+- **Silent `.catch(() => {})` on background fetches** — `dashboard/page.tsx`
+  - Fix: `console.warn` in dev, optional UI indicator when Prometheus fails.
 
 ### Maintainability — Low Priority
 
-18. **Magic strings for sessionStorage keys** — `dashboard/page.tsx:47-50,53-70`
-    - Fix: extract to `const STORAGE_KEYS = { ... }`.
+- **Magic strings for sessionStorage keys** — `dashboard/page.tsx`
+  - Fix: extract to `const STORAGE_KEYS = { ... }`.
 
-19. **`parseMemoryBytes` reused to parse pod count** — `nodes.go:98`
-    - Semantically fragile. Fix: dedicated `parsePodCount()`.
+- **`parseMemoryBytes` reused to parse pod count** — `handlers/nodes.go`
+  - Semantically fragile. Fix: dedicated `parsePodCount()`.
 
-20. **Suggestion thresholds hardcoded** — `suggestions.ts:86,90,96,102`
-    - 0.90, 0.70, 0.35, 3× not configurable. Fix: extract to config object.
+- **Suggestion thresholds hardcoded** — `suggestions.ts`
+  - 0.90, 0.70, 0.35, 3× not configurable. Fix: extract to config object.
 
-21. **Inconsistent errgroup initialisation** — `resources.go:169` vs `namespaces.go:31`
-    - Some use `errgroup.WithContext()`, others `new(errgroup.Group)`. Fix: standardise.
+- **Inconsistent errgroup initialisation** — `handlers/resources.go` vs `handlers/namespaces.go`
+  - Some use `errgroup.WithContext()`, others `new(errgroup.Group)`. Fix: standardise.
 
 ### Resolved
 
@@ -215,7 +219,7 @@ _(All High priority issues resolved in v0.14.0 — see Resolved section below.)_
 - **No client-go**: raw `net/http` calls to the K8s API only. Do not add `k8s.io/client-go`.
 - **No CSS frameworks**: CSS Modules only (`*.module.css`). No Tailwind, no MUI.
 - **No charting libraries**: SVG sparklines hand-rolled. No Chart.js, Recharts, etc.
-- **Versioning**: follow [Semantic Versioning](https://semver.org/). Bump `appVersion` in `helm/kubeadjust/Chart.yaml` — it is the single source of truth. CI reads it for Docker image tags. Keep CHANGELOG.md, CLAUDE.md, docs/IMPROVE.md, and README.md aligned on the current version.
+- **Versioning**: follow [Semantic Versioning](https://semver.org/). Bump `appVersion` in `helm/kubeadjust/Chart.yaml` — it is the single source of truth. CI reads it for Docker image tags. Keep CHANGELOG.md, CLAUDE.md, and README.md aligned on the current version.
 - **RBAC**: keep the ClusterRole strictly read-only. Any new K8s resource access needs a `get`/`list`/`watch` verb only.
 - **Error handling**: never return raw K8s API errors to HTTP clients. Log server-side with `log.Printf`, return generic messages.
 - **Token safety**: never log, store, or cache the bearer token.
