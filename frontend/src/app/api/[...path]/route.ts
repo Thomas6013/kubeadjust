@@ -20,11 +20,18 @@ export async function POST(
 }
 
 async function proxy(req: NextRequest, path: string[]) {
-  const target = `${BACKEND_URL}/api/${path.join("/")}${req.nextUrl.search}`;
+  const joined = path.join("/");
+  if (joined.includes("..") || joined.includes("//") || joined.includes("\0")) {
+    return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+  }
+
+  const target = `${BACKEND_URL}/api/${joined}${req.nextUrl.search}`;
   const headers = new Headers();
 
   const auth = req.headers.get("authorization");
   if (auth) headers.set("Authorization", auth);
+  const cluster = req.headers.get("x-cluster");
+  if (cluster) headers.set("X-Cluster", cluster);
   headers.set("Accept", "application/json");
 
   try {

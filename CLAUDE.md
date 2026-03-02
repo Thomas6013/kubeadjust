@@ -10,7 +10,7 @@ KubeAdjust is a **read-only Kubernetes dashboard** (Go backend + Next.js fronten
 
 - **Backend**: Go 1.22, Chi v5 router, 3 production dependencies (chi, cors, errgroup), raw HTTP K8s API (no client-go)
 - **Frontend**: Next.js 16, React 19, TypeScript 5, no UI library, no charting library
-- **Infra**: Helm chart (v0.13.0), multi-stage Docker builds (amd64 + arm64), GitHub Actions CI with linting + tests + SBOM + cosign
+- **Infra**: Helm chart (v0.14.0), multi-stage Docker builds (amd64 + arm64), GitHub Actions CI with linting + tests + SBOM + cosign
 
 ---
 
@@ -22,6 +22,8 @@ backend/
   k8s/client.go            # Raw HTTP K8s API client (shared transport, token forwarding, LimitReader)
   prometheus/client.go     # Optional Prometheus client (LimitReader, TimeRange, namespace batch)
   middleware/auth.go       # Bearer token extraction from Authorization header
+  middleware/cluster.go    # ClusterURL middleware — routes X-Cluster header to API server URL
+  handlers/clusters.go     # ListClusters — returns configured cluster names (no auth required)
   resources/
     types.go               # Shared response types (ResourceValue, PodDetail, NodeOverview, etc.)
     parse.go               # ParseCPUMillicores, ParseMemoryBytes, ParseResource, ParseStorageBytes
@@ -45,14 +47,19 @@ frontend/
   src/lib/api.ts           # Typed API client (TimeRange, ContainerHistory, NamespaceHistoryResponse)
   src/lib/suggestions.ts   # Suggestion computation (P95/mean weighted, no-limit warning, confidence indicator)
   src/components/          # ResourceBar, PodRow, DeploymentCard, SuggestionPanel, Sparkline
-  next.config.mjs          # Standalone output, CSP + security headers (no rewrites — proxy is runtime)
+  src/proxy.ts             # Next.js proxy (nonce-based CSP per request)
+  next.config.mjs          # Standalone output, security headers (CSP handled by proxy.ts)
 
 helm/kubeadjust/
-  Chart.yaml               # Source of truth for version (appVersion: "0.13.0")
+  Chart.yaml               # Source of truth for version (appVersion: "0.14.0")
   values.yaml              # Defaults: 1 replica, 50m CPU, 64/128Mi mem
   templates/
     deployment.yaml        # Backend + frontend deployments, FQDN BACKEND_URL, security contexts
     rbac.yaml              # Read-only ClusterRole (no write permissions ever)
+    networkpolicy.yaml     # Optional NetworkPolicy (networkPolicy.enabled=true)
+
+deploy/
+  viewer-serviceaccount.yaml  # Standalone SA + ClusterRole for remote clusters
 
 .github/workflows/
   ci.yml                   # go build/vet/test + golangci-lint + npm build/lint
@@ -92,9 +99,10 @@ See `.env.example` at repo root. Key variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `KUBE_API_SERVER` | `https://kubernetes.default.svc` | K8s API server URL |
+| `KUBE_API_SERVER` | `https://kubernetes.default.svc` | K8s API server URL (single-cluster mode) |
+| `CLUSTERS` | _(empty)_ | Multi-cluster: `prod=https://...,staging=https://...` |
 | `KUBE_INSECURE_TLS` | `false` | Skip TLS verification (logs warning at startup) |
-| `ALLOWED_ORIGINS` | `*` (with warning) | Comma-separated CORS origins |
+| `ALLOWED_ORIGINS` | `*` (with warning) | Comma-separated CORS origins (whitespace-trimmed) |
 | `PROMETHEUS_URL` | _(empty)_ | Prometheus base URL (auto-prepends `http://` if scheme missing) |
 | `BACKEND_URL` | auto-generated from Helm | Frontend → backend proxy (FQDN: `<release>-backend.<namespace>:<port>`) |
 | `PORT` | `8080` | Backend listen port |
@@ -111,7 +119,9 @@ See `.env.example` at repo root. Key variables:
 - All K8s API errors are logged server-side only — generic messages returned to clients.
 - Response bodies capped at 10 MB via `io.LimitReader` (K8s + Prometheus clients).
 - CORS origins configurable via `ALLOWED_ORIGINS` env var (defaults to `*` with startup warning).
-- CSP + X-Frame-Options + X-Content-Type-Options headers set in `next.config.mjs`.
+- CSP is nonce-based (per-request) via `src/proxy.ts` — no `'unsafe-inline'` or `'unsafe-eval'` in `script-src`.
+- Path traversal (`../`, `//`, null bytes) rejected in the frontend API proxy.
+- X-Frame-Options + X-Content-Type-Options + Referrer-Policy set in `next.config.mjs`.
 - Frontend API proxy (`/api/[...path]/route.ts`) reads `BACKEND_URL` at runtime — no build-time baking.
 - Docker images signed with cosign, SBOM generated with anchore/sbom-action.
 - Multi-arch builds (amd64 + arm64) with QEMU + native Go cross-compilation.
@@ -122,75 +132,68 @@ See `.env.example` at repo root. Key variables:
 
 ### Security — High Priority
 
-1. **CSP uses `'unsafe-inline'` and `'unsafe-eval'`** — `frontend/next.config.mjs:23`
-   - Fix: implement nonce-based CSP via Next.js middleware.
-
-2. **No path validation in frontend proxy** — `frontend/src/app/api/[...path]/route.ts:22`
-   - Risk: SSRF mitigated by env-controlled `BACKEND_URL`, but path traversal (`../`) not validated.
-   - Fix: reject paths containing `..`, `//`, or null bytes.
-
-4. **No NetworkPolicy in Helm chart** — missing `templates/networkpolicy.yaml`
-   - Fix: optional template allowing frontend→backend:8080, backend→K8s API outbound.
-
-5. **`ALLOWED_ORIGINS` not in Helm deployment template** — `templates/deployment.yaml`
-   - Users must remember to set it manually via `backend.env`. Fix: add dedicated values key.
-
-6. **CORS origin split doesn't trim whitespace** — `backend/main.go:30`
-   - `"https://a.com, https://b.com"` → space breaks match. Fix: add `strings.TrimSpace()`.
-
-7. **Frontend missing `readOnlyRootFilesystem`** — `templates/deployment.yaml`
-   - Backend has it, frontend doesn't. Fix: add with emptyDir for Next.js temp writes.
+_(All High priority issues resolved in v0.14.0 — see Resolved section below.)_
 
 ### Performance — Medium Priority
 
-8. **`ListAllPods` fetches all cluster pods per `/api/nodes` request** — `handlers/nodes.go:46`
-   - Fix: short TTL in-memory cache (30s), or field-selector to exclude terminated pods.
+- **`ListAllPods` fetches all cluster pods per `/api/nodes` request** — `handlers/nodes.go`
+  - Fix: short TTL in-memory cache (30s), or field-selector to exclude terminated pods.
 
-9. **No virtualisation/pagination for large clusters** — `dashboard/page.tsx`
-   - 100+ workloads render in a single list. Fix: react-window or "load more" pagination.
+- **No virtualisation/pagination for large clusters** — `dashboard/page.tsx`
+  - 100+ workloads render in a single list. Fix: react-window or "load more" pagination.
 
-10. **No retry on transient K8s API failures** — `k8s/client.go:45`
-    - Single network hiccup = request failure. Fix: exponential backoff (max 3 attempts, 5xx only).
+- **No retry on transient K8s API failures** — `k8s/client.go`
+  - Single network hiccup = request failure. Fix: exponential backoff (max 3 attempts, 5xx only).
 
-11. **Sparkline min/max recalculated every render** — `Sparkline.tsx:11`
-    - Fix: wrap in `useMemo`.
+### Performance — Low Priority
 
-13. **No connection pooling on Prometheus client** — `prometheus/client.go:84`
-    - Fix: custom Transport with `MaxIdleConnsPerHost: 10`.
+- **Sparkline min/max recalculated every render** — `Sparkline.tsx`
+  - Fix: wrap in `useMemo`.
+
+- **No connection pooling on Prometheus client** — `prometheus/client.go`
+  - Fix: custom Transport with `MaxIdleConnsPerHost: 10`.
 
 ### Robustness — Medium Priority
 
-13. **Helm chart not linted in CI** — `.github/workflows/ci.yml`
-    - Fix: add `helm lint helm/kubeadjust` and optionally `ct lint`.
+- **Helm chart not linted in CI** — `.github/workflows/ci.yml`
+  - Fix: add `helm lint helm/kubeadjust` and optionally `ct lint`.
 
-14. **ESLint disabled in CI** — `.github/workflows/ci.yml:46`
-    - `next lint` removed in Next.js 16. Fix: configure `eslint .` directly.
+- **ESLint disabled in CI** — `.github/workflows/ci.yml`
+  - `next lint` removed in Next.js 16. Fix: configure `eslint .` directly.
 
-15. **`openCards` sessionStorage can grow unbounded** — `dashboard/page.tsx`
-    - Fix: cap at ~100 entries, or clear on namespace switch.
+### Robustness — Low Priority
 
-16. **sessionStorage writes not wrapped in try-catch** — `dashboard/page.tsx`
-    - Fix: wrap all `sessionStorage.setItem` for `QuotaExceededError`.
+- **`openCards` sessionStorage can grow unbounded** — `dashboard/page.tsx`
+  - Fix: cap at ~100 entries, or clear on namespace switch.
 
-17. **Silent `.catch(() => {})` on background fetches** — `dashboard/page.tsx:106,143`
-    - Fix: `console.warn` in dev, optional UI indicator when Prometheus fails.
+- **sessionStorage writes not wrapped in try-catch** — `dashboard/page.tsx`
+  - Fix: wrap all `sessionStorage.setItem` for `QuotaExceededError`.
+
+- **Silent `.catch(() => {})` on background fetches** — `dashboard/page.tsx`
+  - Fix: `console.warn` in dev, optional UI indicator when Prometheus fails.
 
 ### Maintainability — Low Priority
 
-18. **Magic strings for sessionStorage keys** — `dashboard/page.tsx:47-50,53-70`
-    - Fix: extract to `const STORAGE_KEYS = { ... }`.
+- **Magic strings for sessionStorage keys** — `dashboard/page.tsx`
+  - Fix: extract to `const STORAGE_KEYS = { ... }`.
 
-19. **`parseMemoryBytes` reused to parse pod count** — `nodes.go:98`
-    - Semantically fragile. Fix: dedicated `parsePodCount()`.
+- **`parseMemoryBytes` reused to parse pod count** — `handlers/nodes.go`
+  - Semantically fragile. Fix: dedicated `parsePodCount()`.
 
-20. **Suggestion thresholds hardcoded** — `suggestions.ts:86,90,96,102`
-    - 0.90, 0.70, 0.35, 3× not configurable. Fix: extract to config object.
+- **Suggestion thresholds hardcoded** — `suggestions.ts`
+  - 0.90, 0.70, 0.35, 3× not configurable. Fix: extract to config object.
 
-21. **Inconsistent errgroup initialisation** — `resources.go:169` vs `namespaces.go:31`
-    - Some use `errgroup.WithContext()`, others `new(errgroup.Group)`. Fix: standardise.
+- **Inconsistent errgroup initialisation** — `handlers/resources.go` vs `handlers/namespaces.go`
+  - Some use `errgroup.WithContext()`, others `new(errgroup.Group)`. Fix: standardise.
 
 ### Resolved
 
+- ~~CSP uses `'unsafe-inline'` and `'unsafe-eval'`~~ — RESOLVED (v0.14.0, nonce-based CSP via `src/proxy.ts`).
+- ~~No path validation in frontend proxy~~ — RESOLVED (v0.14.0, rejects `..`, `//`, null bytes).
+- ~~No NetworkPolicy in Helm chart~~ — RESOLVED (v0.14.0, optional `networkPolicy.enabled`).
+- ~~`ALLOWED_ORIGINS` not in Helm deployment template~~ — RESOLVED (v0.14.0, `backend.allowedOrigins` value).
+- ~~CORS origin split doesn't trim whitespace~~ — RESOLVED (v0.14.0, `strings.TrimSpace()` in `main.go`).
+- ~~Frontend missing `readOnlyRootFilesystem`~~ — RESOLVED (v0.14.0, with `/tmp` emptyDir).
 - ~~`ResourceBar.tsx` missing `"use client"` directive~~ — RESOLVED.
 - ~~`SuggestionPanel` uses array index as React key~~ — RESOLVED (v0.8.0).
 - ~~`BACKEND_URL` baked at build time~~ — RESOLVED (v0.13.0, runtime API proxy).
@@ -216,7 +219,7 @@ See `.env.example` at repo root. Key variables:
 - **No client-go**: raw `net/http` calls to the K8s API only. Do not add `k8s.io/client-go`.
 - **No CSS frameworks**: CSS Modules only (`*.module.css`). No Tailwind, no MUI.
 - **No charting libraries**: SVG sparklines hand-rolled. No Chart.js, Recharts, etc.
-- **Versioning**: bump `appVersion` in `helm/kubeadjust/Chart.yaml` — it is the single source of truth. CI reads it for Docker image tags.
+- **Versioning**: follow [Semantic Versioning](https://semver.org/). Bump `appVersion` in `helm/kubeadjust/Chart.yaml` — it is the single source of truth. CI reads it for Docker image tags. Keep CHANGELOG.md, CLAUDE.md, and README.md aligned on the current version.
 - **RBAC**: keep the ClusterRole strictly read-only. Any new K8s resource access needs a `get`/`list`/`watch` verb only.
 - **Error handling**: never return raw K8s API errors to HTTP clients. Log server-side with `log.Printf`, return generic messages.
 - **Token safety**: never log, store, or cache the bearer token.

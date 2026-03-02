@@ -1,7 +1,9 @@
 "use client";
 
-import type { NodeOverview, ResourceValue } from "@/lib/api";
-import { fmtCPU, fmtMemory } from "@/lib/api";
+import { useState, useEffect, useRef } from "react";
+import type { NodeOverview, ResourceValue, PodDetail } from "@/lib/api";
+import { api, fmtCPU, fmtMemory } from "@/lib/api";
+import PodRow from "./PodRow";
 import styles from "./NodeCard.module.css";
 
 // --- helpers ---
@@ -127,10 +129,33 @@ function CircleGauge({ label, allocatable, requested, usage, isCPU }: GaugeProps
 
 // --- Main card ---
 
-export default function NodeCard({ node }: { node: NodeOverview }) {
+interface NodeCardProps {
+  node: NodeOverview;
+  token?: string;
+  openCards?: Set<string>;
+  onToggleCard?: (id: string) => void;
+}
+
+export default function NodeCard({ node, token, openCards, onToggleCard }: NodeCardProps) {
   const isReady = node.status === "Ready";
   const statusColor = isReady ? "var(--green)" : node.status === "NotReady" ? "var(--red)" : "var(--yellow)";
   const isControlPlane = node.roles.includes("control-plane");
+
+  // Local expand state for the pods section (no need to persist across page loads)
+  const [podsOpen, setPodsOpen] = useState(false);
+  const [pods, setPods] = useState<PodDetail[] | null>(null);
+  const [loadingPods, setLoadingPods] = useState(false);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (!podsOpen || !token || fetchedRef.current) return;
+    fetchedRef.current = true;
+    setLoadingPods(true);
+    api.nodePods(token, node.name)
+      .then(setPods)
+      .catch(() => setPods([]))
+      .finally(() => setLoadingPods(false));
+  }, [podsOpen, token, node.name]);
 
   return (
     <div className={`${styles.card} ${!isReady ? styles.notReady : ""}`}>
@@ -171,6 +196,40 @@ export default function NodeCard({ node }: { node: NodeOverview }) {
         </div>
       ) : (
         <div className={styles.notReadyMsg}>Node is not ready — no resource data available</div>
+      )}
+
+      {/* Pod drill-down — only shown when token is available */}
+      {token && (
+        <div className={styles.podsSection}>
+          <button
+            className={styles.podsToggle}
+            onClick={() => setPodsOpen((v) => !v)}
+            aria-expanded={podsOpen}
+          >
+            <span className={styles.podsArrow}>{podsOpen ? "▾" : "▸"}</span>
+            Pods ({node.podCount})
+          </button>
+
+          {podsOpen && (
+            <div className={styles.podList}>
+              {loadingPods ? (
+                <p className={styles.podsLoading}>Loading pods…</p>
+              ) : !pods || pods.length === 0 ? (
+                <p className={styles.podsLoading}>No active pods on this node.</p>
+              ) : pods.map((pod) => (
+                <PodRow
+                  key={`${pod.namespace}/${pod.name}`}
+                  pod={pod}
+                  namespace={pod.namespace ?? ""}
+                  prometheusAvailable={false}
+                  token={token}
+                  openCards={openCards}
+                  onToggleCard={onToggleCard}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

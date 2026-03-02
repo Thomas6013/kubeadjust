@@ -18,6 +18,12 @@ backend:
     limits:
       cpu: 200m
       memory: 128Mi
+  # Restrict CORS to your frontend origin in production.
+  # e.g. "https://kubeadjust.example.com"
+  allowedOrigins: ""
+  # Multi-cluster: "prod=https://k8s.prod.example.com:6443,staging=https://k8s.staging.example.com:6443"
+  # Leave empty for single-cluster mode (uses KUBE_API_SERVER).
+  clusters: ""
   # Extra env vars — add overrides here, e.g.:
   # env:
   # - name: KUBE_INSECURE_TLS
@@ -78,3 +84,7 @@ metrics-server:
 prometheus:
   enabled: false
   url: ""  # e.g. http://prometheus-operated.monitoring.svc.cluster.local:9090
+
+# Optional: restrict network traffic between pods (requires a CNI that supports NetworkPolicy)
+networkPolicy:
+  enabled: false

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api, type NamespaceItem, type DeploymentDetail, type NodeOverview, type TimeRange, type ContainerHistory } from "@/lib/api";
 import DeploymentCard from "@/components/DeploymentCard";
@@ -9,6 +9,10 @@ import NodeCard from "@/components/NodeCard";
 import styles from "./dashboard.module.css";
 
 type View = "namespaces" | "nodes";
+type AutoRefresh = "off" | "30s" | "60s" | "5m";
+const AUTO_REFRESH_MS: Record<AutoRefresh, number> = {
+  off: 0, "30s": 30_000, "60s": 60_000, "5m": 300_000,
+};
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -40,15 +44,30 @@ export default function DashboardPage() {
   // Opened deployments/pods (persisted in sessionStorage)
   const [openCards, setOpenCards] = useState<Set<string>>(new Set());
 
+  const [cluster, setCluster] = useState("");
+  const [autoRefresh, setAutoRefresh] = useState<AutoRefresh>("off");
   const [error, setError] = useState("");
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [restored, setRestored] = useState(false);
+
+  // Stable refs for the auto-refresh interval (avoids stale closures)
+  const viewRef = useRef(view);
+  const selectedNsRef = useRef(selectedNs);
+  const loadingRef = useRef(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // loadNodes / loadDeployments refs updated after each render
+  const loadNodesRef = useRef<(silent?: boolean) => Promise<void>>(() => Promise.resolve());
+  const loadDeploymentsRef = useRef<(ns: string, silent?: boolean) => Promise<void>>(() => Promise.resolve());
 
   // Restore persisted state on mount (before persistence effects run)
   useEffect(() => {
     const t = sessionStorage.getItem("kube-token");
     if (!t) { router.replace("/"); return; }
     setToken(t);
+    const savedCluster = sessionStorage.getItem("kube-cluster");
+    if (savedCluster) setCluster(savedCluster);
+    const savedAR = sessionStorage.getItem("kubeadjust:autoRefresh") as AutoRefresh | null;
+    if (savedAR && savedAR in AUTO_REFRESH_MS) setAutoRefresh(savedAR);
     try {
       const raw = sessionStorage.getItem("kubeadjust:excludedNs");
       if (raw) setExcludedNs(new Set(JSON.parse(raw) as string[]));
@@ -66,8 +85,13 @@ export default function DashboardPage() {
     setRestored(true);
   }, [router]);
 
+  // Keep refs in sync
+  useEffect(() => { viewRef.current = view; }, [view]);
+  useEffect(() => { selectedNsRef.current = selectedNs; }, [selectedNs]);
+
   // Persist state on change — only after initial restore to avoid overwriting saved values
   useEffect(() => { if (restored) sessionStorage.setItem("kubeadjust:view", view); }, [view, restored]);
+  useEffect(() => { if (restored) sessionStorage.setItem("kubeadjust:autoRefresh", autoRefresh); }, [autoRefresh, restored]);
   useEffect(() => { if (restored && selectedNs) sessionStorage.setItem("kubeadjust:selectedNs", selectedNs); }, [selectedNs, restored]);
   useEffect(() => { if (restored) sessionStorage.setItem("kubeadjust:timeRange", timeRange); }, [timeRange, restored]);
   useEffect(() => { if (restored) sessionStorage.setItem("kubeadjust:openCards", JSON.stringify([...openCards])); }, [openCards, restored]);
@@ -90,12 +114,10 @@ export default function DashboardPage() {
       .finally(() => setLoadingNs(false));
   }, [token]);
 
-  const loadDeployments = useCallback(async (ns: string) => {
+  const loadDeployments = useCallback(async (ns: string, silent = false) => {
     if (!token || !ns) return;
-    setLoadingDeps(true);
-    setError("");
-    setDeployments([]);
-    setNsHistory([]);
+    if (!silent) { setLoadingDeps(true); setError(""); setDeployments([]); setNsHistory([]); }
+    loadingRef.current = true;
     try {
       const resp = await api.deployments(token, ns);
       setDeployments(resp.workloads);
@@ -103,26 +125,32 @@ export default function DashboardPage() {
       setPrometheusAvailable(resp.prometheusAvailable);
       setLastRefresh(new Date());
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load deployments");
+      if (!silent) setError(e instanceof Error ? e.message : "Failed to load deployments");
     } finally {
-      setLoadingDeps(false);
+      if (!silent) setLoadingDeps(false);
+      loadingRef.current = false;
     }
   }, [token, timeRange]);
 
-  const loadNodes = useCallback(async () => {
+  const loadNodes = useCallback(async (silent = false) => {
     if (!token) return;
-    setLoadingNodes(true);
-    setError("");
+    if (!silent) { setLoadingNodes(true); setError(""); }
+    loadingRef.current = true;
     try {
       const n = await api.nodes(token);
       setNodes(n);
       setLastRefresh(new Date());
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load nodes");
+      if (!silent) setError(e instanceof Error ? e.message : "Failed to load nodes");
     } finally {
-      setLoadingNodes(false);
+      if (!silent) setLoadingNodes(false);
+      loadingRef.current = false;
     }
   }, [token]);
+
+  // Keep callback refs up to date so the interval always calls the latest version
+  useEffect(() => { loadNodesRef.current = loadNodes; }, [loadNodes]);
+  useEffect(() => { loadDeploymentsRef.current = loadDeployments; }, [loadDeployments]);
 
   useEffect(() => {
     if (selectedNs && view === "namespaces") loadDeployments(selectedNs);
@@ -140,6 +168,21 @@ export default function DashboardPage() {
       .catch(() => { /* best-effort */ });
   }, [timeRange, token, selectedNs, prometheusAvailable, view]);
 
+  // Auto-refresh interval — paused when tab is hidden or a fetch is already running
+  useEffect(() => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (autoRefresh === "off") return;
+    const ms = AUTO_REFRESH_MS[autoRefresh];
+    intervalRef.current = setInterval(() => {
+      if (document.hidden || loadingRef.current) return;
+      if (viewRef.current === "nodes") loadNodesRef.current(true);
+      else if (viewRef.current === "namespaces" && selectedNsRef.current) {
+        loadDeploymentsRef.current(selectedNsRef.current, true);
+      }
+    }, ms);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [autoRefresh]);
+
   function handleRefresh() {
     if (view === "nodes") loadNodes();
     else if (selectedNs) loadDeployments(selectedNs);
@@ -147,6 +190,7 @@ export default function DashboardPage() {
 
   function handleLogout() {
     sessionStorage.removeItem("kube-token");
+    sessionStorage.removeItem("kube-cluster");
     router.push("/");
   }
 
@@ -181,7 +225,10 @@ export default function DashboardPage() {
   return (
     <div className={styles.layout}>
       <header className={styles.topbar}>
-        <div className={styles.brand}><span>⎈</span> KubeAdjust</div>
+        <div className={styles.brand}>
+          <span>⎈</span> KubeAdjust
+          {cluster && <span className={styles.clusterBadge}>{cluster}</span>}
+        </div>
         <div className={styles.actions}>
           {lastRefresh && <span className={styles.refreshed}>Refreshed {lastRefresh.toLocaleTimeString()}</span>}
           {prometheusAvailable && (
@@ -197,6 +244,20 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
+          <div className={styles.autoRefresh}>
+            {autoRefresh !== "off" && <span className={styles.liveDot} title="Auto-refresh active" />}
+            <select
+              className={styles.autoRefreshSelect}
+              value={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.value as AutoRefresh)}
+              aria-label="Auto-refresh interval"
+            >
+              <option value="off">Auto</option>
+              <option value="30s">30s</option>
+              <option value="60s">60s</option>
+              <option value="5m">5min</option>
+            </select>
+          </div>
           <button className="ghost" onClick={handleRefresh} disabled={loading}>
             {loading ? "Loading…" : "↺ Refresh"}
           </button>
@@ -303,7 +364,19 @@ export default function DashboardPage() {
                 <p className={styles.muted}>Loading nodes…</p>
               ) : (
                 <div className={styles.nodeGrid}>
-                  {nodes.map((n) => <NodeCard key={n.name} node={n} />)}
+                  {nodes.map((n) => (
+                    <NodeCard
+                      key={n.name}
+                      node={n}
+                      token={token}
+                      openCards={openCards}
+                      onToggleCard={(id) => setOpenCards((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(id)) next.delete(id); else next.add(id);
+                        return next;
+                      })}
+                    />
+                  ))}
                 </div>
               )}
             </>

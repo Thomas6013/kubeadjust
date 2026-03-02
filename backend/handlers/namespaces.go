@@ -19,7 +19,7 @@ type NamespaceItem struct {
 // ListNamespaces returns namespaces that contain at least one pod.
 func ListNamespaces(w http.ResponseWriter, r *http.Request) {
 	token := middleware.TokenFromContext(r.Context())
-	client := k8s.New(token, "")
+	client := k8s.New(token, middleware.ClusterURLFromContext(r.Context()))
 	list, err := client.ListNamespaces()
 	if err != nil {
 		log.Printf("failed to list namespaces: %v", err)

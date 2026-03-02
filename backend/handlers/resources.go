@@ -19,7 +19,7 @@ import (
 func ListDeployments(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
 	token := middleware.TokenFromContext(r.Context())
-	client := k8s.New(token, "")
+	client := k8s.New(token, middleware.ClusterURLFromContext(r.Context()))
 
 	// 1. Fetch pods once
 	podList, err := client.ListPods(ns)

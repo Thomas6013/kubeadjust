@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "echo 'No linter configured'"
+    "lint": "echo 'No linter configured'",
+    "test": "vitest run"
   },
   "dependencies": {
     "next": "16.1.6",
@@ -17,6 +18,7 @@
     "@types/node": "^25",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.0.18"
   }
 }

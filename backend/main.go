@@ -28,9 +28,22 @@ func main() {
 	// CORS origins: default to wildcard in dev, restrict via ALLOWED_ORIGINS in production
 	allowedOrigins := []string{"*"}
 	if origins := os.Getenv("ALLOWED_ORIGINS"); origins != "" {
-		allowedOrigins = strings.Split(origins, ",")
+		parts := strings.Split(origins, ",")
+		allowedOrigins = make([]string, 0, len(parts))
+		for _, o := range parts {
+			if trimmed := strings.TrimSpace(o); trimmed != "" {
+				allowedOrigins = append(allowedOrigins, trimmed)
+			}
+		}
 	} else {
 		log.Println("WARN: ALLOWED_ORIGINS not set, defaulting to wildcard (*)")
+	}
+
+	// Multi-cluster support: CLUSTERS="prod=https://...,staging=https://..."
+	// If not set, single-cluster mode uses KUBE_API_SERVER.
+	clusters := parseClusters(os.Getenv("CLUSTERS"))
+	if len(clusters) > 0 {
+		log.Printf("Multi-cluster mode: %d cluster(s) configured", len(clusters))
 	}
 
 	// Create Prometheus client once at startup (nil if PROMETHEUS_URL not set)
@@ -47,7 +60,7 @@ func main() {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
-		AllowedHeaders:   []string{"Authorization", "Content-Type"},
+		AllowedHeaders:   []string{"Authorization", "Content-Type", "X-Cluster"},
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
@@ -58,33 +71,61 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	// API routes — all require a valid bearer token
 	r.Route("/api", func(r chi.Router) {
-		r.Use(middleware.BearerToken)
-		r.Use(chiMiddleware.Throttle(20)) // max 20 concurrent requests
+		// Public — no auth required
+		r.Get("/clusters", handlers.ListClusters(clusters))
 
-		// Auth
-		r.Get("/auth/verify", handlers.VerifyToken)
+		// Auth + cluster-routing required
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.BearerToken)
+			r.Use(middleware.ClusterURL(clusters))
+			r.Use(chiMiddleware.Throttle(20)) // max 20 concurrent requests
 
-		// Cluster-wide node overview
-		r.Get("/nodes", handlers.ListNodes)
+			// Auth
+			r.Get("/auth/verify", handlers.VerifyToken)
 
-		// Namespaces
-		r.Get("/namespaces", handlers.ListNamespaces)
+			// Cluster-wide node overview
+			r.Get("/nodes", handlers.ListNodes)
+			r.Get("/nodes/{node}/pods", handlers.GetNodePods)
 
-		// Deployments + pod resource details
-		r.Get("/namespaces/{namespace}/deployments", handlers.ListDeployments)
+			// Namespaces
+			r.Get("/namespaces", handlers.ListNamespaces)
 
-		// Raw pod metrics (optional, useful for debugging)
-		r.Get("/namespaces/{namespace}/metrics", handlers.GetPodMetrics)
+			// Deployments + pod resource details
+			r.Get("/namespaces/{namespace}/deployments", handlers.ListDeployments)
 
-		// Prometheus history (requires PROMETHEUS_URL env var)
-		r.Get("/namespaces/{namespace}/prometheus", handlers.NewNamespaceHistoryHandler(promClient))
-		r.Get("/namespaces/{namespace}/prometheus/{pod}/{container}", handlers.NewContainerHistoryHandler(promClient))
+			// Raw pod metrics (optional, useful for debugging)
+			r.Get("/namespaces/{namespace}/metrics", handlers.GetPodMetrics)
+
+			// Prometheus history (requires PROMETHEUS_URL env var)
+			r.Get("/namespaces/{namespace}/prometheus", handlers.NewNamespaceHistoryHandler(promClient))
+			r.Get("/namespaces/{namespace}/prometheus/{pod}/{container}", handlers.NewContainerHistoryHandler(promClient))
+		})
 	})
 
 	log.Printf("kubeadjust backend listening on :%s", port)
 	if err := http.ListenAndServe(":"+port, r); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// parseClusters parses "name=url,name2=url2" into a map[name]url.
+func parseClusters(env string) map[string]string {
+	clusters := make(map[string]string)
+	if env == "" {
+		return clusters
+	}
+	for _, pair := range strings.Split(env, ",") {
+		pair = strings.TrimSpace(pair)
+		idx := strings.Index(pair, "=")
+		if idx <= 0 {
+			continue
+		}
+		name := strings.TrimSpace(pair[:idx])
+		url := strings.TrimSpace(pair[idx+1:])
+		if name != "" && url != "" {
+			clusters[name] = url
+		}
+	}
+	return clusters
 }

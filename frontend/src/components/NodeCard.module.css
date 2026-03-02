@@ -130,3 +130,46 @@
   color: var(--muted);
   padding: 8px 0;
 }
+
+/* Pod drill-down section */
+.podsSection {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin-top: 4px;
+}
+
+.podsToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0;
+  transition: color 0.15s;
+}
+.podsToggle:hover { color: var(--fg); }
+
+.podsArrow {
+  font-size: 10px;
+  color: var(--accent);
+}
+
+.podList {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.podsLoading {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 6px 0;
+  margin: 0;
+}
