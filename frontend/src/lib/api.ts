@@ -59,10 +59,17 @@ export interface NodeResources {
   memory: ResourceValue;
 }
 
+export interface NodeTaint {
+  key: string;
+  value?: string;
+  effect: "NoSchedule" | "PreferNoSchedule" | "NoExecute";
+}
+
 export interface NodeOverview {
   name: string;
   status: "Ready" | "NotReady" | "Unknown";
   roles: string[];
+  taints?: NodeTaint[];
   capacity: NodeResources;
   allocatable: NodeResources;
   requested: NodeResources;

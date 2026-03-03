@@ -254,7 +254,10 @@ type NodeList struct {
 }
 type Node struct {
 	Metadata ObjectMeta `json:"metadata"`
-	Status   struct {
+	Spec     struct {
+		Taints []Taint `json:"taints,omitempty"`
+	} `json:"spec"`
+	Status struct {
 		Capacity    map[string]string `json:"capacity"`
 		Allocatable map[string]string `json:"allocatable"`
 		Conditions  []NodeCondition   `json:"conditions"`
@@ -263,6 +266,11 @@ type Node struct {
 type NodeCondition struct {
 	Type   string `json:"type"`
 	Status string `json:"status"` // "True" | "False" | "Unknown"
+}
+type Taint struct {
+	Key    string `json:"key"`
+	Value  string `json:"value,omitempty"`
+	Effect string `json:"effect"` // NoSchedule | PreferNoSchedule | NoExecute
 }
 
 // --- Metrics server ---

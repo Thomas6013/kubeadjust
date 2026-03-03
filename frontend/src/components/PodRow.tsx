@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { PodDetail, HistoryResponse, EphemeralStorageInfo, ResourceValue, TimeRange } from "@/lib/api";
+import type { PodDetail, HistoryResponse, EphemeralStorageInfo, ResourceValue, TimeRange, DataPoint } from "@/lib/api";
 import { api, fmtStorage, storagePct } from "@/lib/api";
 import { resourceStatus, storageStatus } from "@/lib/suggestions";
 import ResourceBar from "./ResourceBar";
 import VolumeSection from "./VolumeSection";
 import Sparkline from "./Sparkline";
+import SparklineModal from "./SparklineModal";
 import styles from "./PodRow.module.css";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -17,6 +18,14 @@ const STATUS_COLOR: Record<string, string> = {
   none:     "var(--muted)",
 };
 
+interface ZoomedChart {
+  dataPoints: DataPoint[];
+  label: string;
+  color: string;
+  isCPU: boolean;
+  title: string;
+}
+
 interface PodRowProps {
   pod: PodDetail;
   namespace: string;
@@ -25,13 +34,20 @@ interface PodRowProps {
   timeRange?: TimeRange;
   openCards?: Set<string>;
   onToggleCard?: (id: string) => void;
+  deploymentName?: string;
+  onFilterByPod?: (podName: string | null) => void;
+  activePodFilter?: string | null;
 }
 
-export default function PodRow({ pod, namespace, prometheusAvailable, token, timeRange = "1h", openCards, onToggleCard }: PodRowProps) {
+export default function PodRow({
+  pod, namespace, prometheusAvailable, token, timeRange = "1h",
+  openCards, onToggleCard, deploymentName, onFilterByPod, activePodFilter,
+}: PodRowProps) {
   const podId = `pod:${pod.name}`;
   const open = openCards?.has(podId) ?? false;
   const [history, setHistory] = useState<Record<string, HistoryResponse>>({});
   const fetchedRef = useRef<Set<string>>(new Set());
+  const [zoomed, setZoomed] = useState<ZoomedChart | null>(null);
 
   // Invalidate cache when time range changes
   useEffect(() => {
@@ -55,6 +71,8 @@ export default function PodRow({ pod, namespace, prometheusAvailable, token, tim
     : pod.phase === "Pending" ? "var(--yellow)"
     : "var(--red)";
 
+  const isFiltered = activePodFilter === pod.name;
+
   return (
     <div className={styles.pod}>
       <button
@@ -68,6 +86,18 @@ export default function PodRow({ pod, namespace, prometheusAvailable, token, tim
         <span className={styles.containers}>
           {pod.containers.length} container{pod.containers.length !== 1 ? "s" : ""}
         </span>
+        {onFilterByPod && (
+          <span
+            className={`${styles.filterBtn} ${isFiltered ? styles.filterBtnActive : ""}`}
+            title={isFiltered ? "Clear pod filter" : "Show only this pod's suggestions"}
+            onClick={(e) => {
+              e.stopPropagation();
+              onFilterByPod(isFiltered ? null : pod.name);
+            }}
+          >
+            {isFiltered ? "⊗" : "⊕"}
+          </span>
+        )}
       </button>
 
       {open && (
@@ -76,21 +106,42 @@ export default function PodRow({ pod, namespace, prometheusAvailable, token, tim
             const hist = history[c.name];
             const cpuStatus = resourceStatus(c.usage?.cpu, c.requests.cpu, c.limits.cpu, true);
             const memStatus = resourceStatus(c.usage?.memory, c.requests.memory, c.limits.memory, false);
+            const containerId = deploymentName ? `container-${deploymentName}-${pod.name}-${c.name}` : undefined;
             return (
-              <div key={c.name} className={styles.container}>
+              <div key={c.name} id={containerId} className={styles.container}>
                 <div className={styles.containerName}>{c.name}</div>
 
                 <div className={styles.resources}>
                   <div className={styles.resourceRow}>
                     <ResourceBar label="CPU" request={c.requests.cpu} limit={c.limits.cpu} usage={c.usage?.cpu} isCPU={true} />
                     {hist && hist.cpu.length >= 2 && (
-                      <Sparkline points={hist.cpu.map((p) => p.v)} color={STATUS_COLOR[cpuStatus]} />
+                      <Sparkline
+                        points={hist.cpu.map((p) => p.v)}
+                        color={STATUS_COLOR[cpuStatus]}
+                        onClick={() => setZoomed({
+                          dataPoints: hist.cpu,
+                          label: "CPU",
+                          color: STATUS_COLOR[cpuStatus],
+                          isCPU: true,
+                          title: `${pod.name} / ${c.name}`,
+                        })}
+                      />
                     )}
                   </div>
                   <div className={styles.resourceRow}>
                     <ResourceBar label="Memory" request={c.requests.memory} limit={c.limits.memory} usage={c.usage?.memory} isCPU={false} />
                     {hist && hist.memory.length >= 2 && (
-                      <Sparkline points={hist.memory.map((p) => p.v)} color={STATUS_COLOR[memStatus]} />
+                      <Sparkline
+                        points={hist.memory.map((p) => p.v)}
+                        color={STATUS_COLOR[memStatus]}
+                        onClick={() => setZoomed({
+                          dataPoints: hist.memory,
+                          label: "Memory",
+                          color: STATUS_COLOR[memStatus],
+                          isCPU: false,
+                          title: `${pod.name} / ${c.name}`,
+                        })}
+                      />
                     )}
                   </div>
                 </div>
@@ -102,6 +153,18 @@ export default function PodRow({ pod, namespace, prometheusAvailable, token, tim
 
           <VolumeSection volumes={pod.volumes ?? []} />
         </div>
+      )}
+
+      {zoomed && (
+        <SparklineModal
+          isOpen={true}
+          onClose={() => setZoomed(null)}
+          dataPoints={zoomed.dataPoints}
+          label={zoomed.label}
+          color={zoomed.color}
+          isCPU={zoomed.isCPU}
+          title={zoomed.title}
+        />
       )}
     </div>
   );

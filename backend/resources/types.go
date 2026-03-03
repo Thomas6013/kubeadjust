@@ -70,10 +70,17 @@ type NodeResources struct {
 	Memory ResourceValue `json:"memory"`
 }
 
+type NodeTaint struct {
+	Key    string `json:"key"`
+	Value  string `json:"value,omitempty"`
+	Effect string `json:"effect"`
+}
+
 type NodeOverview struct {
 	Name        string         `json:"name"`
 	Status      string         `json:"status"`
 	Roles       []string       `json:"roles"`
+	Taints      []NodeTaint    `json:"taints,omitempty"`
 	Capacity    NodeResources  `json:"capacity"`
 	Allocatable NodeResources  `json:"allocatable"`
 	Requested   NodeResources  `json:"requested"`

@@ -53,16 +53,23 @@ function groupSuggestions(suggestions: Suggestion[]): Array<{ resource: string; 
 }
 
 function suggestionKey(s: Suggestion): string {
-  return `${s.deployment}:${s.container}:${s.resource}:${s.kind}`;
+  return `${s.deployment}:${s.pod}:${s.container}:${s.resource}:${s.kind}`;
 }
 
-function SuggestionItem({ s }: { s: Suggestion }) {
+function SuggestionItem({ s, onOpenCards }: { s: Suggestion; onOpenCards?: (ids: string[]) => void }) {
   const meta = KIND_META[s.kind];
+  const href = `#container-${s.deployment}-${s.pod}-${s.container}`;
   return (
-    <a href={`#dep-${s.deployment}`} className={styles.item} style={{ borderLeftColor: meta.color }}>
+    <a
+      href={href}
+      className={styles.item}
+      style={{ borderLeftColor: meta.color }}
+      onClick={() => onOpenCards?.([`dep:${s.deployment}`, `pod:${s.pod}`])}
+    >
       <div className={styles.itemHeader}>
         <span className={styles.icon} style={{ color: meta.color }}>{meta.icon}</span>
         <span className={styles.depName}>{s.deployment}</span>
+        <span className={styles.podTag}>{s.pod.split("-").slice(-2).join("-")}</span>
       </div>
       <p className={styles.itemMsg}>{s.message}</p>
       <div className={styles.itemAction}>
@@ -77,21 +84,38 @@ function SuggestionItem({ s }: { s: Suggestion }) {
   );
 }
 
-function SuggestionGroup({ resource, items }: { resource: string; items: Suggestion[] }) {
-  const [open, setOpen] = useState(true);
+interface SuggestionGroupProps {
+  resource: string;
+  items: Suggestion[];
+  open: boolean;
+  onToggle: () => void;
+  onOpenCards?: (ids: string[]) => void;
+}
+
+function SuggestionGroup({ resource, items, open, onToggle, onOpenCards }: SuggestionGroupProps) {
   return (
     <div className={styles.group}>
-      <button className={styles.groupHeader} onClick={() => setOpen((o) => !o)}>
+      <button className={styles.groupHeader} onClick={onToggle}>
         <span className={styles.groupArrow}>{open ? "▾" : "▸"}</span>
         <span className={styles.groupLabel}>{resource}</span>
         <span className={styles.groupCount}>{items.length}</span>
       </button>
-      {open && items.map((s) => <SuggestionItem key={suggestionKey(s)} s={s} />)}
+      {open && items.map((s) => (
+        <SuggestionItem key={suggestionKey(s)} s={s} onOpenCards={onOpenCards} />
+      ))}
     </div>
   );
 }
 
-export default function SuggestionPanel({ deployments, history }: { deployments: DeploymentDetail[]; history?: ContainerHistory[] }) {
+interface SuggestionPanelProps {
+  deployments: DeploymentDetail[];
+  history?: ContainerHistory[];
+  onOpenCards?: (ids: string[]) => void;
+  filterPod?: string | null;
+  onClearPodFilter?: () => void;
+}
+
+export default function SuggestionPanel({ deployments, history, onOpenCards, filterPod, onClearPodFilter }: SuggestionPanelProps) {
   // --- Exclusion state (persisted) ---
   const [excludedKinds, setExcludedKinds] = useState<Set<SuggestionKind>>(new Set());
   const [showDropdown, setShowDropdown] = useState(false);
@@ -120,19 +144,36 @@ export default function SuggestionPanel({ deployments, history }: { deployments:
     });
   }
 
+  // --- Open/close state per group (lifted to survive re-renders) ---
+  const [openGroups, setOpenGroups] = useState<Map<string, boolean>>(new Map());
+
+  function isGroupOpen(resource: string): boolean {
+    return openGroups.get(resource) ?? true;
+  }
+
+  function toggleGroup(resource: string) {
+    setOpenGroups((prev) => {
+      const next = new Map(prev);
+      next.set(resource, !(prev.get(resource) ?? true));
+      return next;
+    });
+  }
+
   // --- Compute suggestions ---
   const allSuggestions = computeSuggestions(deployments, history);
   // 1) Remove excluded kinds
   const suggestions = allSuggestions.filter((s) => !excludedKinds.has(s.kind));
-  // 2) Apply chip filter (if any active)
+  // 2) Apply pod filter
+  const podFiltered = filterPod ? suggestions.filter((s) => s.pod === filterPod) : suggestions;
+  // 3) Apply chip filter (if any active)
   const filtered = activeKinds.size > 0
-    ? suggestions.filter((s) => activeKinds.has(s.kind))
-    : suggestions;
+    ? podFiltered.filter((s) => activeKinds.has(s.kind))
+    : podFiltered;
   const groups = groupSuggestions(filtered);
 
-  // Counts (after exclusion, before chip filter)
+  // Counts (after exclusion + pod filter, before chip filter)
   const counts: Record<SuggestionKind, number> = { danger: 0, warning: 0, overkill: 0 };
-  for (const s of suggestions) counts[s.kind]++;
+  for (const s of podFiltered) counts[s.kind]++;
 
   return (
     <aside className={styles.panel}>
@@ -144,9 +185,16 @@ export default function SuggestionPanel({ deployments, history }: { deployments:
             onClick={() => setShowDropdown((o) => !o)}
             title="Filter suggestion types"
           >⚙</button>
-          <span className={styles.total}>{suggestions.length}</span>
+          <span className={styles.total}>{podFiltered.length}</span>
         </div>
       </div>
+
+      {filterPod && (
+        <div className={styles.podFilter}>
+          <span className={styles.podFilterLabel}>⊕ {filterPod}</span>
+          <button className={styles.podFilterClear} onClick={onClearPodFilter} title="Show all pods">✕</button>
+        </div>
+      )}
 
       {showDropdown && (
         <div className={styles.dropdown}>
@@ -165,10 +213,10 @@ export default function SuggestionPanel({ deployments, history }: { deployments:
         </div>
       )}
 
-      {suggestions.length === 0 ? (
+      {podFiltered.length === 0 ? (
         <div className={styles.allGood}>
           <span className={styles.allGoodIcon}>✓</span>
-          <p>All resources look healthy</p>
+          <p>{filterPod ? `No suggestions for ${filterPod}` : "All resources look healthy"}</p>
         </div>
       ) : (
         <>
@@ -193,7 +241,14 @@ export default function SuggestionPanel({ deployments, history }: { deployments:
 
           <div className={styles.list}>
             {groups.map(({ resource, items }) => (
-              <SuggestionGroup key={resource} resource={resource} items={items} />
+              <SuggestionGroup
+                key={resource}
+                resource={resource}
+                items={items}
+                open={isGroupOpen(resource)}
+                onToggle={() => toggleGroup(resource)}
+                onOpenCards={onOpenCards}
+              />
             ))}
           </div>
         </>

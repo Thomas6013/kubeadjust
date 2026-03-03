@@ -3,9 +3,10 @@ interface SparklineProps {
   color: string;
   width?: number;
   height?: number;
+  onClick?: () => void;
 }
 
-export default function Sparkline({ points, color, width = 120, height = 32 }: SparklineProps) {
+export default function Sparkline({ points, color, width = 120, height = 32, onClick }: SparklineProps) {
   if (points.length < 2) return null;
 
   const min = Math.min(...points);
@@ -23,9 +24,11 @@ export default function Sparkline({ points, color, width = 120, height = 32 }: S
       width={width}
       height={height}
       viewBox={`0 0 ${width} ${height}`}
-      style={{ flexShrink: 0, opacity: 0.85 }}
+      style={{ flexShrink: 0, opacity: 0.85, cursor: onClick ? "zoom-in" : undefined }}
       aria-hidden="true"
+      onClick={onClick}
     >
+      {onClick && <title>Click to zoom</title>}
       <path d={d} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );

@@ -22,11 +22,33 @@ function gaugeColor(p: number): string {
   return "var(--green)";
 }
 
+function barColor(usePct: number | null, reqPct: number): string {
+  if (usePct !== null) {
+    if (usePct >= 90) return "var(--red)";
+    if (usePct >= 70) return "var(--orange)";
+    return "var(--green)";
+  }
+  if (reqPct >= 90) return "var(--red)";
+  if (reqPct >= 70) return "var(--orange)";
+  return "var(--accent)";
+}
+
+const TAINT_EFFECT_COLOR: Record<string, string> = {
+  NoSchedule:        "rgba(252,129,129,0.15)",
+  NoExecute:         "rgba(252,129,129,0.2)",
+  PreferNoSchedule:  "rgba(246,166,35,0.12)",
+};
+const TAINT_EFFECT_BORDER: Record<string, string> = {
+  NoSchedule:        "rgba(252,129,129,0.5)",
+  NoExecute:         "rgba(252,129,129,0.7)",
+  PreferNoSchedule:  "rgba(246,166,35,0.4)",
+};
+
 // SVG constants
 const SIZE = 130;
 const CX = SIZE / 2;
-const ROUT = 50; // outer ring: usage
-const RIN  = 33; // inner ring: allocated
+const ROUT = 50;
+const RIN  = 33;
 const COUT = 2 * Math.PI * ROUT;
 const CIN  = 2 * Math.PI * RIN;
 
@@ -51,9 +73,7 @@ function CircleGauge({ label, allocatable, requested, usage, isCPU }: GaugeProps
   return (
     <div className={styles.gauge}>
       <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} aria-hidden="true">
-        {/* Outer track */}
         <circle cx={CX} cy={CX} r={ROUT} fill="none" stroke="var(--surface2)" strokeWidth={8} />
-        {/* Outer arc: usage */}
         {usePct !== null && (
           <circle
             cx={CX} cy={CX} r={ROUT}
@@ -67,9 +87,7 @@ function CircleGauge({ label, allocatable, requested, usage, isCPU }: GaugeProps
             style={{ transition: "stroke-dashoffset 0.5s ease" }}
           />
         )}
-        {/* Inner track */}
         <circle cx={CX} cy={CX} r={RIN} fill="none" stroke="var(--surface2)" strokeWidth={6} />
-        {/* Inner arc: allocated */}
         <circle
           cx={CX} cy={CX} r={RIN}
           fill="none"
@@ -82,24 +100,10 @@ function CircleGauge({ label, allocatable, requested, usage, isCPU }: GaugeProps
           opacity={0.6}
           style={{ transition: "stroke-dashoffset 0.5s ease" }}
         />
-        {/* Center: percentage */}
-        <text
-          x={CX} y={CX - 7}
-          textAnchor="middle" dominantBaseline="middle"
-          fontSize={20} fontWeight={700}
-          fill={mainColor}
-          style={{ fontFamily: "inherit" }}
-        >
+        <text x={CX} y={CX - 7} textAnchor="middle" dominantBaseline="middle" fontSize={20} fontWeight={700} fill={mainColor} style={{ fontFamily: "inherit" }}>
           {mainPct}%
         </text>
-        {/* Center: sub-label */}
-        <text
-          x={CX} y={CX + 13}
-          textAnchor="middle" dominantBaseline="middle"
-          fontSize={10} fontWeight={600}
-          fill="var(--muted)"
-          style={{ fontFamily: "inherit" }}
-        >
+        <text x={CX} y={CX + 13} textAnchor="middle" dominantBaseline="middle" fontSize={10} fontWeight={600} fill="var(--muted)" style={{ fontFamily: "inherit" }}>
           {usePct !== null ? "USAGE" : "ALLOC"}
         </text>
       </svg>
@@ -127,6 +131,74 @@ function CircleGauge({ label, allocatable, requested, usage, isCPU }: GaugeProps
   );
 }
 
+// --- Pod horizontal bar ---
+
+interface PodBarProps {
+  pod: PodDetail;
+  allocCPU: number;
+  allocMem: number;
+}
+
+function PodBar({ pod, allocCPU, allocMem }: PodBarProps) {
+  let cpuReq = 0, cpuUse = 0, memReq = 0, memUse = 0;
+  let hasUsage = false;
+  for (const c of pod.containers) {
+    cpuReq += c.requests.cpu.millicores ?? 0;
+    memReq += c.requests.memory.bytes ?? 0;
+    if (c.usage) {
+      hasUsage = true;
+      cpuUse += c.usage.cpu.millicores ?? 0;
+      memUse += c.usage.memory.bytes ?? 0;
+    }
+  }
+
+  const cpuReqPct = allocCPU > 0 ? Math.min(100, (cpuReq / allocCPU) * 100) : 0;
+  const cpuUsePct = hasUsage && allocCPU > 0 ? Math.min(100, (cpuUse / allocCPU) * 100) : null;
+  const memReqPct = allocMem > 0 ? Math.min(100, (memReq / allocMem) * 100) : 0;
+  const memUsePct = hasUsage && allocMem > 0 ? Math.min(100, (memUse / allocMem) * 100) : null;
+
+  const cpuColor = barColor(cpuUsePct, cpuReqPct);
+  const memColor = barColor(memUsePct, memReqPct);
+
+  // Shorten pod name: strip last two random suffixes
+  const parts = pod.name.split("-");
+  const shortName = parts.length > 3 ? parts.slice(0, -2).join("-") : pod.name;
+
+  return (
+    <div className={styles.podBar} title={pod.namespace ? `${pod.namespace}/${pod.name}` : pod.name}>
+      <span className={styles.podBarName}>{shortName}</span>
+      <div className={styles.podBarBars}>
+        {/* CPU */}
+        <div className={styles.podBarRow}>
+          <span className={styles.podBarLabel}>CPU</span>
+          <div className={styles.podBarTrack}>
+            <div className={styles.podBarFill} style={{ width: `${cpuReqPct.toFixed(1)}%`, background: cpuColor + "55" }} />
+            {cpuUsePct !== null && (
+              <div className={styles.podBarUseFill} style={{ width: `${cpuUsePct.toFixed(1)}%`, background: cpuColor }} />
+            )}
+          </div>
+          <span className={styles.podBarPct} style={{ color: cpuUsePct !== null ? cpuColor : "var(--muted)" }}>
+            {cpuUsePct !== null ? `${cpuUsePct.toFixed(0)}%` : `${cpuReqPct.toFixed(0)}%`}
+          </span>
+        </div>
+        {/* MEM */}
+        <div className={styles.podBarRow}>
+          <span className={styles.podBarLabel}>MEM</span>
+          <div className={styles.podBarTrack}>
+            <div className={styles.podBarFill} style={{ width: `${memReqPct.toFixed(1)}%`, background: memColor + "55" }} />
+            {memUsePct !== null && (
+              <div className={styles.podBarUseFill} style={{ width: `${memUsePct.toFixed(1)}%`, background: memColor }} />
+            )}
+          </div>
+          <span className={styles.podBarPct} style={{ color: memUsePct !== null ? memColor : "var(--muted)" }}>
+            {memUsePct !== null ? `${memUsePct.toFixed(0)}%` : `${memReqPct.toFixed(0)}%`}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- Main card ---
 
 interface NodeCardProps {
@@ -141,21 +213,24 @@ export default function NodeCard({ node, token, openCards, onToggleCard }: NodeC
   const statusColor = isReady ? "var(--green)" : node.status === "NotReady" ? "var(--red)" : "var(--yellow)";
   const isControlPlane = node.roles.includes("control-plane");
 
-  // Local expand state for the pods section (no need to persist across page loads)
-  const [podsOpen, setPodsOpen] = useState(false);
   const [pods, setPods] = useState<PodDetail[] | null>(null);
   const [loadingPods, setLoadingPods] = useState(false);
+  const [podsOpen, setPodsOpen] = useState(false);
   const fetchedRef = useRef(false);
 
+  // Auto-fetch pods immediately when token is available
   useEffect(() => {
-    if (!podsOpen || !token || fetchedRef.current) return;
+    if (!token || fetchedRef.current) return;
     fetchedRef.current = true;
     setLoadingPods(true);
     api.nodePods(token, node.name)
       .then(setPods)
       .catch(() => setPods([]))
       .finally(() => setLoadingPods(false));
-  }, [podsOpen, token, node.name]);
+  }, [token, node.name]);
+
+  const allocCPU = node.allocatable.cpu.millicores ?? 0;
+  const allocMem = node.allocatable.memory.bytes ?? 0;
 
   return (
     <div className={`${styles.card} ${!isReady ? styles.notReady : ""}`}>
@@ -176,57 +251,92 @@ export default function NodeCard({ node, token, openCards, onToggleCard }: NodeC
         </span>
       </div>
 
+      {/* Taints */}
+      {(node.taints?.length ?? 0) > 0 && (
+        <div className={styles.taints}>
+          {node.taints!.map((t, i) => {
+            const taintLabel = t.value ? `${t.key}=${t.value}` : t.key;
+            const shortKey = t.key.includes("/") ? t.key.split("/").pop()! : t.key;
+            return (
+              <span
+                key={i}
+                className={styles.taintBadge}
+                style={{
+                  background: TAINT_EFFECT_COLOR[t.effect] ?? "var(--surface2)",
+                  borderColor: TAINT_EFFECT_BORDER[t.effect] ?? "var(--border)",
+                }}
+                title={`${taintLabel} · ${t.effect}`}
+              >
+                ⚠ {shortKey}{t.value ? `=${t.value}` : ""} · {t.effect}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       {/* Resources */}
       {isReady ? (
         <div className={styles.resources}>
-          <CircleGauge
-            label="CPU"
-            allocatable={node.allocatable.cpu}
-            requested={node.requested.cpu}
-            usage={node.usage?.cpu}
-            isCPU={true}
-          />
-          <CircleGauge
-            label="Memory"
-            allocatable={node.allocatable.memory}
-            requested={node.requested.memory}
-            usage={node.usage?.memory}
-            isCPU={false}
-          />
+          <CircleGauge label="CPU" allocatable={node.allocatable.cpu} requested={node.requested.cpu} usage={node.usage?.cpu} isCPU={true} />
+          <CircleGauge label="Memory" allocatable={node.allocatable.memory} requested={node.requested.memory} usage={node.usage?.memory} isCPU={false} />
         </div>
       ) : (
         <div className={styles.notReadyMsg}>Node is not ready — no resource data available</div>
       )}
 
-      {/* Pod drill-down — only shown when token is available */}
+      {/* Pod bars — auto-visible */}
       {token && (
-        <div className={styles.podsSection}>
-          <button
-            className={styles.podsToggle}
-            onClick={() => setPodsOpen((v) => !v)}
-            aria-expanded={podsOpen}
-          >
-            <span className={styles.podsArrow}>{podsOpen ? "▾" : "▸"}</span>
-            Pods ({node.podCount})
-          </button>
+        <div className={styles.podBarsSection}>
+          {loadingPods && <p className={styles.podsLoading}>Loading pods…</p>}
+          {pods && pods.length > 0 && (
+            <>
+              <div className={styles.podBarsHeader}>
+                <span className={styles.podBarsTitle}>Pods by resource use</span>
+                <span className={styles.podBarsLegend}>
+                  <span className={styles.legendReq}>■ req</span>
+                  <span className={styles.legendUse}>■ use</span>
+                </span>
+              </div>
+              <div className={styles.podBarsList}>
+                {pods.slice(0, 25).map((pod) => (
+                  <PodBar key={pod.name} pod={pod} allocCPU={allocCPU} allocMem={allocMem} />
+                ))}
+                {pods.length > 25 && (
+                  <p className={styles.podsLoading}>+{pods.length - 25} more…</p>
+                )}
+              </div>
+            </>
+          )}
+          {pods && pods.length === 0 && !loadingPods && (
+            <p className={styles.podsLoading}>No active pods on this node.</p>
+          )}
 
-          {podsOpen && (
-            <div className={styles.podList}>
-              {loadingPods ? (
-                <p className={styles.podsLoading}>Loading pods…</p>
-              ) : !pods || pods.length === 0 ? (
-                <p className={styles.podsLoading}>No active pods on this node.</p>
-              ) : pods.map((pod) => (
-                <PodRow
-                  key={`${pod.namespace}/${pod.name}`}
-                  pod={pod}
-                  namespace={pod.namespace ?? ""}
-                  prometheusAvailable={false}
-                  token={token}
-                  openCards={openCards}
-                  onToggleCard={onToggleCard}
-                />
-              ))}
+          {/* Detailed view toggle (PodRow with container breakdown) */}
+          {pods && pods.length > 0 && (
+            <div className={styles.podsSection}>
+              <button
+                className={styles.podsToggle}
+                onClick={() => setPodsOpen((v) => !v)}
+                aria-expanded={podsOpen}
+              >
+                <span className={styles.podsArrow}>{podsOpen ? "▾" : "▸"}</span>
+                Container details
+              </button>
+              {podsOpen && (
+                <div className={styles.podList}>
+                  {pods.map((pod) => (
+                    <PodRow
+                      key={`${pod.namespace}/${pod.name}`}
+                      pod={pod}
+                      namespace={pod.namespace ?? ""}
+                      prometheusAvailable={false}
+                      token={token}
+                      openCards={openCards}
+                      onToggleCard={onToggleCard}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

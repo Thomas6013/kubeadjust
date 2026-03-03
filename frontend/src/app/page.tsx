@@ -52,18 +52,22 @@ export default function LoginPage() {
         <p className={styles.subtitle}>Resource limits &amp; requests dashboard</p>
 
         <form onSubmit={handleLogin} className={styles.form}>
-          {clusters.length > 1 && (
+          {clusters.length > 0 && (
             <>
-              <label htmlFor="cluster">Cluster</label>
-              <select
-                id="cluster"
-                value={selectedCluster}
-                onChange={(e) => setSelectedCluster(e.target.value)}
-              >
+              <label>Cluster</label>
+              <div className={styles.clusterGrid}>
                 {clusters.map((c) => (
-                  <option key={c.name} value={c.name}>{c.name}</option>
+                  <button
+                    key={c.name}
+                    type="button"
+                    className={`${styles.clusterCard} ${selectedCluster === c.name ? styles.clusterCardActive : ""}`}
+                    onClick={() => setSelectedCluster(c.name)}
+                  >
+                    <span className={styles.clusterIcon}>⎈</span>
+                    {c.name}
+                  </button>
                 ))}
-              </select>
+              </div>
             </>
           )}
           <label htmlFor="token">Service Account Token</label>

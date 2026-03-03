@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { api, type NamespaceItem, type DeploymentDetail, type NodeOverview, type TimeRange, type ContainerHistory } from "@/lib/api";
+import { api, type ClusterItem, type NamespaceItem, type DeploymentDetail, type NodeOverview, type TimeRange, type ContainerHistory } from "@/lib/api";
 import DeploymentCard from "@/components/DeploymentCard";
 import SuggestionPanel from "@/components/SuggestionPanel";
 import NodeCard from "@/components/NodeCard";
@@ -44,11 +44,22 @@ export default function DashboardPage() {
   // Opened deployments/pods (persisted in sessionStorage)
   const [openCards, setOpenCards] = useState<Set<string>>(new Set());
 
+  // Multi-cluster
   const [cluster, setCluster] = useState("");
+  const [clusters, setClusters] = useState<ClusterItem[]>([]);
+  const [showClusterMenu, setShowClusterMenu] = useState(false);
+
   const [autoRefresh, setAutoRefresh] = useState<AutoRefresh>("off");
   const [error, setError] = useState("");
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [restored, setRestored] = useState(false);
+
+  // Workload search
+  const [workloadSearch, setWorkloadSearch] = useState("");
+
+  // Pod filter for suggestion panel
+  const [filterPod, setFilterPod] = useState<string | null>(null);
+
 
   // Stable refs for the auto-refresh interval (avoids stale closures)
   const viewRef = useRef(view);
@@ -84,6 +95,12 @@ export default function DashboardPage() {
     } catch { /* ignore */ }
     setRestored(true);
   }, [router]);
+
+  // Fetch available clusters (for switcher)
+  useEffect(() => {
+    api.clusters().then(setClusters).catch(() => { /* best-effort */ });
+  }, []);
+
 
   // Keep refs in sync
   useEffect(() => { viewRef.current = view; }, [view]);
@@ -194,6 +211,14 @@ export default function DashboardPage() {
     router.push("/");
   }
 
+  function handleClusterSwitch(name: string) {
+    if (name === cluster) { setShowClusterMenu(false); return; }
+    sessionStorage.setItem("kube-cluster", name);
+    sessionStorage.removeItem("kubeadjust:selectedNs");
+    setShowClusterMenu(false);
+    window.location.reload();
+  }
+
   function hideNamespace(name: string) {
     setExcludedNs((prev) => {
       const next = new Set(prev);
@@ -208,6 +233,15 @@ export default function DashboardPage() {
     }
   }
 
+  function handleOpenCards(ids: string[]) {
+    setOpenCards((prev) => {
+      const toAdd = ids.filter((id) => !prev.has(id));
+      if (toAdd.length === 0) return prev;
+      const next = new Set(prev);
+      for (const id of toAdd) next.add(id);
+      return next;
+    });
+  }
 
   const [nsSearch, setNsSearch] = useState("");
 
@@ -220,6 +254,12 @@ export default function DashboardPage() {
     .filter((ns) => excludedNs.has(ns.name))
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  const visibleDeployments = deployments.filter((dep) =>
+    workloadSearch === "" ||
+    dep.name.toLowerCase().includes(workloadSearch.toLowerCase()) ||
+    dep.pods?.some((p) => p.name.toLowerCase().includes(workloadSearch.toLowerCase()))
+  );
+
   const loading = view === "nodes" ? loadingNodes : loadingDeps;
 
   return (
@@ -227,7 +267,35 @@ export default function DashboardPage() {
       <header className={styles.topbar}>
         <div className={styles.brand}>
           <span>⎈</span> KubeAdjust
-          {cluster && <span className={styles.clusterBadge}>{cluster}</span>}
+          {cluster && (
+            clusters.length > 1 ? (
+              <div className={styles.clusterSwitcher}>
+                <button
+                  className={styles.clusterSwitchBtn}
+                  onClick={() => setShowClusterMenu((o) => !o)}
+                  title="Switch cluster"
+                >
+                  <span className={styles.clusterBadge}>{cluster}</span>
+                  <span className={styles.clusterChevron}>{showClusterMenu ? "▴" : "▾"}</span>
+                </button>
+                {showClusterMenu && (
+                  <div className={styles.clusterMenu}>
+                    {clusters.map((c) => (
+                      <button
+                        key={c.name}
+                        className={`${styles.clusterMenuItem} ${c.name === cluster ? styles.clusterMenuItemActive : ""}`}
+                        onClick={() => handleClusterSwitch(c.name)}
+                      >
+                        ⎈ {c.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <span className={styles.clusterBadge}>{cluster}</span>
+            )
+          )}
         </div>
         <div className={styles.actions}>
           {lastRefresh && <span className={styles.refreshed}>Refreshed {lastRefresh.toLocaleTimeString()}</span>}
@@ -394,13 +462,24 @@ export default function DashboardPage() {
                   ⚠ Metrics server unavailable — CPU/memory usage will not be displayed.
                 </p>
               )}
+              {!loadingDeps && deployments.length > 0 && (
+                <input
+                  className={styles.workloadSearch}
+                  type="text"
+                  placeholder="Search workloads or pods…"
+                  value={workloadSearch}
+                  onChange={(e) => setWorkloadSearch(e.target.value)}
+                />
+              )}
               {loadingDeps ? (
                 <p className={styles.muted}>Loading deployments…</p>
-              ) : deployments.length === 0 ? (
-                <p className={styles.muted}>No workloads in this namespace.</p>
+              ) : visibleDeployments.length === 0 ? (
+                <p className={styles.muted}>
+                  {workloadSearch ? `No workloads matching "${workloadSearch}".` : "No workloads in this namespace."}
+                </p>
               ) : (
                 <div className={styles.depList}>
-                  {deployments.map((dep) => (
+                  {visibleDeployments.map((dep) => (
                     <DeploymentCard
                       key={dep.name}
                       dep={dep}
@@ -414,6 +493,8 @@ export default function DashboardPage() {
                         if (next.has(id)) next.delete(id); else next.add(id);
                         return next;
                       })}
+                      onFilterByPod={(pod) => setFilterPod(pod)}
+                      activePodFilter={filterPod}
                     />
                   ))}
                 </div>
@@ -423,7 +504,15 @@ export default function DashboardPage() {
         </main>
 
         {/* Suggestions — only in namespace view */}
-        {view === "namespaces" && <SuggestionPanel deployments={deployments} history={nsHistory} />}
+        {view === "namespaces" && (
+          <SuggestionPanel
+            deployments={deployments}
+            history={nsHistory}
+            onOpenCards={handleOpenCards}
+            filterPod={filterPod}
+            onClearPodFilter={() => setFilterPod(null)}
+          />
+        )}
       </div>
     </div>
   );
