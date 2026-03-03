@@ -27,8 +27,8 @@ export default function Sparkline({ points, color, width = 120, height = 32, onC
       style={{ flexShrink: 0, opacity: 0.85, cursor: onClick ? "zoom-in" : undefined }}
       aria-hidden="true"
       onClick={onClick}
-      title={onClick ? "Click to zoom" : undefined}
     >
+      {onClick && <title>Click to zoom</title>}
       <path d={d} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
