@@ -10,7 +10,7 @@ KubeAdjust is a **read-only Kubernetes dashboard** (Go backend + Next.js fronten
 
 - **Backend**: Go 1.22, Chi v5 router, 3 production dependencies (chi, cors, errgroup), raw HTTP K8s API (no client-go)
 - **Frontend**: Next.js 16, React 19, TypeScript 5, no UI library, no charting library
-- **Infra**: Helm chart (v0.14.0), multi-stage Docker builds (amd64 + arm64), GitHub Actions CI with linting + tests + SBOM + cosign
+- **Infra**: Helm chart (v0.15.0), multi-stage Docker builds (amd64 + arm64), GitHub Actions CI with linting + tests + SBOM + cosign
 
 ---
 
@@ -188,6 +188,17 @@ _(All High priority issues resolved in v0.14.0 — see Resolved section below.)_
 
 ### Resolved
 
+- ~~Taint display on node view~~ — RESOLVED (v0.15.0, colored badges per effect in node card header).
+- ~~No per-pod resource overview on node view~~ — RESOLVED (v0.15.0, auto-fetch + horizontal bar diagram per pod, no click needed).
+- ~~No sparkline zoom~~ — RESOLVED (v0.15.0, click sparkline → modal with time axis, min/max, current).
+- ~~No pod filter for suggestions~~ — RESOLVED (v0.15.0, ⊕ button on pod row + filter bar in SuggestionPanel).
+- ~~Clicking suggestion doesn't open pod row~~ — RESOLVED (v0.15.0, opens dep card + pod row, scrolls to container).
+- ~~Native `<select>` for cluster list on login page~~ — RESOLVED (v0.15.0, card grid buttons).
+- ~~No cluster switcher on dashboard~~ — RESOLVED (v0.15.0, dropdown on cluster badge in topbar).
+- ~~No workload/pod search in namespace view~~ — RESOLVED (v0.15.0, search input above deployment list).
+- ~~SuggestionGroup open/close state resets on namespace switch / auto-refresh~~ — RESOLVED (v0.15.0, state lifted to parent as `Map<string, boolean>`).
+- ~~Clicking suggestion item doesn't open target DeploymentCard~~ — RESOLVED (v0.15.0, `onOpenCard` callback).
+- ~~No suggestion when request is too low vs actual usage~~ — RESOLVED (v0.15.0, "request too low" warning/danger when P95 > request × 1.1).
 - ~~CSP uses `'unsafe-inline'` and `'unsafe-eval'`~~ — RESOLVED (v0.14.0, nonce-based CSP via `src/proxy.ts`).
 - ~~No path validation in frontend proxy~~ — RESOLVED (v0.14.0, rejects `..`, `//`, null bytes).
 - ~~No NetworkPolicy in Helm chart~~ — RESOLVED (v0.14.0, optional `networkPolicy.enabled`).

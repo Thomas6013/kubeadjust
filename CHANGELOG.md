@@ -4,6 +4,24 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.15.0] - 2026-03-03
+
+### Added
+- **Cluster card selector on login page** — replaces the native `<select>` dropdown with a styled button grid; each configured cluster is shown as a card with visual selection feedback. Works even when only one cluster is configured.
+- **Cluster switcher in dashboard topbar** — when more than one cluster is configured, the cluster badge becomes a clickable button with a dropdown to switch clusters without going back to the login page. Switching reloads the dashboard cleanly.
+- **Workload/pod search in namespace view** — a search input above the deployment list filters workloads by deployment name or pod name in real time.
+- **"Request too low" suggestion** — new `warning`/`danger` suggestion in `SuggestionPanel` when P95 usage exceeds the request by more than 10% (danger when ≥ 2×). Helps catch pods that are regularly bursting above their guaranteed resources and risk throttling or eviction. Only fires when not already flagged as overkill.
+- **Taint labels on node cards** — node taints (key, optional value, effect) are displayed as small badges under the node name. Color-coded by effect: `NoSchedule`/`NoExecute` in red, `PreferNoSchedule` in orange.
+- **Pod resource bar diagram on node view** — each node card now auto-loads its pods and displays a compact horizontal bar per pod, showing CPU and memory request (transparent fill) vs. live usage (solid fill) as a percentage of node allocatable. No click required; up to 25 pods shown. A "Container details" toggle reveals the full `PodRow` breakdown.
+- **Sparkline zoom modal** — clicking any Prometheus sparkline (CPU or memory history) opens a modal with a larger chart, time labels on the x-axis, and min/max/current statistics. Close with `Esc` or click outside.
+- **Pod filter in suggestion panel** — each pod row now has a `⊕` button that filters the suggestion panel to show only that pod's suggestions. A filter indicator bar appears at the top of the panel with a clear button. Clicking a suggestion item now opens both the deployment card and the pod row before scrolling to the container.
+
+### Fixed
+- **SuggestionGroup open/close state reset** — open/close state of suggestion groups was local to each `SuggestionGroup` component and silently reset on namespace switch, auto-refresh, or chip filter change. State is now lifted to `SuggestionPanel` as a `Map<string, boolean>`, preserving each group's state across re-renders.
+- **Suggestion click does not open deployment card** — clicking a suggestion item now programmatically opens the target `DeploymentCard` and `PodRow` (adds both to `openCards`) before scrolling to the container block.
+
+---
+
 ## [0.14.0] - 2026-03-02
 
 ### Added

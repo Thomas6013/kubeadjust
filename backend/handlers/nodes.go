@@ -83,6 +83,13 @@ func ListNodes(w http.ResponseWriter, r *http.Request) {
 		// Node status from conditions
 		overview.Status = resources.NodeStatus(node.Status.Conditions)
 
+		// Taints
+		for _, t := range node.Spec.Taints {
+			overview.Taints = append(overview.Taints, resources.NodeTaint{
+				Key: t.Key, Value: t.Value, Effect: t.Effect,
+			})
+		}
+
 		// Aggregated pod data
 		if a := agg[node.Metadata.Name]; a != nil {
 			overview.PodCount = a.podCount

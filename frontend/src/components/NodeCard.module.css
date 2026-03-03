@@ -124,6 +124,26 @@
   color: var(--blue-over);
 }
 
+/* Taints */
+.taints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.taintBadge {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: monospace;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: default;
+  color: var(--text);
+}
+
 /* NotReady state */
 .notReadyMsg {
   font-size: 13px;
@@ -131,11 +151,128 @@
   padding: 8px 0;
 }
 
-/* Pod drill-down section */
-.podsSection {
+/* Pod bars section */
+.podBarsSection {
   border-top: 1px solid var(--border);
   padding-top: 12px;
   margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.podBarsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.podBarsTitle {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.podBarsLegend {
+  display: flex;
+  gap: 8px;
+  font-size: 9px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.legendReq { opacity: 0.5; }
+.legendUse { opacity: 0.85; }
+
+.podBarsList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.podBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.podBarName {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--muted);
+  width: 110px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.podBarBars {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.podBarRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.podBarLabel {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--muted);
+  width: 24px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.podBarTrack {
+  flex: 1;
+  height: 6px;
+  background: var(--surface2);
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+}
+
+.podBarFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.podBarUseFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.podBarPct {
+  font-size: 9px;
+  font-weight: 700;
+  width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pod drill-down section (detail toggle) */
+.podsSection {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
 }
 
 .podsToggle {
