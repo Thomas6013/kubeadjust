@@ -60,6 +60,7 @@ export default function DashboardPage() {
   // Pod filter for suggestion panel
   const [filterPod, setFilterPod] = useState<string | null>(null);
 
+
   // Stable refs for the auto-refresh interval (avoids stale closures)
   const viewRef = useRef(view);
   const selectedNsRef = useRef(selectedNs);
@@ -99,6 +100,7 @@ export default function DashboardPage() {
   useEffect(() => {
     api.clusters().then(setClusters).catch(() => { /* best-effort */ });
   }, []);
+
 
   // Keep refs in sync
   useEffect(() => { viewRef.current = view; }, [view]);

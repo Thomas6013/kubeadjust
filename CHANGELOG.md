@@ -22,6 +22,7 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+
 ## [0.14.0] - 2026-03-02
 
 ### Added

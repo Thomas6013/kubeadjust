@@ -51,7 +51,7 @@ frontend/
   next.config.mjs          # Standalone output, security headers (CSP handled by proxy.ts)
 
 helm/kubeadjust/
-  Chart.yaml               # Source of truth for version (appVersion: "0.14.0")
+  Chart.yaml               # Source of truth for version (appVersion: "0.15.0")
   values.yaml              # Defaults: 1 replica, 50m CPU, 64/128Mi mem
   templates/
     deployment.yaml        # Backend + frontend deployments, FQDN BACKEND_URL, security contexts
