@@ -398,20 +398,6 @@ export default function DashboardPage() {
                       onClick={() => { setView("namespaces"); setSelectedNs(ns.name); }}
                     >
                       <span className={styles.nsBtnName}>{ns.name}</span>
-                      {st && (st.cpuRatio > 0 || st.memRatio > 0) && (
-                        <span className={styles.nsRatios}>
-                          {st.cpuRatio > 0 && (
-                            <span className={styles.nsRatio} style={{ color: st.cpuRatio > 5 ? "var(--red)" : st.cpuRatio > 2 ? "var(--orange)" : "var(--muted)" }}>
-                              CPU ×{st.cpuRatio.toFixed(1)}
-                            </span>
-                          )}
-                          {st.memRatio > 0 && (
-                            <span className={styles.nsRatio} style={{ color: st.memRatio > 5 ? "var(--red)" : st.memRatio > 2 ? "var(--orange)" : "var(--muted)" }}>
-                              MEM ×{st.memRatio.toFixed(1)}
-                            </span>
-                          )}
-                        </span>
-                      )}
                     </button>
                     <button
                       className={styles.nsHide}
@@ -487,6 +473,24 @@ export default function DashboardPage() {
                 <span className={styles.count}>
                   {deployments.length} workload{deployments.length !== 1 ? "s" : ""}
                 </span>
+                {(() => {
+                  const st = nsStats.get(selectedNs);
+                  if (!st || (st.cpuRatio === 0 && st.memRatio === 0)) return null;
+                  return (
+                    <span className={styles.nsRatios}>
+                      {st.cpuRatio > 0 && (
+                        <span className={styles.nsRatio} style={{ color: st.cpuRatio > 5 ? "var(--red)" : st.cpuRatio > 2 ? "var(--orange)" : "var(--muted)" }}>
+                          CPU ×{st.cpuRatio.toFixed(1)}
+                        </span>
+                      )}
+                      {st.memRatio > 0 && (
+                        <span className={styles.nsRatio} style={{ color: st.memRatio > 5 ? "var(--red)" : st.memRatio > 2 ? "var(--orange)" : "var(--muted)" }}>
+                          MEM ×{st.memRatio.toFixed(1)}
+                        </span>
+                      )}
+                    </span>
+                  );
+                })()}
               </div>
               {error && <p className={styles.error}>{error}</p>}
               {!metricsAvailable && !loadingDeps && (

@@ -176,6 +176,13 @@ function PodBar({ pod, allocCPU, allocMem }: PodBarProps) {
   const parts = pod.name.split("-");
   const shortName = parts.length > 3 ? parts.slice(0, -2).join("-") : pod.name;
 
+  const cpuTooltip = cpuUsePct !== null
+    ? `req: ${fmtCPU({ raw: "", millicores: cpuReq })} (${cpuReqPct.toFixed(0)}%) · use: ${fmtCPU({ raw: "", millicores: cpuUse })} (${cpuUsePct.toFixed(0)}%)`
+    : `req: ${fmtCPU({ raw: "", millicores: cpuReq })} (${cpuReqPct.toFixed(0)}%) · no usage data`;
+  const memTooltip = memUsePct !== null
+    ? `req: ${fmtMemory({ raw: "", bytes: memReq })} (${memReqPct.toFixed(0)}%) · use: ${fmtMemory({ raw: "", bytes: memUse })} (${memUsePct.toFixed(0)}%)`
+    : `req: ${fmtMemory({ raw: "", bytes: memReq })} (${memReqPct.toFixed(0)}%) · no usage data`;
+
   return (
     <div className={styles.podBar} title={pod.namespace ? `${pod.namespace}/${pod.name}` : pod.name}>
       <span className={styles.podBarName}>{shortName}</span>
@@ -183,7 +190,7 @@ function PodBar({ pod, allocCPU, allocMem }: PodBarProps) {
         {/* CPU */}
         <div className={styles.podBarRow}>
           <span className={styles.podBarLabel}>CPU</span>
-          <div className={styles.podBarTrack}>
+          <div className={styles.podBarTrack} title={cpuTooltip}>
             <div className={styles.podBarFill} style={{ width: `${cpuReqPct.toFixed(1)}%`, background: cpuColor + "55" }} />
             {cpuUsePct !== null && (
               <div className={styles.podBarUseFill} style={{ width: `${cpuUsePct.toFixed(1)}%`, background: cpuColor }} />
@@ -196,7 +203,7 @@ function PodBar({ pod, allocCPU, allocMem }: PodBarProps) {
         {/* MEM */}
         <div className={styles.podBarRow}>
           <span className={styles.podBarLabel}>MEM</span>
-          <div className={styles.podBarTrack}>
+          <div className={styles.podBarTrack} title={memTooltip}>
             <div className={styles.podBarFill} style={{ width: `${memReqPct.toFixed(1)}%`, background: memColor + "55" }} />
             {memUsePct !== null && (
               <div className={styles.podBarUseFill} style={{ width: `${memUsePct.toFixed(1)}%`, background: memColor }} />
@@ -262,10 +269,22 @@ export default function NodeCard({ node, token }: NodeCardProps) {
             {r}
           </span>
         ))}
+        {node.diskPressure && <span className={styles.pressureBadge} title="DiskPressure condition is True">💾 DiskPressure</span>}
+        {node.memoryPressure && <span className={styles.pressureBadge} title="MemoryPressure condition is True">⚠ MemPressure</span>}
+        {node.pidPressure && <span className={styles.pressureBadge} title="PIDPressure condition is True">⚠ PIDPressure</span>}
         <span className={styles.pods} title="Running pods / max">
           {node.podCount} / {node.maxPods} pods
         </span>
       </div>
+      {/* Node info line */}
+      {(node.kubeletVersion || node.age) && (
+        <div className={styles.nodeInfo}>
+          {node.age && <span title="Node age">⏱ {node.age}</span>}
+          {node.kubeletVersion && <span title="Kubelet version">kubelet {node.kubeletVersion}</span>}
+          {node.kernelVersion && <span title="Kernel version">kernel {node.kernelVersion}</span>}
+          {node.osImage && <span title="OS image" className={styles.nodeInfoOs}>{node.osImage}</span>}
+        </div>
+      )}
 
       {/* Taints */}
       {(node.taints?.length ?? 0) > 0 && (
@@ -319,15 +338,11 @@ export default function NodeCard({ node, token }: NodeCardProps) {
 
               {pods && pods.length > 0 && (
                 <>
-                  <div className={styles.podBarsHeader}>
-                    <span className={styles.podBarsLegend}>
-                      <span className={styles.legendReq}>■ req</span>
-                      <span className={styles.legendUse}>■ use</span>
-                    </span>
-                    {totalPages > 1 && (
+                  {totalPages > 1 && (
+                    <div className={styles.podBarsHeader}>
                       <span className={styles.pageInfo}>{page + 1} / {totalPages}</span>
-                    )}
-                  </div>
+                    </div>
+                  )}
                   <div className={styles.podBarsList}>
                     {pagePods.map((pod) => (
                       <PodBar key={pod.name} pod={pod} allocCPU={allocCPU} allocMem={allocMem} />

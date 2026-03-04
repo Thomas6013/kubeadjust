@@ -77,17 +77,26 @@ type NodeTaint struct {
 }
 
 type NodeOverview struct {
-	Name        string         `json:"name"`
-	Status      string         `json:"status"`
-	Roles       []string       `json:"roles"`
-	Taints      []NodeTaint    `json:"taints,omitempty"`
-	Capacity    NodeResources  `json:"capacity"`
-	Allocatable NodeResources  `json:"allocatable"`
-	Requested   NodeResources  `json:"requested"`
-	Limited     NodeResources  `json:"limited"`
-	Usage       *NodeResources `json:"usage"`
-	PodCount    int            `json:"podCount"`
-	MaxPods     int            `json:"maxPods"`
+	Name           string         `json:"name"`
+	Status         string         `json:"status"`
+	Roles          []string       `json:"roles"`
+	Taints         []NodeTaint    `json:"taints,omitempty"`
+	Capacity       NodeResources  `json:"capacity"`
+	Allocatable    NodeResources  `json:"allocatable"`
+	Requested      NodeResources  `json:"requested"`
+	Limited        NodeResources  `json:"limited"`
+	Usage          *NodeResources `json:"usage"`
+	PodCount       int            `json:"podCount"`
+	MaxPods        int            `json:"maxPods"`
+	// Node info
+	KubeletVersion string `json:"kubeletVersion,omitempty"`
+	KernelVersion  string `json:"kernelVersion,omitempty"`
+	OSImage        string `json:"osImage,omitempty"`
+	Age            string `json:"age,omitempty"`
+	// Pressure conditions
+	DiskPressure   bool `json:"diskPressure"`
+	MemoryPressure bool `json:"memoryPressure"`
+	PIDPressure    bool `json:"pidPressure"`
 }
 
 // PodStorageStats holds kubelet summary stats for a pod.

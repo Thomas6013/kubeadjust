@@ -197,15 +197,16 @@
 
 .nsRatios {
   display: flex;
-  gap: 6px;
+  gap: 8px;
+  align-items: center;
+  margin-left: 4px;
 }
 
 .nsRatio {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  font-family: monospace;
-  letter-spacing: 0.02em;
-  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.9;
 }
 
 .main {
@@ -249,7 +250,7 @@
   gap: 12px;
 }
 
-.nodeBtn { font-size: 13px !important; }
+.nodeBtn { flex-direction: row; align-items: center; gap: 6px; padding: 7px 10px; }
 .nodeBadge {
   margin-left: auto;
   font-size: 11px;

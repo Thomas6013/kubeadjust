@@ -57,6 +57,35 @@
   margin-left: auto;
 }
 
+.pressureBadge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--red);
+  background: rgba(252, 129, 129, 0.12);
+  border: 1px solid rgba(252, 129, 129, 0.4);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
+.nodeInfo {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: monospace;
+  margin-top: -6px;
+}
+
+.nodeInfoOs {
+  opacity: 0.6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
 /* Resources — two gauges side by side */
 .resources {
   display: grid;

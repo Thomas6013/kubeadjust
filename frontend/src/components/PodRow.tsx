@@ -87,16 +87,18 @@ export default function PodRow({
           {pod.containers.length} container{pod.containers.length !== 1 ? "s" : ""}
         </span>
         {onFilterByPod && (
-          <span
+          <button
+            type="button"
             className={`${styles.filterBtn} ${isFiltered ? styles.filterBtnActive : ""}`}
             title={isFiltered ? "Clear pod filter" : "Show only this pod's suggestions"}
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               onFilterByPod(isFiltered ? null : pod.name);
             }}
           >
             {isFiltered ? "⊗" : "⊕"}
-          </span>
+          </button>
         )}
       </button>
 

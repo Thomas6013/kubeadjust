@@ -252,6 +252,12 @@ type PVCRef struct {
 type NodeList struct {
 	Items []Node `json:"items"`
 }
+type NodeInfo struct {
+	KubeletVersion  string `json:"kubeletVersion"`
+	KernelVersion   string `json:"kernelVersion"`
+	OSImage         string `json:"osImage"`
+}
+
 type Node struct {
 	Metadata ObjectMeta `json:"metadata"`
 	Spec     struct {
@@ -261,6 +267,7 @@ type Node struct {
 		Capacity    map[string]string `json:"capacity"`
 		Allocatable map[string]string `json:"allocatable"`
 		Conditions  []NodeCondition   `json:"conditions"`
+		NodeInfo    NodeInfo          `json:"nodeInfo"`
 	} `json:"status"`
 }
 type NodeCondition struct {
@@ -298,11 +305,12 @@ type ContainerUsage struct {
 }
 
 type ObjectMeta struct {
-	Name            string            `json:"name"`
-	Namespace       string            `json:"namespace"`
-	Labels          map[string]string `json:"labels"`
-	UID             string            `json:"uid"`
-	OwnerReferences []OwnerReference  `json:"ownerReferences,omitempty"`
+	Name              string            `json:"name"`
+	Namespace         string            `json:"namespace"`
+	Labels            map[string]string `json:"labels"`
+	UID               string            `json:"uid"`
+	OwnerReferences   []OwnerReference  `json:"ownerReferences,omitempty"`
+	CreationTimestamp string            `json:"creationTimestamp,omitempty"`
 }
 
 type OwnerReference struct {
