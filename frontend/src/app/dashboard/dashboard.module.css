@@ -177,16 +177,36 @@
   background: transparent;
   color: var(--text);
   text-align: left;
-  padding: 7px 10px;
+  padding: 5px 10px;
   border-radius: 6px;
   font-size: 13px;
   font-family: monospace;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+.nsBtn:hover { background: var(--surface2); }
+.nsBtn.active { background: rgba(108, 142, 247, 0.15); color: var(--accent); }
+
+.nsBtnName {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.nsBtn:hover { background: var(--surface2); }
-.nsBtn.active { background: rgba(108, 142, 247, 0.15); color: var(--accent); }
+
+.nsRatios {
+  display: flex;
+  gap: 6px;
+}
+
+.nsRatio {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: monospace;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+}
 
 .main {
   flex: 1;

@@ -90,6 +90,7 @@ func main() {
 
 			// Namespaces
 			r.Get("/namespaces", handlers.ListNamespaces)
+			r.Get("/namespaces/stats", handlers.GetNamespaceStats)
 
 			// Deployments + pod resource details
 			r.Get("/namespaces/{namespace}/deployments", handlers.ListDeployments)

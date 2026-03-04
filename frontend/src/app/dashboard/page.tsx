@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { api, type ClusterItem, type NamespaceItem, type DeploymentDetail, type NodeOverview, type TimeRange, type ContainerHistory } from "@/lib/api";
+import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type TimeRange, type ContainerHistory } from "@/lib/api";
 import DeploymentCard from "@/components/DeploymentCard";
 import SuggestionPanel from "@/components/SuggestionPanel";
 import NodeCard from "@/components/NodeCard";
@@ -21,6 +21,7 @@ export default function DashboardPage() {
 
   // Namespace view state
   const [namespaces, setNamespaces] = useState<NamespaceItem[]>([]);
+  const [nsStats, setNsStats] = useState<Map<string, NamespaceStats>>(new Map());
   const [selectedNs, setSelectedNs] = useState<string>("");
   const [deployments, setDeployments] = useState<DeploymentDetail[]>([]);
   const [metricsAvailable, setMetricsAvailable] = useState(true);
@@ -129,6 +130,10 @@ export default function DashboardPage() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoadingNs(false));
+    // Fetch namespace stats in background (best-effort)
+    api.namespaceStats(token)
+      .then((stats) => setNsStats(new Map(stats.map((s) => [s.name, s]))))
+      .catch(() => { /* non-fatal */ });
   }, [token]);
 
   const loadDeployments = useCallback(async (ns: string, silent = false) => {
@@ -233,15 +238,31 @@ export default function DashboardPage() {
     }
   }
 
-  function handleOpenCards(ids: string[]) {
+  const scrollTargetRef = useRef<string | null>(null);
+
+  function handleOpenCards(ids: string[], scrollTarget: string) {
+    // If workload search would hide the deployment, clear it so the card is rendered
+    const depName = ids.find((id) => id.startsWith("dep:"))?.slice(4);
+    if (depName && workloadSearch && !depName.toLowerCase().includes(workloadSearch.toLowerCase())) {
+      setWorkloadSearch("");
+    }
+    scrollTargetRef.current = scrollTarget;
     setOpenCards((prev) => {
-      const toAdd = ids.filter((id) => !prev.has(id));
-      if (toAdd.length === 0) return prev;
       const next = new Set(prev);
-      for (const id of toAdd) next.add(id);
+      for (const id of ids) next.add(id);
       return next;
     });
   }
+
+  // Scroll to container after openCards state update causes re-render
+  useEffect(() => {
+    if (!scrollTargetRef.current) return;
+    const el = document.getElementById(scrollTargetRef.current);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      scrollTargetRef.current = null;
+    }
+  });
 
   const [nsSearch, setNsSearch] = useState("");
 
@@ -368,13 +389,29 @@ export default function DashboardPage() {
                 onChange={(e) => setNsSearch(e.target.value)}
               />
               <ul className={styles.nsList}>
-                {visibleNamespaces.map((ns) => (
+                {visibleNamespaces.map((ns) => {
+                  const st = nsStats.get(ns.name);
+                  return (
                   <li key={ns.name} className={styles.nsRow}>
                     <button
                       className={`${styles.nsBtn} ${view === "namespaces" && selectedNs === ns.name ? styles.active : ""}`}
                       onClick={() => { setView("namespaces"); setSelectedNs(ns.name); }}
                     >
-                      {ns.name}
+                      <span className={styles.nsBtnName}>{ns.name}</span>
+                      {st && (st.cpuRatio > 0 || st.memRatio > 0) && (
+                        <span className={styles.nsRatios}>
+                          {st.cpuRatio > 0 && (
+                            <span className={styles.nsRatio} style={{ color: st.cpuRatio > 5 ? "var(--red)" : st.cpuRatio > 2 ? "var(--orange)" : "var(--muted)" }}>
+                              CPU ×{st.cpuRatio.toFixed(1)}
+                            </span>
+                          )}
+                          {st.memRatio > 0 && (
+                            <span className={styles.nsRatio} style={{ color: st.memRatio > 5 ? "var(--red)" : st.memRatio > 2 ? "var(--orange)" : "var(--muted)" }}>
+                              MEM ×{st.memRatio.toFixed(1)}
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </button>
                     <button
                       className={styles.nsHide}
@@ -382,7 +419,8 @@ export default function DashboardPage() {
                       title={`Hide ${ns.name}`}
                     >✕</button>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
               {hiddenNamespaces.length > 0 && (
                 <details className={styles.hiddenSection}>
@@ -437,12 +475,6 @@ export default function DashboardPage() {
                       key={n.name}
                       node={n}
                       token={token}
-                      openCards={openCards}
-                      onToggleCard={(id) => setOpenCards((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(id)) next.delete(id); else next.add(id);
-                        return next;
-                      })}
                     />
                   ))}
                 </div>

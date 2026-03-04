@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { NodeOverview, ResourceValue, PodDetail } from "@/lib/api";
 import { api, fmtCPU, fmtMemory } from "@/lib/api";
-import PodRow from "./PodRow";
 import styles from "./NodeCard.module.css";
 
 // --- helpers ---
@@ -56,11 +55,12 @@ interface GaugeProps {
   label: string;
   allocatable: ResourceValue;
   requested: ResourceValue;
+  limited: ResourceValue;
   usage?: ResourceValue;
   isCPU: boolean;
 }
 
-function CircleGauge({ label, allocatable, requested, usage, isCPU }: GaugeProps) {
+function CircleGauge({ label, allocatable, requested, limited, usage, isCPU }: GaugeProps) {
   const fmt = isCPU ? fmtCPU : fmtMemory;
   const allocPct = pct(requested, allocatable, isCPU);
   const usePct   = usage ? pct(usage, allocatable, isCPU) : null;
@@ -69,6 +69,11 @@ function CircleGauge({ label, allocatable, requested, usage, isCPU }: GaugeProps
   const mainPct    = usePct ?? allocPct;
   const mainColor  = usePct !== null ? useColor : allocColor;
   const overProv   = usePct !== null && allocPct > usePct + 15;
+
+  const limVal   = isCPU ? (limited.millicores ?? 0) : (limited.bytes ?? 0);
+  const allocVal = isCPU ? (allocatable.millicores ?? 0) : (allocatable.bytes ?? 0);
+  const limPct   = allocVal > 0 ? Math.round((limVal / allocVal) * 100) : 0;
+  const overcommit = limVal > allocVal;
 
   return (
     <div className={styles.gauge}>
@@ -122,6 +127,13 @@ function CircleGauge({ label, allocatable, requested, usage, isCPU }: GaugeProps
         ) : (
           <span className={styles.gaugeNoData}>no metrics</span>
         )}
+        <div className={styles.gaugeLine}>
+          <span className={styles.gaugeDot} style={{ background: overcommit ? "var(--red)" : "var(--muted)", opacity: 0.5 }} />
+          <span style={{ color: overcommit ? "var(--red)" : "var(--muted)" }}>
+            lim <strong>{limPct}%</strong> · {fmt(limited)}
+            {overcommit && <span className={styles.overcommitBadge}>OVERCOMMIT</span>}
+          </span>
+        </div>
         <span className={styles.gaugeAllocatable}>{fmt(allocatable)} allocatable</span>
         {overProv && (
           <span className={styles.gaugeGap}>▼ {allocPct - usePct!}pp gap</span>
@@ -199,38 +211,42 @@ function PodBar({ pod, allocCPU, allocMem }: PodBarProps) {
   );
 }
 
+const PAGE_SIZE = 10;
+
 // --- Main card ---
 
 interface NodeCardProps {
   node: NodeOverview;
   token?: string;
-  openCards?: Set<string>;
-  onToggleCard?: (id: string) => void;
 }
 
-export default function NodeCard({ node, token, openCards, onToggleCard }: NodeCardProps) {
+export default function NodeCard({ node, token }: NodeCardProps) {
   const isReady = node.status === "Ready";
   const statusColor = isReady ? "var(--green)" : node.status === "NotReady" ? "var(--red)" : "var(--yellow)";
   const isControlPlane = node.roles.includes("control-plane");
 
+  const [podsOpen, setPodsOpen] = useState(false);
   const [pods, setPods] = useState<PodDetail[] | null>(null);
   const [loadingPods, setLoadingPods] = useState(false);
-  const [podsOpen, setPodsOpen] = useState(false);
+  const [page, setPage] = useState(0);
   const fetchedRef = useRef(false);
 
-  // Auto-fetch pods immediately when token is available
+  // Fetch pods on first expand
   useEffect(() => {
-    if (!token || fetchedRef.current) return;
+    if (!podsOpen || !token || fetchedRef.current) return;
     fetchedRef.current = true;
     setLoadingPods(true);
     api.nodePods(token, node.name)
       .then(setPods)
       .catch(() => setPods([]))
       .finally(() => setLoadingPods(false));
-  }, [token, node.name]);
+  }, [podsOpen, token, node.name]);
 
   const allocCPU = node.allocatable.cpu.millicores ?? 0;
   const allocMem = node.allocatable.memory.bytes ?? 0;
+
+  const totalPages = pods ? Math.ceil(pods.length / PAGE_SIZE) : 0;
+  const pagePods = pods ? pods.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE) : [];
 
   return (
     <div className={`${styles.card} ${!isReady ? styles.notReady : ""}`}>
@@ -277,67 +293,71 @@ export default function NodeCard({ node, token, openCards, onToggleCard }: NodeC
       {/* Resources */}
       {isReady ? (
         <div className={styles.resources}>
-          <CircleGauge label="CPU" allocatable={node.allocatable.cpu} requested={node.requested.cpu} usage={node.usage?.cpu} isCPU={true} />
-          <CircleGauge label="Memory" allocatable={node.allocatable.memory} requested={node.requested.memory} usage={node.usage?.memory} isCPU={false} />
+          <CircleGauge label="CPU" allocatable={node.allocatable.cpu} requested={node.requested.cpu} limited={node.limited.cpu} usage={node.usage?.cpu} isCPU={true} />
+          <CircleGauge label="Memory" allocatable={node.allocatable.memory} requested={node.requested.memory} limited={node.limited.memory} usage={node.usage?.memory} isCPU={false} />
         </div>
       ) : (
         <div className={styles.notReadyMsg}>Node is not ready — no resource data available</div>
       )}
 
-      {/* Pod bars — auto-visible */}
+      {/* Pod bars — on demand */}
       {token && (
         <div className={styles.podBarsSection}>
-          {loadingPods && <p className={styles.podsLoading}>Loading pods…</p>}
-          {pods && pods.length > 0 && (
-            <>
-              <div className={styles.podBarsHeader}>
-                <span className={styles.podBarsTitle}>Pods by resource use</span>
-                <span className={styles.podBarsLegend}>
-                  <span className={styles.legendReq}>■ req</span>
-                  <span className={styles.legendUse}>■ use</span>
-                </span>
-              </div>
-              <div className={styles.podBarsList}>
-                {pods.slice(0, 25).map((pod) => (
-                  <PodBar key={pod.name} pod={pod} allocCPU={allocCPU} allocMem={allocMem} />
-                ))}
-                {pods.length > 25 && (
-                  <p className={styles.podsLoading}>+{pods.length - 25} more…</p>
-                )}
-              </div>
-            </>
-          )}
-          {pods && pods.length === 0 && !loadingPods && (
-            <p className={styles.podsLoading}>No active pods on this node.</p>
-          )}
+          <button
+            className={styles.podsToggle}
+            onClick={() => setPodsOpen((v) => !v)}
+            aria-expanded={podsOpen}
+          >
+            <span className={styles.podsArrow}>{podsOpen ? "▾" : "▸"}</span>
+            Pods by resource use
+            {pods && <span className={styles.podCount}>{pods.length}</span>}
+          </button>
 
-          {/* Detailed view toggle (PodRow with container breakdown) */}
-          {pods && pods.length > 0 && (
-            <div className={styles.podsSection}>
-              <button
-                className={styles.podsToggle}
-                onClick={() => setPodsOpen((v) => !v)}
-                aria-expanded={podsOpen}
-              >
-                <span className={styles.podsArrow}>{podsOpen ? "▾" : "▸"}</span>
-                Container details
-              </button>
-              {podsOpen && (
-                <div className={styles.podList}>
-                  {pods.map((pod) => (
-                    <PodRow
-                      key={`${pod.namespace}/${pod.name}`}
-                      pod={pod}
-                      namespace={pod.namespace ?? ""}
-                      prometheusAvailable={false}
-                      token={token}
-                      openCards={openCards}
-                      onToggleCard={onToggleCard}
-                    />
-                  ))}
-                </div>
+          {podsOpen && (
+            <>
+              {loadingPods && <p className={styles.podsLoading}>Loading pods…</p>}
+
+              {pods && pods.length > 0 && (
+                <>
+                  <div className={styles.podBarsHeader}>
+                    <span className={styles.podBarsLegend}>
+                      <span className={styles.legendReq}>■ req</span>
+                      <span className={styles.legendUse}>■ use</span>
+                    </span>
+                    {totalPages > 1 && (
+                      <span className={styles.pageInfo}>{page + 1} / {totalPages}</span>
+                    )}
+                  </div>
+                  <div className={styles.podBarsList}>
+                    {pagePods.map((pod) => (
+                      <PodBar key={pod.name} pod={pod} allocCPU={allocCPU} allocMem={allocMem} />
+                    ))}
+                  </div>
+                  {totalPages > 1 && (
+                    <div className={styles.pagination}>
+                      <button
+                        className={styles.pageBtn}
+                        onClick={() => setPage((p) => Math.max(0, p - 1))}
+                        disabled={page === 0}
+                      >
+                        ‹ Prev
+                      </button>
+                      <button
+                        className={styles.pageBtn}
+                        onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                        disabled={page === totalPages - 1}
+                      >
+                        Next ›
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
-            </div>
+
+              {pods && pods.length === 0 && !loadingPods && (
+                <p className={styles.podsLoading}>No active pods on this node.</p>
+              )}
+            </>
           )}
         </div>
       )}

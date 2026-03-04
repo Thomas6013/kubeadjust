@@ -42,7 +42,8 @@
 .track {
   position: relative;
   height: 10px;
-  background: var(--surface2);
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 5px;
   overflow: visible;
 }

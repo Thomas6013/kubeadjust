@@ -83,6 +83,16 @@ export interface NamespaceItem {
   name: string;
 }
 
+export interface NamespaceStats {
+  name: string;
+  cpuRequestedM: number;
+  cpuLimitedM: number;
+  memRequestedB: number;
+  memLimitedB: number;
+  cpuRatio: number; // lim/req; 0 = no requests set
+  memRatio: number;
+}
+
 /** Typed error thrown by apiFetch when the backend returns a non-2xx status. */
 class APIError extends Error {
   constructor(public status: number, message: string) {
@@ -161,6 +171,8 @@ export const api = {
     apiFetch<{ status: string }>("/auth/verify", token),
   namespaces: (token: string) =>
     apiFetch<NamespaceItem[]>("/namespaces", token),
+  namespaceStats: (token: string) =>
+    apiFetch<NamespaceStats[]>("/namespaces/stats", token),
   deployments: (token: string, namespace: string) =>
     apiFetch<WorkloadResponse>(`/namespaces/${namespace}/deployments`, token),
   nodes: (token: string) =>
