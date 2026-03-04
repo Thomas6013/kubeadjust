@@ -56,15 +56,18 @@ function suggestionKey(s: Suggestion): string {
   return `${s.deployment}:${s.pod}:${s.container}:${s.resource}:${s.kind}`;
 }
 
-function SuggestionItem({ s, onOpenCards }: { s: Suggestion; onOpenCards?: (ids: string[]) => void }) {
+function SuggestionItem({ s, onOpenCards }: { s: Suggestion; onOpenCards?: (ids: string[], scrollTarget: string) => void }) {
   const meta = KIND_META[s.kind];
-  const href = `#container-${s.deployment}-${s.pod}-${s.container}`;
+  const containerId = `container-${s.deployment}-${s.pod}-${s.container}`;
   return (
     <a
-      href={href}
+      href={`#${containerId}`}
       className={styles.item}
       style={{ borderLeftColor: meta.color }}
-      onClick={() => onOpenCards?.([`dep:${s.deployment}`, `pod:${s.pod}`])}
+      onClick={(e) => {
+        e.preventDefault();
+        onOpenCards?.([`dep:${s.deployment}`, `pod:${s.pod}`], containerId);
+      }}
     >
       <div className={styles.itemHeader}>
         <span className={styles.icon} style={{ color: meta.color }}>{meta.icon}</span>
@@ -89,7 +92,7 @@ interface SuggestionGroupProps {
   items: Suggestion[];
   open: boolean;
   onToggle: () => void;
-  onOpenCards?: (ids: string[]) => void;
+  onOpenCards?: (ids: string[], scrollTarget: string) => void;
 }
 
 function SuggestionGroup({ resource, items, open, onToggle, onOpenCards }: SuggestionGroupProps) {
@@ -110,7 +113,7 @@ function SuggestionGroup({ resource, items, open, onToggle, onOpenCards }: Sugge
 interface SuggestionPanelProps {
   deployments: DeploymentDetail[];
   history?: ContainerHistory[];
-  onOpenCards?: (ids: string[]) => void;
+  onOpenCards?: (ids: string[], scrollTarget: string) => void;
   filterPod?: string | null;
   onClearPodFilter?: () => void;
 }

@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"sort"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -11,6 +14,40 @@ import (
 	"github.com/devops-kubeadjust/backend/middleware"
 	"github.com/devops-kubeadjust/backend/resources"
 )
+
+func nodeAge(creationTimestamp string) string {
+	t, err := time.Parse(time.RFC3339, creationTimestamp)
+	if err != nil {
+		return ""
+	}
+	d := time.Since(t)
+	days := int(math.Round(d.Hours() / 24))
+	switch {
+	case days >= 365:
+		return fmt.Sprintf("%dy", days/365)
+	case days >= 1:
+		return fmt.Sprintf("%dd", days)
+	default:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	}
+}
+
+func nodePressures(conditions []k8s.NodeCondition) (disk, memory, pid bool) {
+	for _, c := range conditions {
+		if c.Status != "True" {
+			continue
+		}
+		switch c.Type {
+		case "DiskPressure":
+			disk = true
+		case "MemoryPressure":
+			memory = true
+		case "PIDPressure":
+			pid = true
+		}
+	}
+	return
+}
 
 // ListNodes returns a cluster-wide node overview with resource aggregation.
 func ListNodes(w http.ResponseWriter, r *http.Request) {
@@ -80,8 +117,15 @@ func ListNodes(w http.ResponseWriter, r *http.Request) {
 			MaxPods: int(resources.ParseMemoryBytes(node.Status.Capacity["pods"])), // reuse int parser
 		}
 
-		// Node status from conditions
+		// Node status + pressure conditions
 		overview.Status = resources.NodeStatus(node.Status.Conditions)
+		overview.DiskPressure, overview.MemoryPressure, overview.PIDPressure = nodePressures(node.Status.Conditions)
+
+		// Node info
+		overview.KubeletVersion = node.Status.NodeInfo.KubeletVersion
+		overview.KernelVersion = node.Status.NodeInfo.KernelVersion
+		overview.OSImage = node.Status.NodeInfo.OSImage
+		overview.Age = nodeAge(node.Metadata.CreationTimestamp)
 
 		// Taints
 		for _, t := range node.Spec.Taints {

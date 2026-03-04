@@ -29,7 +29,8 @@ KubeAdjust shows for every Deployment, StatefulSet and CronJob:
 - Color-coded status (critical / warning / over-provisioned / healthy)
 - Actionable **right-sizing suggestions** with confidence levels
 - Optional **sparklines** from Prometheus (1h to 7d trends)
-- Cluster-wide **node overview** (capacity vs actual usage)
+- Cluster-wide **node overview** with capacity, usage, limit overcommit indicator, node conditions (DiskPressure / MemoryPressure / PIDPressure), age, kubelet version, kernel, and OS image
+- **Namespace limit/request ratios** — CPU ×N.N and MEM ×N.N at a glance above the workload list
 
 ---
 

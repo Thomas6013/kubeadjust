@@ -77,10 +77,27 @@ export interface NodeOverview {
   usage?: NodeResources;
   podCount: number;
   maxPods: number;
+  kubeletVersion?: string;
+  kernelVersion?: string;
+  osImage?: string;
+  age?: string;
+  diskPressure: boolean;
+  memoryPressure: boolean;
+  pidPressure: boolean;
 }
 
 export interface NamespaceItem {
   name: string;
+}
+
+export interface NamespaceStats {
+  name: string;
+  cpuRequestedM: number;
+  cpuLimitedM: number;
+  memRequestedB: number;
+  memLimitedB: number;
+  cpuRatio: number; // lim/req; 0 = no requests set
+  memRatio: number;
 }
 
 /** Typed error thrown by apiFetch when the backend returns a non-2xx status. */
@@ -161,6 +178,8 @@ export const api = {
     apiFetch<{ status: string }>("/auth/verify", token),
   namespaces: (token: string) =>
     apiFetch<NamespaceItem[]>("/namespaces", token),
+  namespaceStats: (token: string) =>
+    apiFetch<NamespaceStats[]>("/namespaces/stats", token),
   deployments: (token: string, namespace: string) =>
     apiFetch<WorkloadResponse>(`/namespaces/${namespace}/deployments`, token),
   nodes: (token: string) =>

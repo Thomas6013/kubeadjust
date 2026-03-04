@@ -4,6 +4,30 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.16.0] - 2026-03-04
+
+### Added
+- **Node conditions badges** — DiskPressure, MemoryPressure, and PIDPressure conditions are now shown as red badges directly in the node card header when active. Actionable at a glance without drilling into kubectl.
+- **Node info line** — each node card now displays age, kubelet version, kernel version, and OS image in a compact monospace line below the header. Useful for spotting heterogeneous nodes in a cluster.
+- **Limit overcommit indicator in node gauges** — the CircleGauge on each node now shows `lim X%` below the request line. When the sum of all pod limits exceeds the node's allocatable capacity, an `OVERCOMMIT` badge appears in red — indicating the node is unstable under simultaneous resource peaks.
+- **Namespace limit/request ratio** — a new `GET /api/namespaces/stats` endpoint aggregates CPU and memory limit/request ratios per namespace. The dashboard displays `CPU ×N.N MEM ×N.N` above the workload search bar for the selected namespace, color-coded by severity (>5× red, >2× orange, neutral otherwise).
+- **Docker PR preview builds** — new `.github/workflows/docker-pr.yml` workflow: on every pull request to `main`, builds an amd64 image tagged `pr-<number>` and `pr-<number>-<sha>`, then posts (and updates) a comment on the PR with ready-to-use `values.yaml` snippets for both backend and frontend.
+
+### Changed
+- **Node pod bars: lazy fetch + pagination** — pods in the node view are no longer auto-loaded on mount. They are fetched only when the user clicks "Pods (N) ▶". Up to 10 pods are shown per page with Prev/Next pagination. Reduces API load for large clusters.
+- **Removed "Container details" toggle from node view** — the per-pod `PodRow` breakdown (container-level bars) has been removed from the node card. The horizontal pod bar diagram (request vs usage) remains as the primary view.
+- **Pod bar tooltips instead of legend** — the "■ req / ■ use" legend row under pod bars has been removed. Tooltips on each bar track now show the exact values and percentages (e.g. `req: 250m (12%) · use: 180m (9%)`).
+
+### Fixed
+- **ResourceBar track invisible** — the track background used `--surface2`, the same color as the card background, making the bar invisible. Fixed to use `--bg` with a `1px solid var(--border)` border. Same fix applied to pod bar tracks and ephemeral storage tracks in PodRow.
+- **Suggestion scroll race condition** — clicking a suggestion item could fail to scroll to the container if the deployment card or pod row was previously closed (the DOM element didn't exist yet when the scroll fired). Fixed with: `e.preventDefault()` on the anchor click, passing the container ID through `handleOpenCards`, and a post-render `useEffect` that scrolls once the target element appears in the DOM.
+- **Suggestion click clears workload search filter** — if a workload search was active and filtered out the target deployment, clicking a suggestion silently did nothing. Now clears `workloadSearch` when the target deployment is not in the filtered list.
+- **Pod filter button propagation** — the `⊕` filter button on pod rows was a `<span>` inside a `<button>`, causing unreliable `stopPropagation`. Replaced with `<button type="button">` with both `preventDefault` and `stopPropagation`.
+- **Pod filter not switching** — clicking `⊕` on a different pod while a filter was active didn't switch the filter to the new pod. Now correctly replaces the active filter instead of toggling it off.
+- **Node count badge alignment in sidebar** — the Nodes button count badge was misaligned after a flex layout change. Fixed by restoring `flex-direction: row` on the node button.
+
+---
+
 ## [0.15.0] - 2026-03-03
 
 ### Added
