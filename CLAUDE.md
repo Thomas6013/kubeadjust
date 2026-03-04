@@ -10,7 +10,7 @@ KubeAdjust is a **read-only Kubernetes dashboard** (Go backend + Next.js fronten
 
 - **Backend**: Go 1.22, Chi v5 router, 3 production dependencies (chi, cors, errgroup), raw HTTP K8s API (no client-go)
 - **Frontend**: Next.js 16, React 19, TypeScript 5, no UI library, no charting library
-- **Infra**: Helm chart (v0.15.0), multi-stage Docker builds (amd64 + arm64), GitHub Actions CI with linting + tests + SBOM + cosign
+- **Infra**: Helm chart (v0.16.0), multi-stage Docker builds (amd64 + arm64), GitHub Actions CI with linting + tests + SBOM + cosign
 
 ---
 
@@ -37,7 +37,7 @@ backend/
     auth.go                # Token validation handler (generic error messages)
     resources.go           # ListDeployments — K8s API orchestration, delegates to resources/
     nodes.go               # ListNodes — K8s API orchestration, delegates to resources/
-    namespaces.go          # ListNamespaces — filters empty namespaces (parallel pod check)
+    namespaces.go          # ListNamespaces + GetNamespaceStats — filters empty namespaces, aggregates limit/request ratios
     prometheus.go          # PromQL proxy + namespace batch history endpoint
 
 frontend/
@@ -188,6 +188,14 @@ _(All High priority issues resolved in v0.14.0 — see Resolved section below.)_
 
 ### Resolved
 
+- ~~Node conditions (DiskPressure, MemoryPressure, PIDPressure) not visible~~ — RESOLVED (v0.16.0, red badges in node card header when active).
+- ~~No node age/version info~~ — RESOLVED (v0.16.0, compact info line: age, kubelet version, kernel, OS image).
+- ~~No limit overcommit indicator on nodes~~ — RESOLVED (v0.16.0, `lim X%` + `OVERCOMMIT` badge in CircleGauge when sum(limits) > allocatable).
+- ~~No namespace limit/request ratio~~ — RESOLVED (v0.16.0, `GET /api/namespaces/stats`, `CPU ×N.N MEM ×N.N` in mainHeader).
+- ~~Node pod bars auto-loaded on mount~~ — RESOLVED (v0.16.0, lazy fetch on first expand, 10 pods/page with pagination).
+- ~~ResourceBar track invisible (same color as card)~~ — RESOLVED (v0.16.0, `--bg` + border on all track elements).
+- ~~Suggestion scroll race condition~~ — RESOLVED (v0.16.0, `preventDefault` + post-render `useEffect` scroll).
+- ~~Pod filter button propagation~~ — RESOLVED (v0.16.0, `<button type="button">` with `stopPropagation`).
 - ~~Taint display on node view~~ — RESOLVED (v0.15.0, colored badges per effect in node card header).
 - ~~No per-pod resource overview on node view~~ — RESOLVED (v0.15.0, auto-fetch + horizontal bar diagram per pod, no click needed).
 - ~~No sparkline zoom~~ — RESOLVED (v0.15.0, click sparkline → modal with time axis, min/max, current).
