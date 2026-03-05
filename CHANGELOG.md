@@ -4,6 +4,23 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.17.0] - 2026-03-05
+
+### Added
+- **Top pods view in node cards** — the pod list in the node card now shows the top 10 pods sorted by resource use, with a CPU/MEM sort toggle. Replaces the previous paginated full list. More actionable at a glance for spotting heavy consumers on a node.
+- **Version + minimum Kubernetes version in topbar** — the running app version and the minimum supported Kubernetes version (`k8s ≥1.21`) are displayed discreetly next to the KubeAdjust brand name.
+- **Favicon** — a custom SVG hexagon icon is now shown in the browser tab.
+
+### Changed
+- **Responsive node grid** — the node card grid now uses `auto-fill` with a `380px` minimum column width, automatically collapsing to a single column on narrow screens instead of forcing two columns and triggering a horizontal scrollbar. Topbar actions also wrap on small viewports.
+- **Per-cluster token storage** — tokens are now stored per cluster (`kube-token:<cluster>`) in sessionStorage. Switching to a cluster already visited in the current session is seamless (no re-authentication). Switching to a new cluster redirects to login with the target cluster pre-selected. Backwards-compatible with single-cluster sessions.
+
+### Fixed
+- **Suggestion click on PVC/EmptyDir doesn't scroll** — these suggestions used the volume name as the container identifier, generating a scroll target that never existed in the DOM. Now correctly scrolls to the pod row for volume-type suggestions.
+- **Ghost scroll on subsequent renders** — the scroll ref was only cleared when the target element was found. If the element didn't exist (broken PVC/EmptyDir target), the ref stayed set and any later re-render (auto-refresh, filter change) would silently retry the scroll. Ref is now always cleared immediately before the attempt.
+
+---
+
 ## [0.16.0] - 2026-03-04
 
 ### Added

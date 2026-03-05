@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type TimeRange, type ContainerHistory } from "@/lib/api";
+import { APP_VERSION, KUBE_MIN_VERSION } from "@/lib/version";
 import DeploymentCard from "@/components/DeploymentCard";
 import SuggestionPanel from "@/components/SuggestionPanel";
 import NodeCard from "@/components/NodeCard";
@@ -73,11 +74,13 @@ export default function DashboardPage() {
 
   // Restore persisted state on mount (before persistence effects run)
   useEffect(() => {
-    const t = sessionStorage.getItem("kube-token");
+    const savedCluster = sessionStorage.getItem("kube-cluster") ?? "";
+    if (savedCluster) setCluster(savedCluster);
+    const tokenKey = savedCluster ? `kube-token:${savedCluster}` : "kube-token";
+    // fall back to legacy "kube-token" for sessions created before per-cluster storage
+    const t = sessionStorage.getItem(tokenKey) ?? sessionStorage.getItem("kube-token");
     if (!t) { router.replace("/"); return; }
     setToken(t);
-    const savedCluster = sessionStorage.getItem("kube-cluster");
-    if (savedCluster) setCluster(savedCluster);
     const savedAR = sessionStorage.getItem("kubeadjust:autoRefresh") as AutoRefresh | null;
     if (savedAR && savedAR in AUTO_REFRESH_MS) setAutoRefresh(savedAR);
     try {
@@ -211,17 +214,26 @@ export default function DashboardPage() {
   }
 
   function handleLogout() {
-    sessionStorage.removeItem("kube-token");
+    const tokenKey = cluster ? `kube-token:${cluster}` : "kube-token";
+    sessionStorage.removeItem(tokenKey);
+    sessionStorage.removeItem("kube-token"); // clear legacy key too
     sessionStorage.removeItem("kube-cluster");
     router.push("/");
   }
 
   function handleClusterSwitch(name: string) {
     if (name === cluster) { setShowClusterMenu(false); return; }
+    const existingToken = sessionStorage.getItem(`kube-token:${name}`);
     sessionStorage.setItem("kube-cluster", name);
     sessionStorage.removeItem("kubeadjust:selectedNs");
     setShowClusterMenu(false);
-    window.location.reload();
+    if (existingToken) {
+      // Already authenticated for this cluster in this session — reload seamlessly
+      window.location.reload();
+    } else {
+      // No token for this cluster yet — go to login (cluster pre-selected)
+      router.push("/");
+    }
   }
 
   function hideNamespace(name: string) {
@@ -254,13 +266,14 @@ export default function DashboardPage() {
     });
   }
 
-  // Scroll to container after openCards state update causes re-render
+  // Scroll to target after openCards state update causes re-render
   useEffect(() => {
     if (!scrollTargetRef.current) return;
-    const el = document.getElementById(scrollTargetRef.current);
+    const target = scrollTargetRef.current;
+    scrollTargetRef.current = null; // always clear — prevents ghost scroll on subsequent renders
+    const el = document.getElementById(target);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
-      scrollTargetRef.current = null;
     }
   });
 
@@ -288,6 +301,7 @@ export default function DashboardPage() {
       <header className={styles.topbar}>
         <div className={styles.brand}>
           <span>⎈</span> KubeAdjust
+          <span className={styles.version} title={`Requires Kubernetes ≥ ${KUBE_MIN_VERSION}`}>v{APP_VERSION} · k8s ≥{KUBE_MIN_VERSION}</span>
           {cluster && (
             clusters.length > 1 ? (
               <div className={styles.clusterSwitcher}>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="7" fill="#13141f"/>
+  <polygon points="16,3 27,9.5 27,22.5 16,29 5,22.5 5,9.5" fill="none" stroke="#6c8ef7" stroke-width="2"/>
+  <text x="16" y="22" text-anchor="middle" font-size="14" font-weight="700" fill="#6c8ef7" font-family="sans-serif">K</text>
+</svg>

@@ -74,7 +74,10 @@ export default function PodRow({
   const isFiltered = activePodFilter === pod.name;
 
   return (
-    <div className={styles.pod}>
+    <div
+      id={deploymentName ? `pod-row-${deploymentName}-${pod.name}` : undefined}
+      className={styles.pod}
+    >
       <button
         className={styles.header}
         onClick={() => onToggleCard?.(podId)}

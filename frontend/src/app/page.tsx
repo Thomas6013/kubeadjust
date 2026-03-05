@@ -33,7 +33,8 @@ export default function LoginPage() {
     try {
       if (selectedCluster) sessionStorage.setItem("kube-cluster", selectedCluster);
       await api.verify(token.trim());
-      sessionStorage.setItem("kube-token", token.trim());
+      const tokenKey = selectedCluster ? `kube-token:${selectedCluster}` : "kube-token";
+      sessionStorage.setItem(tokenKey, token.trim());
       router.push("/dashboard");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Authentication failed");

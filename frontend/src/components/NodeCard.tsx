@@ -32,6 +32,20 @@ function barColor(usePct: number | null, reqPct: number): string {
   return "var(--accent)";
 }
 
+const TOP_N = 10;
+
+function podSortKey(pod: PodDetail, by: "cpu" | "mem"): number {
+  let v = 0;
+  for (const c of pod.containers) {
+    if (c.usage) {
+      v += by === "cpu" ? (c.usage.cpu.millicores ?? 0) : (c.usage.memory.bytes ?? 0);
+    } else {
+      v += by === "cpu" ? (c.requests.cpu.millicores ?? 0) : (c.requests.memory.bytes ?? 0);
+    }
+  }
+  return v;
+}
+
 const TAINT_EFFECT_COLOR: Record<string, string> = {
   NoSchedule:        "rgba(252,129,129,0.15)",
   NoExecute:         "rgba(252,129,129,0.2)",
@@ -218,8 +232,6 @@ function PodBar({ pod, allocCPU, allocMem }: PodBarProps) {
   );
 }
 
-const PAGE_SIZE = 10;
-
 // --- Main card ---
 
 interface NodeCardProps {
@@ -235,7 +247,7 @@ export default function NodeCard({ node, token }: NodeCardProps) {
   const [podsOpen, setPodsOpen] = useState(false);
   const [pods, setPods] = useState<PodDetail[] | null>(null);
   const [loadingPods, setLoadingPods] = useState(false);
-  const [page, setPage] = useState(0);
+  const [sortBy, setSortBy] = useState<"cpu" | "mem">("cpu");
   const fetchedRef = useRef(false);
 
   // Fetch pods on first expand
@@ -252,8 +264,9 @@ export default function NodeCard({ node, token }: NodeCardProps) {
   const allocCPU = node.allocatable.cpu.millicores ?? 0;
   const allocMem = node.allocatable.memory.bytes ?? 0;
 
-  const totalPages = pods ? Math.ceil(pods.length / PAGE_SIZE) : 0;
-  const pagePods = pods ? pods.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE) : [];
+  const topPods = pods
+    ? [...pods].sort((a, b) => podSortKey(b, sortBy) - podSortKey(a, sortBy)).slice(0, TOP_N)
+    : [];
 
   return (
     <div className={`${styles.card} ${!isReady ? styles.notReady : ""}`}>
@@ -319,18 +332,35 @@ export default function NodeCard({ node, token }: NodeCardProps) {
         <div className={styles.notReadyMsg}>Node is not ready — no resource data available</div>
       )}
 
-      {/* Pod bars — on demand */}
+      {/* Top pods — on demand */}
       {token && (
         <div className={styles.podBarsSection}>
-          <button
-            className={styles.podsToggle}
-            onClick={() => setPodsOpen((v) => !v)}
-            aria-expanded={podsOpen}
-          >
-            <span className={styles.podsArrow}>{podsOpen ? "▾" : "▸"}</span>
-            Pods by resource use
-            {pods && <span className={styles.podCount}>{pods.length}</span>}
-          </button>
+          <div className={styles.podsToggleRow}>
+            <button
+              className={styles.podsToggle}
+              type="button"
+              onClick={() => setPodsOpen((v) => !v)}
+              aria-expanded={podsOpen}
+            >
+              <span className={styles.podsArrow}>{podsOpen ? "▾" : "▸"}</span>
+              Top pods
+              {pods && <span className={styles.podCount}>{pods.length}</span>}
+            </button>
+            {podsOpen && (
+              <div className={styles.sortToggle}>
+                <button
+                  type="button"
+                  className={`${styles.sortBtn} ${sortBy === "cpu" ? styles.sortBtnActive : ""}`}
+                  onClick={() => setSortBy("cpu")}
+                >CPU</button>
+                <button
+                  type="button"
+                  className={`${styles.sortBtn} ${sortBy === "mem" ? styles.sortBtnActive : ""}`}
+                  onClick={() => setSortBy("mem")}
+                >MEM</button>
+              </div>
+            )}
+          </div>
 
           {podsOpen && (
             <>
@@ -338,34 +368,16 @@ export default function NodeCard({ node, token }: NodeCardProps) {
 
               {pods && pods.length > 0 && (
                 <>
-                  {totalPages > 1 && (
-                    <div className={styles.podBarsHeader}>
-                      <span className={styles.pageInfo}>{page + 1} / {totalPages}</span>
-                    </div>
+                  {pods.length > TOP_N && (
+                    <p className={styles.topInfo}>
+                      Top {TOP_N} of {pods.length} · sorted by {sortBy === "cpu" ? "CPU" : "memory"} use
+                    </p>
                   )}
                   <div className={styles.podBarsList}>
-                    {pagePods.map((pod) => (
+                    {topPods.map((pod) => (
                       <PodBar key={pod.name} pod={pod} allocCPU={allocCPU} allocMem={allocMem} />
                     ))}
                   </div>
-                  {totalPages > 1 && (
-                    <div className={styles.pagination}>
-                      <button
-                        className={styles.pageBtn}
-                        onClick={() => setPage((p) => Math.max(0, p - 1))}
-                        disabled={page === 0}
-                      >
-                        ‹ Prev
-                      </button>
-                      <button
-                        className={styles.pageBtn}
-                        onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                        disabled={page === totalPages - 1}
-                      >
-                        Next ›
-                      </button>
-                    </div>
-                  )}
                 </>
               )}
 

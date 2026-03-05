@@ -56,17 +56,22 @@ function suggestionKey(s: Suggestion): string {
   return `${s.deployment}:${s.pod}:${s.container}:${s.resource}:${s.kind}`;
 }
 
+const VOLUME_RESOURCES = new Set(["PVC", "EmptyDir"]);
+
 function SuggestionItem({ s, onOpenCards }: { s: Suggestion; onOpenCards?: (ids: string[], scrollTarget: string) => void }) {
   const meta = KIND_META[s.kind];
-  const containerId = `container-${s.deployment}-${s.pod}-${s.container}`;
+  // PVC/EmptyDir suggestions use a volume name (not a container name) — scroll to the pod row instead
+  const scrollTarget = VOLUME_RESOURCES.has(s.resource)
+    ? `pod-row-${s.deployment}-${s.pod}`
+    : `container-${s.deployment}-${s.pod}-${s.container}`;
   return (
     <a
-      href={`#${containerId}`}
+      href={`#${scrollTarget}`}
       className={styles.item}
       style={{ borderLeftColor: meta.color }}
       onClick={(e) => {
         e.preventDefault();
-        onOpenCards?.([`dep:${s.deployment}`, `pod:${s.pod}`], containerId);
+        onOpenCards?.([`dep:${s.deployment}`, `pod:${s.pod}`], scrollTarget);
       }}
     >
       <div className={styles.itemHeader}>
