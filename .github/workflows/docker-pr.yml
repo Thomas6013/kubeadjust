@@ -31,7 +31,11 @@ jobs:
           echo "pr=pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
+<<<<<<< HEAD
         uses: docker/login-action@v3
+=======
+        uses: docker/login-action@v4
+>>>>>>> 81d69d3986b970cdbeb8bff85a776d4d3a88ee16
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -67,7 +71,11 @@ jobs:
           echo "pr=pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
 
       - name: Comment on PR
+<<<<<<< HEAD
         uses: actions/github-script@v7
+=======
+        uses: actions/github-script@v8
+>>>>>>> 81d69d3986b970cdbeb8bff85a776d4d3a88ee16
         with:
           script: |
             const owner = "${{ steps.meta.outputs.owner }}";
