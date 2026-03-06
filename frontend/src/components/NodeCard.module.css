@@ -59,7 +59,9 @@
   padding: 1px 8px;
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
+  margin-left: auto;
 }
+
 
 .nodeName {
   font-size: 14px;
