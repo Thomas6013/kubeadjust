@@ -50,7 +50,9 @@ func ListNamespaces(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	_ = g.Wait()
+	if err := g.Wait(); err != nil {
+		log.Printf("namespace pod check error: %v", err)
+	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	jsonOK(w, result)
 }

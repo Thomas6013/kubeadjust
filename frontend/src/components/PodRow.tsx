@@ -52,21 +52,27 @@ export default function PodRow({
   const open = openCards?.has(podId) ?? false;
   const [history, setHistory] = useState<Record<string, HistoryResponse>>({});
   const fetchedRef = useRef<Set<string>>(new Set());
+  const generationRef = useRef(0);
   const [zoomed, setZoomed] = useState<ZoomedChart | null>(null);
 
-  // Invalidate cache when time range changes
+  // Invalidate cache when time range changes — bump generation so in-flight fetches are discarded
   useEffect(() => {
+    generationRef.current += 1;
     fetchedRef.current.clear();
     setHistory({});
   }, [timeRange]);
 
   useEffect(() => {
     if (!open || !prometheusAvailable) return;
+    const gen = generationRef.current;
     for (const c of pod.containers) {
       if (fetchedRef.current.has(c.name)) continue;
       fetchedRef.current.add(c.name);
       api.containerHistory(token, namespace, pod.name, c.name, timeRange)
-        .then((h) => setHistory((prev) => ({ ...prev, [c.name]: h })))
+        .then((h) => {
+          if (generationRef.current !== gen) return; // stale — discard
+          setHistory((prev) => ({ ...prev, [c.name]: h }));
+        })
         .catch(() => { fetchedRef.current.delete(c.name); });
     }
   }, [open, prometheusAvailable, pod, namespace, token, timeRange]);
