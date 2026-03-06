@@ -148,6 +148,7 @@
   align-items: center;
   gap: 12px;
 }
+.gauge > svg { flex-shrink: 0; }
 
 .gaugeInfo {
   display: flex;
