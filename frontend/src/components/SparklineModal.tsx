@@ -44,8 +44,8 @@ export default function SparklineModal({ isOpen, onClose, dataPoints, label, col
 
   if (!isOpen || dataPoints.length < 2) return null;
 
-  const W = 460;
-  const H = 110;
+  const W = 540;
+  const H = 130;
   const PAD = { top: 12, right: 16, bottom: 28, left: 10 };
   const innerW = W - PAD.left - PAD.right;
   const innerH = H - PAD.top - PAD.bottom;

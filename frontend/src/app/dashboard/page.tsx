@@ -494,12 +494,12 @@ export default function DashboardPage() {
                   return (
                     <span className={styles.nsRatios}>
                       {st.cpuRatio > 0 && (
-                        <span className={styles.nsRatio} style={{ color: st.cpuRatio > 5 ? "var(--red)" : st.cpuRatio > 2 ? "var(--orange)" : "var(--muted)" }}>
+                        <span className={styles.nsRatio} style={{ color: st.cpuRatio > 5 ? "var(--red)" : st.cpuRatio > 2 ? "var(--orange)" : "var(--muted)" }} title={`CPU limit/request ratio across all pods in this namespace (${st.cpuRatio.toFixed(1)}×). High values mean limits are set much higher than requests — the namespace may be over-committed.`}>
                           CPU ×{st.cpuRatio.toFixed(1)}
                         </span>
                       )}
                       {st.memRatio > 0 && (
-                        <span className={styles.nsRatio} style={{ color: st.memRatio > 5 ? "var(--red)" : st.memRatio > 2 ? "var(--orange)" : "var(--muted)" }}>
+                        <span className={styles.nsRatio} style={{ color: st.memRatio > 5 ? "var(--red)" : st.memRatio > 2 ? "var(--orange)" : "var(--muted)" }} title={`Memory limit/request ratio across all pods in this namespace (${st.memRatio.toFixed(1)}×). High values mean limits are set much higher than requests — the namespace may be over-committed.`}>
                           MEM ×{st.memRatio.toFixed(1)}
                         </span>
                       )}

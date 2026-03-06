@@ -145,8 +145,8 @@ function CircleGauge({ label, allocatable, requested, limited, usage, isCPU }: G
           <span className={styles.gaugeDot} style={{ background: overcommit ? "var(--red)" : "var(--muted)", opacity: 0.5 }} />
           <span style={{ color: overcommit ? "var(--red)" : "var(--muted)" }}>
             lim <strong>{limPct}%</strong> · {fmt(limited)}
-            {overcommit && <span className={styles.overcommitBadge}>OVERCOMMIT</span>}
           </span>
+          {overcommit && <span className={styles.overcommitBadge}>OVERCOMMIT</span>}
         </div>
         <span className={styles.gaugeAllocatable}>{fmt(allocatable)} allocatable</span>
         {overProv && (

@@ -7,6 +7,8 @@
   flex-direction: column;
   gap: 8px;
   transition: border-color 0.2s;
+  min-width: 0;
+  overflow: hidden;
 }
 .card.notReady { border-color: rgba(252, 129, 129, 0.4); }
 
@@ -130,13 +132,13 @@
 .resources {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 16px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
   margin-top: 4px;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 900px) {
   .resources { grid-template-columns: 1fr; }
 }
 
@@ -152,6 +154,7 @@
   flex-direction: column;
   gap: 5px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .gaugeLabel {
@@ -169,7 +172,7 @@
   gap: 6px;
   font-size: 12px;
   color: var(--fg);
-  white-space: nowrap;
+  flex-wrap: wrap;
 }
 
 .gaugeDot {
