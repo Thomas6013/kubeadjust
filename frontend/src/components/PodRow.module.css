@@ -5,16 +5,26 @@
 .header {
   display: flex;
   align-items: center;
-  gap: 10px;
   width: 100%;
+}
+
+.toggleBtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
   background: transparent;
   color: var(--text);
   padding: 8px 12px;
   font-size: 13px;
   border-radius: 0;
   text-align: left;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
 }
-.header:hover { background: rgba(255,255,255,0.03); }
+.toggleBtn:hover { background: rgba(255,255,255,0.03); }
 .arrow { font-size: 11px; color: var(--muted); width: 12px; }
 .name { flex: 1; font-family: monospace; font-size: 12px; }
 .phase { font-size: 12px; font-weight: 600; }

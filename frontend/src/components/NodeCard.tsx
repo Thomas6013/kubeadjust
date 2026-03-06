@@ -270,8 +270,8 @@ export default function NodeCard({ node, token }: NodeCardProps) {
 
   return (
     <div className={`${styles.card} ${!isReady ? styles.notReady : ""}`}>
-      {/* Header */}
-      <div className={styles.header}>
+      {/* Header row 1: identity */}
+      <div className={styles.headerTop}>
         <span className={styles.nodeIcon}>⬡</span>
         <span className={styles.nodeName}>{node.name}</span>
         <span className={styles.statusBadge} style={{ color: statusColor, borderColor: statusColor }}>
@@ -282,28 +282,23 @@ export default function NodeCard({ node, token }: NodeCardProps) {
             {r}
           </span>
         ))}
-        {node.diskPressure && <span className={styles.pressureBadge} title="DiskPressure condition is True">💾 DiskPressure</span>}
-        {node.memoryPressure && <span className={styles.pressureBadge} title="MemoryPressure condition is True">⚠ MemPressure</span>}
-        {node.pidPressure && <span className={styles.pressureBadge} title="PIDPressure condition is True">⚠ PIDPressure</span>}
-        <span className={styles.pods} title="Running pods / max">
-          {node.podCount} / {node.maxPods} pods
-        </span>
       </div>
-      {/* Node info line */}
-      {(node.kubeletVersion || node.age) && (
-        <div className={styles.nodeInfo}>
-          {node.age && <span title="Node age">⏱ {node.age}</span>}
-          {node.kubeletVersion && <span title="Kubelet version">kubelet {node.kubeletVersion}</span>}
-          {node.kernelVersion && <span title="Kernel version">kernel {node.kernelVersion}</span>}
-          {node.osImage && <span title="OS image" className={styles.nodeInfoOs}>{node.osImage}</span>}
-        </div>
-      )}
 
-      {/* Taints */}
-      {(node.taints?.length ?? 0) > 0 && (
-        <div className={styles.taints}>
-          {node.taints!.map((t, i) => {
-            const taintLabel = t.value ? `${t.key}=${t.value}` : t.key;
+      {/* Header row 2: metadata */}
+      <div className={styles.headerMeta}>
+        {node.age && <span className={styles.metaItem} title="Node age">{node.age}</span>}
+        {node.osImage && <span className={styles.metaItem} title="OS image">{node.osImage}</span>}
+        {node.kernelVersion && <span className={styles.metaItem} title="Kernel version">kernel {node.kernelVersion}</span>}
+        <span className={styles.metaItem} title="Running pods / max">{node.podCount} / {node.maxPods} pods</span>
+      </div>
+
+      {/* Pressures + taints */}
+      {(node.diskPressure || node.memoryPressure || node.pidPressure || (node.taints?.length ?? 0) > 0) && (
+        <div className={styles.alertRow}>
+          {node.diskPressure && <span className={styles.pressureBadge} title="DiskPressure condition is True">disk pressure</span>}
+          {node.memoryPressure && <span className={styles.pressureBadge} title="MemoryPressure condition is True">memory pressure</span>}
+          {node.pidPressure && <span className={styles.pressureBadge} title="PIDPressure condition is True">pid pressure</span>}
+          {node.taints?.map((t, i) => {
             const shortKey = t.key.includes("/") ? t.key.split("/").pop()! : t.key;
             return (
               <span
@@ -313,9 +308,9 @@ export default function NodeCard({ node, token }: NodeCardProps) {
                   background: TAINT_EFFECT_COLOR[t.effect] ?? "var(--surface2)",
                   borderColor: TAINT_EFFECT_BORDER[t.effect] ?? "var(--border)",
                 }}
-                title={`${taintLabel} · ${t.effect}`}
+                title={`${t.value ? `${t.key}=${t.value}` : t.key} · ${t.effect}`}
               >
-                ⚠ {shortKey}{t.value ? `=${t.value}` : ""} · {t.effect}
+                {shortKey}{t.value ? `=${t.value}` : ""} · {t.effect}
               </span>
             );
           })}

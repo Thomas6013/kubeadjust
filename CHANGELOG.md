@@ -4,6 +4,25 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.18.0] - 2026-03-06
+
+### Changed
+
+- **Node card header restructured** — the node card now uses two distinct rows: identity (icon + name + status + roles) and metadata (age · OS image · kernel · pod count). Previously everything was jammed into a single flex row that wrapped unpredictably on narrow cards.
+- **Node pressure and taint badges consolidated** — DiskPressure, MemoryPressure, PIDPressure and taint labels are now rendered in a single `alertRow` below the metadata line, hidden entirely when the node is healthy. Previously pressure badges were interspersed in the header and taints were a separate section.
+- **Node grid: single column** — the node grid switches from a 2-column auto-fill layout to a full-width single column. Node cards with pod bars, gauges, and metadata are too wide for side-by-side rendering to be useful.
+- **`kubeletVersion` removed from backend and frontend** — `KubeletVersion` field removed from `NodeOverview` in `backend/resources/types.go`, from the handler assignment in `nodes.go`, and from the TypeScript `NodeOverview` interface. The field was returned by the API but never rendered and added noise to the response payload.
+- **Suggestion panel: groups by severity, filter by resource** — the suggestion list is now grouped by severity (▲ critical / ● warning / ▼ over-prov) instead of resource type. This makes urgency immediately visible — all critical items appear first regardless of whether they are CPU, PVC, or ephemeral. Within each group, items are sorted by resource type. Each item now shows a `resourceTag` badge (e.g. "CPU — no limit") since the resource is no longer the group header.
+- **Suggestion filter chips: resource category (CPU / Memory / Storage)** — the chips above the suggestion list now filter by resource category instead of severity. CPU covers all CPU sub-types (near limit, no limit, no request), Memory covers all memory sub-types, Storage covers Ephemeral, PVC, and EmptyDir.
+- **Suggestion panel: gear icon and persistent kind-exclusion removed** — the ⚙ dropdown that permanently hid suggestion kinds via sessionStorage has been removed. It was redundant with the chip filter and introduced a second, less discoverable mechanism for the same action.
+- **Favicon updated** — the SVG icon in the browser tab is now a proper Kubernetes-style hexagon with a helm wheel (spokes + center dot + outer ring) in the Kubernetes blue (`#326CE5`) on a dark rounded background.
+
+### Fixed
+
+- **Pod filter button (`⊕`) unreliable** — the filter button was nested inside a `<button>` element (the pod row toggle), which is invalid HTML. Browsers flatten or ignore nested interactive elements, making `stopPropagation()` unreliable — clicking the filter could toggle the pod open/close instead. Fixed by converting the pod row header from a `<button>` to a `<div>` with an explicit `.toggleBtn` inside, and the filter button as a sibling.
+
+---
+
 ## [0.17.0] - 2026-03-05
 
 ### Added

@@ -1,11 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { DeploymentDetail, ContainerHistory } from "@/lib/api";
 import { computeSuggestions, type Suggestion, type SuggestionKind } from "@/lib/suggestions";
 import styles from "./SuggestionPanel.module.css";
-
-const ALL_KINDS: SuggestionKind[] = ["danger", "warning", "overkill"];
 
 const KIND_META: Record<SuggestionKind, { icon: string; color: string; label: string; bg: string }> = {
   danger:   { icon: "▲", color: "var(--red)",       label: "critical",  bg: "rgba(252,129,129,0.15)" },
@@ -13,42 +11,58 @@ const KIND_META: Record<SuggestionKind, { icon: string; color: string; label: st
   overkill: { icon: "▼", color: "var(--blue-over)", label: "over-prov", bg: "rgba(99,179,237,0.15)" },
 };
 
-const RESOURCE_ORDER = ["CPU", "Memory", "CPU — no limit", "Memory — no limit", "CPU — no request", "Memory — no request", "Ephemeral — no limit", "Ephemeral", "PVC", "EmptyDir"];
-const KIND_ORDER: Record<SuggestionKind, number> = { danger: 0, warning: 1, overkill: 2 };
+const KIND_ORDER: SuggestionKind[] = ["danger", "warning", "overkill"];
 
-const STORAGE_KEY_EXCLUDED = "kubeadjust:excludedKinds";
+// Resource categories for the filter chips
+type ResourceCategory = "cpu" | "memory" | "storage";
 
-function loadExcludedKinds(): Set<SuggestionKind> {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY_EXCLUDED);
-    if (raw) return new Set(JSON.parse(raw) as SuggestionKind[]);
-  } catch { /* ignore */ }
-  return new Set();
+const RESOURCE_TO_CATEGORY: Record<string, ResourceCategory> = {
+  "CPU":                  "cpu",
+  "CPU — no limit":       "cpu",
+  "CPU — no request":     "cpu",
+  "Memory":               "memory",
+  "Memory — no limit":    "memory",
+  "Memory — no request":  "memory",
+  "Ephemeral":            "storage",
+  "Ephemeral — no limit": "storage",
+  "PVC":                  "storage",
+  "EmptyDir":             "storage",
+};
+
+const CATEGORY_ORDER: ResourceCategory[] = ["cpu", "memory", "storage"];
+
+const CATEGORY_META: Record<ResourceCategory, { label: string }> = {
+  cpu:     { label: "CPU" },
+  memory:  { label: "Memory" },
+  storage: { label: "Storage" },
+};
+
+// Sort within a kind group by resource type
+const RESOURCE_ORDER = [
+  "CPU", "Memory",
+  "CPU — no limit", "Memory — no limit",
+  "CPU — no request", "Memory — no request",
+  "Ephemeral — no limit", "Ephemeral", "PVC", "EmptyDir",
+];
+
+function resourceSortKey(resource: string): number {
+  const idx = RESOURCE_ORDER.indexOf(resource);
+  return idx === -1 ? 999 : idx;
 }
 
-function saveExcludedKinds(excluded: Set<SuggestionKind>) {
-  sessionStorage.setItem(STORAGE_KEY_EXCLUDED, JSON.stringify([...excluded]));
-}
-
-function groupSuggestions(suggestions: Suggestion[]): Array<{ resource: string; items: Suggestion[] }> {
-  const map = new Map<string, Suggestion[]>();
+function groupByKind(suggestions: Suggestion[]): Array<{ kind: SuggestionKind; items: Suggestion[] }> {
+  const map = new Map<SuggestionKind, Suggestion[]>();
   for (const s of suggestions) {
-    if (!map.has(s.resource)) map.set(s.resource, []);
-    map.get(s.resource)!.push(s);
+    if (!map.has(s.kind)) map.set(s.kind, []);
+    map.get(s.kind)!.push(s);
   }
-  map.forEach((items) => {
-    items.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
-  });
-  const groups: Array<{ resource: string; items: Suggestion[] }> = [];
-  for (const resource of RESOURCE_ORDER) {
-    if (map.has(resource)) {
-      groups.push({ resource, items: map.get(resource)! });
-      map.delete(resource);
-    }
+  const groups: Array<{ kind: SuggestionKind; items: Suggestion[] }> = [];
+  for (const kind of KIND_ORDER) {
+    const items = map.get(kind);
+    if (!items) continue;
+    items.sort((a, b) => resourceSortKey(a.resource) - resourceSortKey(b.resource));
+    groups.push({ kind, items });
   }
-  map.forEach((items, resource) => {
-    groups.push({ resource, items });
-  });
   return groups;
 }
 
@@ -60,7 +74,6 @@ const VOLUME_RESOURCES = new Set(["PVC", "EmptyDir"]);
 
 function SuggestionItem({ s, onOpenCards }: { s: Suggestion; onOpenCards?: (ids: string[], scrollTarget: string) => void }) {
   const meta = KIND_META[s.kind];
-  // PVC/EmptyDir suggestions use a volume name (not a container name) — scroll to the pod row instead
   const scrollTarget = VOLUME_RESOURCES.has(s.resource)
     ? `pod-row-${s.deployment}-${s.pod}`
     : `container-${s.deployment}-${s.pod}-${s.container}`;
@@ -75,9 +88,9 @@ function SuggestionItem({ s, onOpenCards }: { s: Suggestion; onOpenCards?: (ids:
       }}
     >
       <div className={styles.itemHeader}>
-        <span className={styles.icon} style={{ color: meta.color }}>{meta.icon}</span>
         <span className={styles.depName}>{s.deployment}</span>
         <span className={styles.podTag}>{s.pod.split("-").slice(-2).join("-")}</span>
+        <span className={styles.resourceTag}>{s.resource}</span>
       </div>
       <p className={styles.itemMsg}>{s.message}</p>
       <div className={styles.itemAction}>
@@ -93,20 +106,28 @@ function SuggestionItem({ s, onOpenCards }: { s: Suggestion; onOpenCards?: (ids:
 }
 
 interface SuggestionGroupProps {
-  resource: string;
+  kind: SuggestionKind;
   items: Suggestion[];
   open: boolean;
   onToggle: () => void;
   onOpenCards?: (ids: string[], scrollTarget: string) => void;
 }
 
-function SuggestionGroup({ resource, items, open, onToggle, onOpenCards }: SuggestionGroupProps) {
+function SuggestionGroup({ kind, items, open, onToggle, onOpenCards }: SuggestionGroupProps) {
+  const meta = KIND_META[kind];
   return (
     <div className={styles.group}>
-      <button className={styles.groupHeader} onClick={onToggle}>
+      <button
+        className={styles.groupHeader}
+        style={{ color: meta.color, borderBottomColor: `${meta.color}44` }}
+        onClick={onToggle}
+      >
         <span className={styles.groupArrow}>{open ? "▾" : "▸"}</span>
-        <span className={styles.groupLabel}>{resource}</span>
-        <span className={styles.groupCount}>{items.length}</span>
+        <span className={styles.groupIcon}>{meta.icon}</span>
+        <span className={styles.groupLabel}>{meta.label}</span>
+        <span className={styles.groupCount} style={{ background: meta.bg, color: meta.color }}>
+          {items.length}
+        </span>
       </button>
       {open && items.map((s) => (
         <SuggestionItem key={suggestionKey(s)} s={s} onOpenCards={onOpenCards} />
@@ -124,100 +145,59 @@ interface SuggestionPanelProps {
 }
 
 export default function SuggestionPanel({ deployments, history, onOpenCards, filterPod, onClearPodFilter }: SuggestionPanelProps) {
-  // --- Exclusion state (persisted) ---
-  const [excludedKinds, setExcludedKinds] = useState<Set<SuggestionKind>>(new Set());
-  const [showDropdown, setShowDropdown] = useState(false);
-
-  useEffect(() => {
-    setExcludedKinds(loadExcludedKinds());
-  }, []);
-
-  function toggleExcluded(kind: SuggestionKind) {
-    setExcludedKinds((prev) => {
-      const next = new Set(prev);
-      if (next.has(kind)) next.delete(kind); else next.add(kind);
-      saveExcludedKinds(next);
-      return next;
-    });
-  }
-
-  // --- Chip filter state (transient) ---
-  const [activeKinds, setActiveKinds] = useState<Set<SuggestionKind>>(new Set());
-
-  function toggleChip(kind: SuggestionKind) {
-    setActiveKinds((prev) => {
-      const next = new Set(prev);
-      if (next.has(kind)) next.delete(kind); else next.add(kind);
-      return next;
-    });
-  }
-
-  // --- Open/close state per group (lifted to survive re-renders) ---
+  // --- Open/close per kind group ---
   const [openGroups, setOpenGroups] = useState<Map<string, boolean>>(new Map());
 
-  function isGroupOpen(resource: string): boolean {
-    return openGroups.get(resource) ?? true;
+  function isGroupOpen(kind: string): boolean {
+    return openGroups.get(kind) ?? true;
   }
 
-  function toggleGroup(resource: string) {
+  function toggleGroup(kind: string) {
     setOpenGroups((prev) => {
       const next = new Map(prev);
-      next.set(resource, !(prev.get(resource) ?? true));
+      next.set(kind, !(prev.get(kind) ?? true));
       return next;
     });
   }
 
-  // --- Compute suggestions ---
-  const allSuggestions = computeSuggestions(deployments, history);
-  // 1) Remove excluded kinds
-  const suggestions = allSuggestions.filter((s) => !excludedKinds.has(s.kind));
-  // 2) Apply pod filter
-  const podFiltered = filterPod ? suggestions.filter((s) => s.pod === filterPod) : suggestions;
-  // 3) Apply chip filter (if any active)
-  const filtered = activeKinds.size > 0
-    ? podFiltered.filter((s) => activeKinds.has(s.kind))
-    : podFiltered;
-  const groups = groupSuggestions(filtered);
+  // --- Resource category chip filter (transient) ---
+  const [activeCategories, setActiveCategories] = useState<Set<ResourceCategory>>(new Set());
 
-  // Counts (after exclusion + pod filter, before chip filter)
-  const counts: Record<SuggestionKind, number> = { danger: 0, warning: 0, overkill: 0 };
-  for (const s of podFiltered) counts[s.kind]++;
+  function toggleCategory(cat: ResourceCategory) {
+    setActiveCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat); else next.add(cat);
+      return next;
+    });
+  }
+
+  // --- Compute ---
+  const allSuggestions = computeSuggestions(deployments, history);
+  const podFiltered = filterPod ? allSuggestions.filter((s) => s.pod === filterPod) : allSuggestions;
+  const filtered = activeCategories.size > 0
+    ? podFiltered.filter((s) => activeCategories.has(RESOURCE_TO_CATEGORY[s.resource] ?? "cpu"))
+    : podFiltered;
+
+  const groups = groupByKind(filtered);
+
+  // Category counts (before category filter, for chip display)
+  const catCounts: Record<ResourceCategory, number> = { cpu: 0, memory: 0, storage: 0 };
+  for (const s of podFiltered) {
+    const cat = RESOURCE_TO_CATEGORY[s.resource];
+    if (cat) catCounts[cat]++;
+  }
 
   return (
     <aside className={styles.panel}>
       <div className={styles.panelHeader}>
         <span className={styles.panelTitle}>Suggestions</span>
-        <div className={styles.headerRight}>
-          <button
-            className={`${styles.filterBtn} ${excludedKinds.size > 0 ? styles.filterBtnActive : ""}`}
-            onClick={() => setShowDropdown((o) => !o)}
-            title="Filter suggestion types"
-          >⚙</button>
-          <span className={styles.total}>{podFiltered.length}</span>
-        </div>
+        <span className={styles.total}>{podFiltered.length}</span>
       </div>
 
       {filterPod && (
         <div className={styles.podFilter}>
           <span className={styles.podFilterLabel}>⊕ {filterPod}</span>
           <button className={styles.podFilterClear} onClick={onClearPodFilter} title="Show all pods">✕</button>
-        </div>
-      )}
-
-      {showDropdown && (
-        <div className={styles.dropdown}>
-          {ALL_KINDS.map((kind) => (
-            <label key={kind} className={styles.dropdownRow}>
-              <input
-                type="checkbox"
-                checked={!excludedKinds.has(kind)}
-                onChange={() => toggleExcluded(kind)}
-                style={{ accentColor: KIND_META[kind].color }}
-              />
-              <span style={{ color: KIND_META[kind].color }}>{KIND_META[kind].icon}</span>
-              <span>{KIND_META[kind].label}</span>
-            </label>
-          ))}
         </div>
       )}
 
@@ -228,33 +208,34 @@ export default function SuggestionPanel({ deployments, history, onOpenCards, fil
         </div>
       ) : (
         <>
+          {/* Resource category chips */}
           <div className={styles.summary}>
-            {ALL_KINDS.map((kind) => {
-              if (counts[kind] === 0) return null;
-              const meta = KIND_META[kind];
-              const isActive = activeKinds.has(kind);
-              const isDimmed = activeKinds.size > 0 && !isActive;
+            {CATEGORY_ORDER.map((cat) => {
+              if (catCounts[cat] === 0) return null;
+              const isActive = activeCategories.has(cat);
+              const isDimmed = activeCategories.size > 0 && !isActive;
               return (
-                <span
-                  key={kind}
+                <button
+                  key={cat}
+                  type="button"
                   className={`${styles.chip} ${isActive ? styles.chipActive : ""} ${isDimmed ? styles.chipDimmed : ""}`}
-                  style={{ background: meta.bg, color: meta.color }}
-                  onClick={() => toggleChip(kind)}
+                  onClick={() => toggleCategory(cat)}
                 >
-                  {meta.icon} {counts[kind]} {meta.label}
-                </span>
+                  {CATEGORY_META[cat].label}
+                  <span className={styles.chipCount}>{catCounts[cat]}</span>
+                </button>
               );
             })}
           </div>
 
           <div className={styles.list}>
-            {groups.map(({ resource, items }) => (
+            {groups.map(({ kind, items }) => (
               <SuggestionGroup
-                key={resource}
-                resource={resource}
+                key={kind}
+                kind={kind}
                 items={items}
-                open={isGroupOpen(resource)}
-                onToggle={() => toggleGroup(resource)}
+                open={isGroupOpen(kind)}
+                onToggle={() => toggleGroup(kind)}
                 onOpenCards={onOpenCards}
               />
             ))}

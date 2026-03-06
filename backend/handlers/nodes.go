@@ -122,7 +122,6 @@ func ListNodes(w http.ResponseWriter, r *http.Request) {
 		overview.DiskPressure, overview.MemoryPressure, overview.PIDPressure = nodePressures(node.Status.Conditions)
 
 		// Node info
-		overview.KubeletVersion = node.Status.NodeInfo.KubeletVersion
 		overview.KernelVersion = node.Status.NodeInfo.KernelVersion
 		overview.OSImage = node.Status.NodeInfo.OSImage
 		overview.Age = nodeAge(node.Metadata.CreationTimestamp)

@@ -78,32 +78,30 @@ export default function PodRow({
       id={deploymentName ? `pod-row-${deploymentName}-${pod.name}` : undefined}
       className={styles.pod}
     >
-      <button
-        className={styles.header}
-        onClick={() => onToggleCard?.(podId)}
-        aria-expanded={open}
-      >
-        <span className={styles.arrow}>{open ? "▾" : "▸"}</span>
-        <span className={styles.name}>{pod.name}</span>
-        <span className={styles.phase} style={{ color: phaseColor }}>{pod.phase}</span>
-        <span className={styles.containers}>
-          {pod.containers.length} container{pod.containers.length !== 1 ? "s" : ""}
-        </span>
+      <div className={styles.header}>
+        <button
+          className={styles.toggleBtn}
+          onClick={() => onToggleCard?.(podId)}
+          aria-expanded={open}
+        >
+          <span className={styles.arrow}>{open ? "▾" : "▸"}</span>
+          <span className={styles.name}>{pod.name}</span>
+          <span className={styles.phase} style={{ color: phaseColor }}>{pod.phase}</span>
+          <span className={styles.containers}>
+            {pod.containers.length} container{pod.containers.length !== 1 ? "s" : ""}
+          </span>
+        </button>
         {onFilterByPod && (
           <button
             type="button"
             className={`${styles.filterBtn} ${isFiltered ? styles.filterBtnActive : ""}`}
             title={isFiltered ? "Clear pod filter" : "Show only this pod's suggestions"}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onFilterByPod(isFiltered ? null : pod.name);
-            }}
+            onClick={() => onFilterByPod(isFiltered ? null : pod.name)}
           >
             {isFiltered ? "⊗" : "⊕"}
           </button>
         )}
-      </button>
+      </div>
 
       {open && (
         <div className={styles.body}>

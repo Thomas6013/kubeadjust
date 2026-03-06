@@ -77,7 +77,6 @@ export interface NodeOverview {
   usage?: NodeResources;
   podCount: number;
   maxPods: number;
-  kubeletVersion?: string;
   kernelVersion?: string;
   osImage?: string;
   age?: string;

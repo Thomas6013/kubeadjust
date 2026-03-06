@@ -89,7 +89,6 @@ type NodeOverview struct {
 	PodCount       int            `json:"podCount"`
 	MaxPods        int            `json:"maxPods"`
 	// Node info
-	KubeletVersion string `json:"kubeletVersion,omitempty"`
 	KernelVersion  string `json:"kernelVersion,omitempty"`
 	OSImage        string `json:"osImage,omitempty"`
 	Age            string `json:"age,omitempty"`
