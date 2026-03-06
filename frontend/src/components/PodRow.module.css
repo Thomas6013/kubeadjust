@@ -29,20 +29,6 @@
 .name { flex: 1; font-family: monospace; font-size: 12px; }
 .phase { font-size: 12px; font-weight: 600; }
 .containers { font-size: 12px; color: var(--muted); }
-.filterBtn {
-  font-size: 13px;
-  color: var(--muted);
-  cursor: pointer;
-  background: none;
-  border: none;
-  padding: 0 2px;
-  border-radius: 3px;
-  transition: color 0.15s;
-  flex-shrink: 0;
-  line-height: 1;
-}
-.filterBtn:hover { color: var(--accent); }
-.filterBtnActive { color: var(--accent); }
 
 .body { padding: 4px 12px 12px 24px; display: flex; flex-direction: column; gap: 10px; }
 .container {

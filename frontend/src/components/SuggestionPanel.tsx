@@ -140,11 +140,10 @@ interface SuggestionPanelProps {
   deployments: DeploymentDetail[];
   history?: ContainerHistory[];
   onOpenCards?: (ids: string[], scrollTarget: string) => void;
-  filterPod?: string | null;
-  onClearPodFilter?: () => void;
+  searchQuery?: string;
 }
 
-export default function SuggestionPanel({ deployments, history, onOpenCards, filterPod, onClearPodFilter }: SuggestionPanelProps) {
+export default function SuggestionPanel({ deployments, history, onOpenCards, searchQuery }: SuggestionPanelProps) {
   // --- Open/close per kind group ---
   const [openGroups, setOpenGroups] = useState<Map<string, boolean>>(new Map());
 
@@ -173,16 +172,21 @@ export default function SuggestionPanel({ deployments, history, onOpenCards, fil
 
   // --- Compute ---
   const allSuggestions = computeSuggestions(deployments, history);
-  const podFiltered = filterPod ? allSuggestions.filter((s) => s.pod === filterPod) : allSuggestions;
+  const q = searchQuery?.toLowerCase() ?? "";
+  const searchFiltered = q
+    ? allSuggestions.filter((s) =>
+        s.deployment.toLowerCase().includes(q) || s.pod.toLowerCase().includes(q)
+      )
+    : allSuggestions;
   const filtered = activeCategories.size > 0
-    ? podFiltered.filter((s) => activeCategories.has(RESOURCE_TO_CATEGORY[s.resource] ?? "cpu"))
-    : podFiltered;
+    ? searchFiltered.filter((s) => activeCategories.has(RESOURCE_TO_CATEGORY[s.resource] ?? "cpu"))
+    : searchFiltered;
 
   const groups = groupByKind(filtered);
 
   // Category counts (before category filter, for chip display)
   const catCounts: Record<ResourceCategory, number> = { cpu: 0, memory: 0, storage: 0 };
-  for (const s of podFiltered) {
+  for (const s of searchFiltered) {
     const cat = RESOURCE_TO_CATEGORY[s.resource];
     if (cat) catCounts[cat]++;
   }
@@ -191,20 +195,13 @@ export default function SuggestionPanel({ deployments, history, onOpenCards, fil
     <aside className={styles.panel}>
       <div className={styles.panelHeader}>
         <span className={styles.panelTitle}>Suggestions</span>
-        <span className={styles.total}>{podFiltered.length}</span>
+        <span className={styles.total}>{searchFiltered.length}</span>
       </div>
 
-      {filterPod && (
-        <div className={styles.podFilter}>
-          <span className={styles.podFilterLabel}>⊕ {filterPod}</span>
-          <button className={styles.podFilterClear} onClick={onClearPodFilter} title="Show all pods">✕</button>
-        </div>
-      )}
-
-      {podFiltered.length === 0 ? (
+      {searchFiltered.length === 0 ? (
         <div className={styles.allGood}>
           <span className={styles.allGoodIcon}>✓</span>
-          <p>{filterPod ? `No suggestions for ${filterPod}` : "All resources look healthy"}</p>
+          <p>{q ? `No suggestions matching "${searchQuery}"` : "All resources look healthy"}</p>
         </div>
       ) : (
         <>

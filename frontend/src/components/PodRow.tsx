@@ -40,13 +40,11 @@ interface PodRowProps {
   openCards?: Set<string>;
   onToggleCard?: (id: string) => void;
   deploymentName?: string;
-  onFilterByPod?: (podName: string | null) => void;
-  activePodFilter?: string | null;
 }
 
 export default function PodRow({
   pod, namespace, prometheusAvailable, token, timeRange = "1h",
-  openCards, onToggleCard, deploymentName, onFilterByPod, activePodFilter,
+  openCards, onToggleCard, deploymentName,
 }: PodRowProps) {
   const podId = `pod:${pod.name}`;
   const open = openCards?.has(podId) ?? false;
@@ -82,8 +80,6 @@ export default function PodRow({
     : pod.phase === "Pending" ? "var(--yellow)"
     : "var(--red)";
 
-  const isFiltered = activePodFilter === pod.name;
-
   return (
     <div
       id={deploymentName ? `pod-row-${deploymentName}-${pod.name}` : undefined}
@@ -102,16 +98,6 @@ export default function PodRow({
             {pod.containers.length} container{pod.containers.length !== 1 ? "s" : ""}
           </span>
         </button>
-        {onFilterByPod && (
-          <button
-            type="button"
-            className={`${styles.filterBtn} ${isFiltered ? styles.filterBtnActive : ""}`}
-            title={isFiltered ? "Clear pod filter" : "Show only this pod's suggestions"}
-            onClick={() => onFilterByPod(isFiltered ? null : pod.name)}
-          >
-            {isFiltered ? "⊗" : "⊕"}
-          </button>
-        )}
       </div>
 
       {open && (

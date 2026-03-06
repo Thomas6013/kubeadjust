@@ -50,9 +50,6 @@ export default function DashboardPage() {
   // Workload search
   const [workloadSearch, setWorkloadSearch] = useState("");
 
-  // Pod filter for suggestion panel
-  const [filterPod, setFilterPod] = useState<string | null>(null);
-
   // Stable refs for the auto-refresh interval (avoids stale closures)
   const viewRef = useRef(view);
   const selectedNsRef = useRef(selectedNs);
@@ -507,8 +504,6 @@ export default function DashboardPage() {
                         if (next.has(id)) next.delete(id); else next.add(id);
                         return next;
                       })}
-                      onFilterByPod={(pod) => setFilterPod(pod)}
-                      activePodFilter={filterPod}
                     />
                   ))}
                 </div>
@@ -523,8 +518,7 @@ export default function DashboardPage() {
             deployments={deployments}
             history={nsHistory}
             onOpenCards={handleOpenCards}
-            filterPod={filterPod}
-            onClearPodFilter={() => setFilterPod(null)}
+            searchQuery={workloadSearch}
           />
         )}
       </div>

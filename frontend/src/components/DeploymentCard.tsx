@@ -12,13 +12,11 @@ interface DeploymentCardProps {
   timeRange?: TimeRange;
   openCards?: Set<string>;
   onToggleCard?: (id: string) => void;
-  onFilterByPod?: (podName: string | null) => void;
-  activePodFilter?: string | null;
 }
 
 export default function DeploymentCard({
   dep, namespace, prometheusAvailable, token, timeRange,
-  openCards, onToggleCard, onFilterByPod, activePodFilter,
+  openCards, onToggleCard,
 }: DeploymentCardProps) {
   const cardId = `dep:${dep.name}`;
   const open = openCards?.has(cardId) ?? false;
@@ -58,8 +56,6 @@ export default function DeploymentCard({
                 openCards={openCards}
                 onToggleCard={onToggleCard}
                 deploymentName={dep.name}
-                onFilterByPod={onFilterByPod}
-                activePodFilter={activePodFilter}
               />
             ))
           )}
