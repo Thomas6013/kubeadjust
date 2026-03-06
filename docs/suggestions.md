@@ -212,7 +212,7 @@ Each suggestion has its own `action` field (set per-rule in `suggestions.ts`). `
 
 ---
 
-## Panel Layout (v0.18.0+)
+## Panel Layout (v0.17.0+)
 
 Suggestions are grouped by **severity** (not resource type):
 

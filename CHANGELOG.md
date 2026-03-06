@@ -4,39 +4,28 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
-## [0.18.0] - 2026-03-06
-
-### Changed
-
-- **Node card header restructured** — the node card now uses two distinct rows: identity (icon + name + status + roles) and metadata (age · OS image · kernel · pod count). Previously everything was jammed into a single flex row that wrapped unpredictably on narrow cards.
-- **Node pressure and taint badges consolidated** — DiskPressure, MemoryPressure, PIDPressure and taint labels are now rendered in a single `alertRow` below the metadata line, hidden entirely when the node is healthy. Previously pressure badges were interspersed in the header and taints were a separate section.
-- **Node grid: single column** — the node grid switches from a 2-column auto-fill layout to a full-width single column. Node cards with pod bars, gauges, and metadata are too wide for side-by-side rendering to be useful.
-- **`kubeletVersion` removed from backend and frontend** — `KubeletVersion` field removed from `NodeOverview` in `backend/resources/types.go`, from the handler assignment in `nodes.go`, and from the TypeScript `NodeOverview` interface. The field was returned by the API but never rendered and added noise to the response payload.
-- **Suggestion panel: groups by severity, filter by resource** — the suggestion list is now grouped by severity (▲ critical / ● warning / ▼ over-prov) instead of resource type. This makes urgency immediately visible — all critical items appear first regardless of whether they are CPU, PVC, or ephemeral. Within each group, items are sorted by resource type. Each item now shows a `resourceTag` badge (e.g. "CPU — no limit") since the resource is no longer the group header.
-- **Suggestion filter chips: resource category (CPU / Memory / Storage)** — the chips above the suggestion list now filter by resource category instead of severity. CPU covers all CPU sub-types (near limit, no limit, no request), Memory covers all memory sub-types, Storage covers Ephemeral, PVC, and EmptyDir.
-- **Suggestion panel: gear icon and persistent kind-exclusion removed** — the ⚙ dropdown that permanently hid suggestion kinds via sessionStorage has been removed. It was redundant with the chip filter and introduced a second, less discoverable mechanism for the same action.
-- **Favicon updated** — the SVG icon in the browser tab is now a proper Kubernetes-style hexagon with a helm wheel (spokes + center dot + outer ring) in the Kubernetes blue (`#326CE5`) on a dark rounded background.
-
-### Fixed
-
-- **Pod filter button (`⊕`) unreliable** — the filter button was nested inside a `<button>` element (the pod row toggle), which is invalid HTML. Browsers flatten or ignore nested interactive elements, making `stopPropagation()` unreliable — clicking the filter could toggle the pod open/close instead. Fixed by converting the pod row header from a `<button>` to a `<div>` with an explicit `.toggleBtn` inside, and the filter button as a sibling.
-
----
-
-## [0.17.0] - 2026-03-05
+## [0.17.0] - 2026-03-06
 
 ### Added
 - **Top pods view in node cards** — the pod list in the node card now shows the top 10 pods sorted by resource use, with a CPU/MEM sort toggle. Replaces the previous paginated full list. More actionable at a glance for spotting heavy consumers on a node.
 - **Version + minimum Kubernetes version in topbar** — the running app version and the minimum supported Kubernetes version (`k8s ≥1.21`) are displayed discreetly next to the KubeAdjust brand name.
-- **Favicon** — a custom SVG hexagon icon is now shown in the browser tab.
 
 ### Changed
-- **Responsive node grid** — the node card grid now uses `auto-fill` with a `380px` minimum column width, automatically collapsing to a single column on narrow screens instead of forcing two columns and triggering a horizontal scrollbar. Topbar actions also wrap on small viewports.
-- **Per-cluster token storage** — tokens are now stored per cluster (`kube-token:<cluster>`) in sessionStorage. Switching to a cluster already visited in the current session is seamless (no re-authentication). Switching to a new cluster redirects to login with the target cluster pre-selected. Backwards-compatible with single-cluster sessions.
+- **Node card header restructured** — the node card now uses two distinct rows: identity (icon + name + status + roles) and metadata (age · OS image · kernel · pod count). Pressure badges (DiskPressure, MemoryPressure, PIDPressure) and taint labels are consolidated into a single alert row, hidden when the node is healthy.
+- **Node grid: single column** — the node grid switches from a 2-column auto-fill layout to full-width single column. Node cards with pod bars, gauges, and metadata are too wide for side-by-side rendering.
+- **`kubeletVersion` removed from backend and frontend** — field removed from `NodeOverview` in `backend/resources/types.go`, handler, and TypeScript interface. Was returned by the API but never rendered.
+- **Suggestion panel: groups by severity, filter by resource** — the suggestion list is now grouped by severity (▲ critical / ● warning / ▼ over-prov) instead of resource type. All critical items appear first regardless of resource. Each item shows a `resourceTag` badge. Within each group, items are sorted by resource type.
+- **Suggestion filter chips: resource category (CPU / Memory / Storage)** — chips filter by resource category instead of severity. CPU covers all CPU sub-types, Memory covers all memory sub-types, Storage covers Ephemeral, PVC, and EmptyDir.
+- **Suggestion panel: gear icon and persistent kind-exclusion removed** — the ⚙ dropdown was redundant with the chip filter. Chips are now the single filtering mechanism.
+- **Favicon updated** — the SVG icon is now a Kubernetes-style hexagon with a helm wheel in Kubernetes blue (`#326CE5`).
+- **Per-cluster token storage** — tokens are now stored per cluster (`kube-token:<cluster>`) in sessionStorage. Switching to a cluster already visited in the current session is seamless (no re-authentication). Backwards-compatible with single-cluster sessions.
 
 ### Fixed
+- **Pod filter button (`⊕`) unreliable** — was nested inside a `<button>` (invalid HTML). Browsers flatten nested interactive elements, making `stopPropagation()` unreliable. Pod header converted from `<button>` to `<div>` with a `.toggleBtn` inside; filter button is now a sibling.
+- **Stale duplicate test files in handlers/** — `handlers/prometheus_test.go` and `handlers/resources_test.go` referenced unexported functions (`isValidLabelValue`, `parseCPUMillicores`, `parseMemoryBytes`) that were moved to the `resources/` package in v0.13.0. Files removed; coverage provided by `resources/validate_test.go` and `resources/parse_test.go`.
+- **Conflicting `middleware.ts` / `proxy.ts`** — Next.js 16 renamed the middleware entrypoint to `proxy.ts`; the old `src/middleware.ts` was still present, causing a build error. Removed `middleware.ts`.
 - **Suggestion click on PVC/EmptyDir doesn't scroll** — these suggestions used the volume name as the container identifier, generating a scroll target that never existed in the DOM. Now correctly scrolls to the pod row for volume-type suggestions.
-- **Ghost scroll on subsequent renders** — the scroll ref was only cleared when the target element was found. If the element didn't exist (broken PVC/EmptyDir target), the ref stayed set and any later re-render (auto-refresh, filter change) would silently retry the scroll. Ref is now always cleared immediately before the attempt.
+- **Ghost scroll on subsequent renders** — the scroll ref was only cleared when the target element was found. Ref is now always cleared immediately before the attempt.
 
 ---
 
