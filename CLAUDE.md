@@ -192,9 +192,11 @@ _(All High priority issues resolved in v0.14.0 — see Resolved section below.)_
 - ~~Suggestion click on PVC/EmptyDir doesn't scroll~~ — RESOLVED (v0.17.0, volume suggestions scroll to `pod-row-${dep}-${pod}` instead of nonexistent container ID).
 - ~~Ghost scroll on auto-refresh after failed scroll attempt~~ — RESOLVED (v0.17.0, scroll ref always cleared before attempt).
 - ~~No favicon~~ — RESOLVED (v0.17.0, SVG hexagon icon in `frontend/src/app/icon.svg`).
-- ~~No version indicator in the UI~~ — RESOLVED (v0.17.0, `v0.17.0 · k8s ≥1.21` in topbar brand; sourced from `frontend/src/lib/version.ts`).
+- ~~No version indicator in the UI~~ — RESOLVED (v0.17.0, `v0.17.0` in topbar brand; `k8s ≥1.21` label removed).
 - ~~Node pod list shows all pods paginated~~ — RESOLVED (v0.17.0, top 10 by usage with CPU/MEM sort toggle, no pagination).
-- ~~Node grid forces 2 columns on small screens (horizontal scrollbar)~~ — RESOLVED (v0.17.0, `auto-fill minmax(380px, 1fr)`, topbar actions wrap).
+- ~~Node grid unresponsive (always single column)~~ — RESOLVED (v0.17.0, `repeat(auto-fill, minmax(560px, 1fr))` — 2 columns on wide viewports, 1 below 680px).
+- ~~Time range selector not shown on initial nodes view~~ — RESOLVED (v0.17.0, `/nodes` response now includes `prometheusAvailable`; range selector visible immediately).
+- ~~Sparkline modal too wide with long pod names~~ — RESOLVED (v0.17.0, `max-width: min(540px, 95vw)` on modal; pod name shortened in title).
 - ~~Node conditions (DiskPressure, MemoryPressure, PIDPressure) not visible~~ — RESOLVED (v0.16.0, red badges in node card header when active).
 - ~~No node age/version info~~ — RESOLVED (v0.16.0, compact info line: age, kernel, OS image; kubelet version removed in v0.17.0).
 - ~~No limit overcommit indicator on nodes~~ — RESOLVED (v0.16.0, `lim X%` + `OVERCOMMIT` badge in CircleGauge when sum(limits) > allocatable).

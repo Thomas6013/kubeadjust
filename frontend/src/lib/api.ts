@@ -171,6 +171,11 @@ export interface WorkloadResponse {
   prometheusAvailable: boolean;
 }
 
+export interface NodesResponse {
+  nodes: NodeOverview[];
+  prometheusAvailable: boolean;
+}
+
 export const api = {
   clusters: () => fetchClusters(),
   verify: (token: string) =>
@@ -182,7 +187,7 @@ export const api = {
   deployments: (token: string, namespace: string) =>
     apiFetch<WorkloadResponse>(`/namespaces/${namespace}/deployments`, token),
   nodes: (token: string) =>
-    apiFetch<NodeOverview[]>("/nodes", token),
+    apiFetch<NodesResponse>("/nodes", token),
   nodePods: (token: string, nodeName: string) =>
     apiFetch<PodDetail[]>(`/nodes/${encodeURIComponent(nodeName)}/pods`, token),
   containerHistory: (token: string, namespace: string, pod: string, container: string, range?: TimeRange) =>

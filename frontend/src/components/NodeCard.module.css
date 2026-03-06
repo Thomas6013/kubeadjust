@@ -47,6 +47,18 @@
 
 .nodeIcon { font-size: 16px; color: var(--accent); flex-shrink: 0; }
 
+.podCountBadge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 8px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .nodeName {
   font-size: 14px;
   font-weight: 700;

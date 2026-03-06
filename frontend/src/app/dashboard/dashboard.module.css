@@ -256,9 +256,13 @@
 .workloadSearch::placeholder { color: var(--muted); }
 
 .nodeGrid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(560px, 1fr));
   gap: 10px;
+}
+
+@media (max-width: 680px) {
+  .nodeGrid { grid-template-columns: 1fr; }
 }
 
 .nodeBtn { flex-direction: row; align-items: center; gap: 6px; padding: 7px 10px; }

@@ -8,11 +8,12 @@ All notable changes to KubeAdjust are documented here.
 
 ### Added
 - **Top pods view in node cards** — the pod list in the node card now shows the top 10 pods sorted by resource use, with a CPU/MEM sort toggle. Replaces the previous paginated full list. More actionable at a glance for spotting heavy consumers on a node.
-- **Version + minimum Kubernetes version in topbar** — the running app version and the minimum supported Kubernetes version (`k8s ≥1.21`) are displayed discreetly next to the KubeAdjust brand name.
+- **Time range selector visible on nodes view** — the `/nodes` endpoint now returns `prometheusAvailable`. The 1h / 6h / 24h / 7d range selector appears in the topbar from the first page load regardless of which view (nodes or workloads) is visited first.
 
 ### Changed
-- **Node card header restructured** — the node card now uses two distinct rows: identity (icon + name + status + roles) and metadata (age · OS image · kernel · pod count). Pressure badges (DiskPressure, MemoryPressure, PIDPressure) and taint labels are consolidated into a single alert row, hidden when the node is healthy.
-- **Node grid: single column** — the node grid switches from a 2-column auto-fill layout to full-width single column. Node cards with pod bars, gauges, and metadata are too wide for side-by-side rendering.
+- **Node card header restructured** — the node card now uses two distinct rows: identity (icon + name + status + roles) and metadata (age · OS image · kernel). The pod count badge (`running / max`) moves to the right end of the identity row. Pressure badges and taint labels are consolidated into a single alert row, hidden when the node is healthy.
+- **Node grid: 2 columns on wide screens, 1 on narrow** — the node grid uses `grid-template-columns: repeat(auto-fill, minmax(560px, 1fr))`, giving 2 side-by-side cards on wide viewports and a single column below 680px.
+- **Topbar version simplified** — the `k8s ≥1.21` minimum version indicator is removed from the topbar. Only the app version (`v0.17.0`) is shown.
 - **`kubeletVersion` removed from backend and frontend** — field removed from `NodeOverview` in `backend/resources/types.go`, handler, and TypeScript interface. Was returned by the API but never rendered.
 - **Suggestion panel: groups by severity, filter by resource** — the suggestion list is now grouped by severity (▲ critical / ● warning / ▼ over-prov) instead of resource type. All critical items appear first regardless of resource. Each item shows a `resourceTag` badge. Within each group, items are sorted by resource type.
 - **Suggestion filter chips: resource category (CPU / Memory / Storage)** — chips filter by resource category instead of severity. CPU covers all CPU sub-types, Memory covers all memory sub-types, Storage covers Ephemeral, PVC, and EmptyDir.
@@ -26,6 +27,7 @@ All notable changes to KubeAdjust are documented here.
 - **Conflicting `middleware.ts` / `proxy.ts`** — Next.js 16 renamed the middleware entrypoint to `proxy.ts`; the old `src/middleware.ts` was still present, causing a build error. Removed `middleware.ts`.
 - **Suggestion click on PVC/EmptyDir doesn't scroll** — these suggestions used the volume name as the container identifier, generating a scroll target that never existed in the DOM. Now correctly scrolls to the pod row for volume-type suggestions.
 - **Ghost scroll on subsequent renders** — the scroll ref was only cleared when the target element was found. Ref is now always cleared immediately before the attempt.
+- **Sparkline modal too wide with long pod names** — the modal now has a fixed `max-width: min(540px, 95vw)`. Pod names in the modal title are shortened (last two random suffixes stripped, matching the pod bar display).
 
 ---
 

@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"os"
 	"sort"
 	"time"
 
@@ -158,7 +159,10 @@ func ListNodes(w http.ResponseWriter, r *http.Request) {
 		result = append(result, overview)
 	}
 
-	jsonOK(w, result)
+	jsonOK(w, map[string]interface{}{
+		"nodes":               result,
+		"prometheusAvailable": os.Getenv("PROMETHEUS_URL") != "",
+	})
 }
 
 // GetNodePods returns the list of non-terminal pods running on a given node,

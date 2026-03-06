@@ -282,6 +282,7 @@ export default function NodeCard({ node, token }: NodeCardProps) {
             {r}
           </span>
         ))}
+        <span className={styles.podCountBadge} title="Running pods / max pods">{node.podCount} / {node.maxPods}</span>
       </div>
 
       {/* Header row 2: metadata */}
@@ -289,7 +290,6 @@ export default function NodeCard({ node, token }: NodeCardProps) {
         {node.age && <span className={styles.metaItem} title="Node age">{node.age}</span>}
         {node.osImage && <span className={styles.metaItem} title="OS image">{node.osImage}</span>}
         {node.kernelVersion && <span className={styles.metaItem} title="Kernel version">kernel {node.kernelVersion}</span>}
-        <span className={styles.metaItem} title="Running pods / max">{node.podCount} / {node.maxPods} pods</span>
       </div>
 
       {/* Pressures + taints */}

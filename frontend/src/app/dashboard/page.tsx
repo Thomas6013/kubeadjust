@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type TimeRange, type ContainerHistory } from "@/lib/api";
-import { APP_VERSION, KUBE_MIN_VERSION } from "@/lib/version";
+import { APP_VERSION } from "@/lib/version";
 import DeploymentCard from "@/components/DeploymentCard";
 import SuggestionPanel from "@/components/SuggestionPanel";
 import NodeCard from "@/components/NodeCard";
@@ -162,8 +162,9 @@ export default function DashboardPage() {
     if (!silent) { setLoadingNodes(true); setError(""); }
     loadingRef.current = true;
     try {
-      const n = await api.nodes(token);
-      setNodes(n);
+      const resp = await api.nodes(token);
+      setNodes(resp.nodes);
+      setPrometheusAvailable(resp.prometheusAvailable);
       setLastRefresh(new Date());
     } catch (e) {
       if (!silent) setError(e instanceof Error ? e.message : "Failed to load nodes");
@@ -301,7 +302,7 @@ export default function DashboardPage() {
       <header className={styles.topbar}>
         <div className={styles.brand}>
           <span>⎈</span> KubeAdjust
-          <span className={styles.version} title={`Requires Kubernetes ≥ ${KUBE_MIN_VERSION}`}>v{APP_VERSION} · k8s ≥{KUBE_MIN_VERSION}</span>
+          <span className={styles.version}>v{APP_VERSION}</span>
           {cluster && (
             clusters.length > 1 ? (
               <div className={styles.clusterSwitcher}>

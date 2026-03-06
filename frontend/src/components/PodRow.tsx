@@ -10,6 +10,11 @@ import Sparkline from "./Sparkline";
 import SparklineModal from "./SparklineModal";
 import styles from "./PodRow.module.css";
 
+function shortPodName(name: string): string {
+  const parts = name.split("-");
+  return parts.length > 3 ? parts.slice(0, -2).join("-") : name;
+}
+
 const STATUS_COLOR: Record<string, string> = {
   danger:   "var(--red)",
   warning:  "var(--orange)",
@@ -126,7 +131,7 @@ export default function PodRow({
                           label: "CPU",
                           color: STATUS_COLOR[cpuStatus],
                           isCPU: true,
-                          title: `${pod.name} / ${c.name}`,
+                          title: `${shortPodName(pod.name)} / ${c.name}`,
                         })}
                       />
                     )}
@@ -142,7 +147,7 @@ export default function PodRow({
                           label: "Memory",
                           color: STATUS_COLOR[memStatus],
                           isCPU: false,
-                          title: `${pod.name} / ${c.name}`,
+                          title: `${shortPodName(pod.name)} / ${c.name}`,
                         })}
                       />
                     )}

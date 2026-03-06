@@ -19,6 +19,8 @@
   gap: 12px;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
   min-width: 320px;
+  max-width: min(540px, 95vw);
+  width: 540px;
 }
 
 .header {
