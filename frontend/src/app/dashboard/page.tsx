@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type ContainerHistory } from "@/lib/api";
+import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type ContainerHistory, type TimeRange } from "@/lib/api";
 import { APP_VERSION } from "@/lib/version";
 import { useSessionState, AUTO_REFRESH_MS, type View, type AutoRefresh } from "@/hooks/useSessionState";
 import { STORAGE_KEYS, safeGetItem, safeSetItem, safeRemoveItem, tokenKey } from "@/lib/storage";
