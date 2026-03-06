@@ -2,59 +2,103 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 18px 20px;
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
   transition: border-color 0.2s;
+  min-width: 0;
+  overflow: hidden;
 }
 .card.notReady { border-color: rgba(252, 129, 129, 0.4); }
 
-.header {
+/* Header row 1: identity */
+.headerTop {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
-.nodeIcon { font-size: 18px; color: var(--accent); }
+/* Header row 2: metadata */
+.headerMeta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-left: 24px;
+}
+
+.metaItem {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+
+/* Alert row: pressures + taints */
+.alertRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-left: 24px;
+}
+
+.nodeIcon { font-size: 16px; color: var(--accent); flex-shrink: 0; }
+
+.podCountBadge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 8px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
 
 .nodeName {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   font-family: monospace;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .statusBadge {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  padding: 2px 8px;
+  padding: 2px 7px;
   border-radius: 4px;
   border: 1px solid;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  flex-shrink: 0;
 }
 
 .roleBadge {
-  font-size: 11px;
+  font-size: 10px;
   background: var(--surface2);
   color: var(--muted);
-  padding: 2px 8px;
+  padding: 2px 7px;
   border-radius: 4px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  flex-shrink: 0;
 }
 .roleBadge.controlPlane {
   background: rgba(108, 142, 247, 0.12);
   color: var(--accent);
-}
-
-.pods {
-  font-size: 12px;
-  color: var(--muted);
-  margin-left: auto;
 }
 
 .pressureBadge {
@@ -91,9 +135,12 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
 }
 
-@media (max-width: 800px) {
+@media (max-width: 900px) {
   .resources { grid-template-columns: 1fr; }
 }
 
@@ -103,12 +150,14 @@
   align-items: center;
   gap: 12px;
 }
+.gauge > svg { flex-shrink: 0; }
 
 .gaugeInfo {
   display: flex;
   flex-direction: column;
   gap: 5px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .gaugeLabel {
@@ -126,7 +175,7 @@
   gap: 6px;
   font-size: 12px;
   color: var(--fg);
-  white-space: nowrap;
+  flex-wrap: wrap;
 }
 
 .gaugeDot {
@@ -203,6 +252,13 @@
   gap: 8px;
 }
 
+.podsToggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .podsToggle {
   display: flex;
   align-items: center;
@@ -220,6 +276,38 @@
 }
 .podsToggle:hover { color: var(--fg); }
 
+.sortToggle {
+  display: flex;
+  gap: 2px;
+}
+
+.sortBtn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 1px 7px;
+  transition: color 0.15s, background 0.15s;
+}
+.sortBtn:hover { color: var(--fg); }
+
+.sortBtnActive {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.topInfo {
+  font-size: 10px;
+  color: var(--muted);
+  margin: 0;
+  font-style: italic;
+}
+
 .podsArrow {
   font-size: 10px;
   color: var(--accent);
@@ -232,12 +320,6 @@
   background: var(--surface2);
   border-radius: 10px;
   padding: 1px 6px;
-}
-
-.podBarsHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
 }
 
 .pageInfo {

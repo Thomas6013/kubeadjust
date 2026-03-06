@@ -32,6 +32,12 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
+    # Prometheus (optional — required for sparklines)
+    {{- if .Values.prometheus.enabled }}
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.prometheus.port | default 9090 }}
+    {{- end }}
     # DNS resolution
     - ports:
         - protocol: UDP

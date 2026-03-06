@@ -2,27 +2,30 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type TimeRange, type ContainerHistory } from "@/lib/api";
+import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type ContainerHistory, type TimeRange } from "@/lib/api";
+import { APP_VERSION } from "@/lib/version";
+import { useSessionState, AUTO_REFRESH_MS, type View, type AutoRefresh } from "@/hooks/useSessionState";
+import { STORAGE_KEYS, safeGetItem, safeSetItem, safeRemoveItem, tokenKey } from "@/lib/storage";
 import DeploymentCard from "@/components/DeploymentCard";
 import SuggestionPanel from "@/components/SuggestionPanel";
 import NodeCard from "@/components/NodeCard";
 import styles from "./dashboard.module.css";
 
-type View = "namespaces" | "nodes";
-type AutoRefresh = "off" | "30s" | "60s" | "5m";
-const AUTO_REFRESH_MS: Record<AutoRefresh, number> = {
-  off: 0, "30s": 30_000, "60s": 60_000, "5m": 300_000,
-};
-
 export default function DashboardPage() {
   const router = useRouter();
   const [token, setToken] = useState<string>("");
-  const [view, setView] = useState<View>("nodes");
+  const {
+    view, setView,
+    autoRefresh, setAutoRefresh,
+    selectedNs, setSelectedNs,
+    timeRange, setTimeRange,
+    openCards, setOpenCards,
+    excludedNs, setExcludedNs,
+  } = useSessionState();
 
   // Namespace view state
   const [namespaces, setNamespaces] = useState<NamespaceItem[]>([]);
   const [nsStats, setNsStats] = useState<Map<string, NamespaceStats>>(new Map());
-  const [selectedNs, setSelectedNs] = useState<string>("");
   const [deployments, setDeployments] = useState<DeploymentDetail[]>([]);
   const [metricsAvailable, setMetricsAvailable] = useState(true);
   const [prometheusAvailable, setPrometheusAvailable] = useState(false);
@@ -33,34 +36,19 @@ export default function DashboardPage() {
   const [nodes, setNodes] = useState<NodeOverview[]>([]);
   const [loadingNodes, setLoadingNodes] = useState(false);
 
-  // Namespace exclusion (persisted in sessionStorage)
-  const [excludedNs, setExcludedNs] = useState<Set<string>>(new Set());
-
-  // Time range for Prometheus queries
-  const [timeRange, setTimeRange] = useState<TimeRange>("1h");
-
   // Namespace-level Prometheus history (eager fetch)
   const [nsHistory, setNsHistory] = useState<ContainerHistory[]>([]);
-
-  // Opened deployments/pods (persisted in sessionStorage)
-  const [openCards, setOpenCards] = useState<Set<string>>(new Set());
 
   // Multi-cluster
   const [cluster, setCluster] = useState("");
   const [clusters, setClusters] = useState<ClusterItem[]>([]);
   const [showClusterMenu, setShowClusterMenu] = useState(false);
 
-  const [autoRefresh, setAutoRefresh] = useState<AutoRefresh>("off");
   const [error, setError] = useState("");
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const [restored, setRestored] = useState(false);
 
   // Workload search
   const [workloadSearch, setWorkloadSearch] = useState("");
-
-  // Pod filter for suggestion panel
-  const [filterPod, setFilterPod] = useState<string | null>(null);
-
 
   // Stable refs for the auto-refresh interval (avoids stale closures)
   const viewRef = useRef(view);
@@ -71,30 +59,14 @@ export default function DashboardPage() {
   const loadNodesRef = useRef<(silent?: boolean) => Promise<void>>(() => Promise.resolve());
   const loadDeploymentsRef = useRef<(ns: string, silent?: boolean) => Promise<void>>(() => Promise.resolve());
 
-  // Restore persisted state on mount (before persistence effects run)
+  // Restore cluster and token on mount (session preferences are restored by useSessionState)
   useEffect(() => {
-    const t = sessionStorage.getItem("kube-token");
+    const savedCluster = safeGetItem(STORAGE_KEYS.cluster) ?? "";
+    if (savedCluster) setCluster(savedCluster);
+    // fall back to legacy "kube-token" for sessions created before per-cluster storage
+    const t = safeGetItem(tokenKey(savedCluster)) ?? safeGetItem("kube-token");
     if (!t) { router.replace("/"); return; }
     setToken(t);
-    const savedCluster = sessionStorage.getItem("kube-cluster");
-    if (savedCluster) setCluster(savedCluster);
-    const savedAR = sessionStorage.getItem("kubeadjust:autoRefresh") as AutoRefresh | null;
-    if (savedAR && savedAR in AUTO_REFRESH_MS) setAutoRefresh(savedAR);
-    try {
-      const raw = sessionStorage.getItem("kubeadjust:excludedNs");
-      if (raw) setExcludedNs(new Set(JSON.parse(raw) as string[]));
-    } catch { /* ignore */ }
-    const savedView = sessionStorage.getItem("kubeadjust:view") as View | null;
-    if (savedView) setView(savedView);
-    const savedNs = sessionStorage.getItem("kubeadjust:selectedNs");
-    if (savedNs) setSelectedNs(savedNs);
-    const savedRange = sessionStorage.getItem("kubeadjust:timeRange") as TimeRange | null;
-    if (savedRange) setTimeRange(savedRange);
-    try {
-      const rawCards = sessionStorage.getItem("kubeadjust:openCards");
-      if (rawCards) setOpenCards(new Set(JSON.parse(rawCards) as string[]));
-    } catch { /* ignore */ }
-    setRestored(true);
   }, [router]);
 
   // Fetch available clusters (for switcher)
@@ -102,17 +74,9 @@ export default function DashboardPage() {
     api.clusters().then(setClusters).catch(() => { /* best-effort */ });
   }, []);
 
-
   // Keep refs in sync
   useEffect(() => { viewRef.current = view; }, [view]);
   useEffect(() => { selectedNsRef.current = selectedNs; }, [selectedNs]);
-
-  // Persist state on change — only after initial restore to avoid overwriting saved values
-  useEffect(() => { if (restored) sessionStorage.setItem("kubeadjust:view", view); }, [view, restored]);
-  useEffect(() => { if (restored) sessionStorage.setItem("kubeadjust:autoRefresh", autoRefresh); }, [autoRefresh, restored]);
-  useEffect(() => { if (restored && selectedNs) sessionStorage.setItem("kubeadjust:selectedNs", selectedNs); }, [selectedNs, restored]);
-  useEffect(() => { if (restored) sessionStorage.setItem("kubeadjust:timeRange", timeRange); }, [timeRange, restored]);
-  useEffect(() => { if (restored) sessionStorage.setItem("kubeadjust:openCards", JSON.stringify([...openCards])); }, [openCards, restored]);
 
   useEffect(() => {
     if (!token) return;
@@ -121,7 +85,7 @@ export default function DashboardPage() {
       .then((ns) => {
         setNamespaces(ns);
         // Keep persisted namespace if it still exists, otherwise pick first
-        const saved = sessionStorage.getItem("kubeadjust:selectedNs");
+        const saved = safeGetItem(STORAGE_KEYS.selectedNs);
         if (saved && ns.some((n) => n.name === saved)) {
           setSelectedNs(saved);
         } else if (ns.length > 0) {
@@ -159,8 +123,9 @@ export default function DashboardPage() {
     if (!silent) { setLoadingNodes(true); setError(""); }
     loadingRef.current = true;
     try {
-      const n = await api.nodes(token);
-      setNodes(n);
+      const resp = await api.nodes(token);
+      setNodes(resp.nodes);
+      setPrometheusAvailable(resp.prometheusAvailable);
       setLastRefresh(new Date());
     } catch (e) {
       if (!silent) setError(e instanceof Error ? e.message : "Failed to load nodes");
@@ -211,24 +176,32 @@ export default function DashboardPage() {
   }
 
   function handleLogout() {
-    sessionStorage.removeItem("kube-token");
-    sessionStorage.removeItem("kube-cluster");
+    safeRemoveItem(tokenKey(cluster));
+    safeRemoveItem("kube-token"); // clear legacy key too
+    safeRemoveItem(STORAGE_KEYS.cluster);
     router.push("/");
   }
 
   function handleClusterSwitch(name: string) {
     if (name === cluster) { setShowClusterMenu(false); return; }
-    sessionStorage.setItem("kube-cluster", name);
-    sessionStorage.removeItem("kubeadjust:selectedNs");
+    const existingToken = safeGetItem(tokenKey(name));
+    safeSetItem(STORAGE_KEYS.cluster, name);
+    safeRemoveItem(STORAGE_KEYS.selectedNs);
     setShowClusterMenu(false);
-    window.location.reload();
+    if (existingToken) {
+      // Already authenticated for this cluster in this session — reload seamlessly
+      window.location.reload();
+    } else {
+      // No token for this cluster yet — go to login (cluster pre-selected)
+      router.push("/");
+    }
   }
 
   function hideNamespace(name: string) {
     setExcludedNs((prev) => {
       const next = new Set(prev);
       next.add(name);
-      sessionStorage.setItem("kubeadjust:excludedNs", JSON.stringify([...next]));
+      safeSetItem(STORAGE_KEYS.excludedNs, JSON.stringify([...next]));
       return next;
     });
     // If hiding the currently selected namespace, switch to another
@@ -254,13 +227,14 @@ export default function DashboardPage() {
     });
   }
 
-  // Scroll to container after openCards state update causes re-render
+  // Scroll to target after openCards state update causes re-render
   useEffect(() => {
     if (!scrollTargetRef.current) return;
-    const el = document.getElementById(scrollTargetRef.current);
+    const target = scrollTargetRef.current;
+    scrollTargetRef.current = null; // always clear — prevents ghost scroll on subsequent renders
+    const el = document.getElementById(target);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
-      scrollTargetRef.current = null;
     }
   });
 
@@ -288,6 +262,7 @@ export default function DashboardPage() {
       <header className={styles.topbar}>
         <div className={styles.brand}>
           <span>⎈</span> KubeAdjust
+          <span className={styles.version}>v{APP_VERSION}</span>
           {cluster && (
             clusters.length > 1 ? (
               <div className={styles.clusterSwitcher}>
@@ -423,7 +398,7 @@ export default function DashboardPage() {
                             setExcludedNs((prev) => {
                               const next = new Set(prev);
                               next.delete(ns.name);
-                              sessionStorage.setItem("kubeadjust:excludedNs", JSON.stringify([...next]));
+                              safeSetItem(STORAGE_KEYS.excludedNs, JSON.stringify([...next]));
                               return next;
                             });
                           }}
@@ -479,12 +454,12 @@ export default function DashboardPage() {
                   return (
                     <span className={styles.nsRatios}>
                       {st.cpuRatio > 0 && (
-                        <span className={styles.nsRatio} style={{ color: st.cpuRatio > 5 ? "var(--red)" : st.cpuRatio > 2 ? "var(--orange)" : "var(--muted)" }}>
+                        <span className={styles.nsRatio} style={{ color: st.cpuRatio > 5 ? "var(--red)" : st.cpuRatio > 2 ? "var(--orange)" : "var(--muted)" }} title={`CPU limit/request ratio across all pods in this namespace (${st.cpuRatio.toFixed(1)}×). High values mean limits are set much higher than requests — the namespace may be over-committed.`}>
                           CPU ×{st.cpuRatio.toFixed(1)}
                         </span>
                       )}
                       {st.memRatio > 0 && (
-                        <span className={styles.nsRatio} style={{ color: st.memRatio > 5 ? "var(--red)" : st.memRatio > 2 ? "var(--orange)" : "var(--muted)" }}>
+                        <span className={styles.nsRatio} style={{ color: st.memRatio > 5 ? "var(--red)" : st.memRatio > 2 ? "var(--orange)" : "var(--muted)" }} title={`Memory limit/request ratio across all pods in this namespace (${st.memRatio.toFixed(1)}×). High values mean limits are set much higher than requests — the namespace may be over-committed.`}>
                           MEM ×{st.memRatio.toFixed(1)}
                         </span>
                       )}
@@ -529,8 +504,6 @@ export default function DashboardPage() {
                         if (next.has(id)) next.delete(id); else next.add(id);
                         return next;
                       })}
-                      onFilterByPod={(pod) => setFilterPod(pod)}
-                      activePodFilter={filterPod}
                     />
                   ))}
                 </div>
@@ -545,8 +518,7 @@ export default function DashboardPage() {
             deployments={deployments}
             history={nsHistory}
             onOpenCards={handleOpenCards}
-            filterPod={filterPod}
-            onClearPodFilter={() => setFilterPod(null)}
+            searchQuery={workloadSearch}
           />
         )}
       </div>

@@ -10,6 +10,11 @@ import Sparkline from "./Sparkline";
 import SparklineModal from "./SparklineModal";
 import styles from "./PodRow.module.css";
 
+function shortPodName(name: string): string {
+  const parts = name.split("-");
+  return parts.length > 3 ? parts.slice(0, -2).join("-") : name;
+}
+
 const STATUS_COLOR: Record<string, string> = {
   danger:   "var(--red)",
   warning:  "var(--orange)",
@@ -35,33 +40,37 @@ interface PodRowProps {
   openCards?: Set<string>;
   onToggleCard?: (id: string) => void;
   deploymentName?: string;
-  onFilterByPod?: (podName: string | null) => void;
-  activePodFilter?: string | null;
 }
 
 export default function PodRow({
   pod, namespace, prometheusAvailable, token, timeRange = "1h",
-  openCards, onToggleCard, deploymentName, onFilterByPod, activePodFilter,
+  openCards, onToggleCard, deploymentName,
 }: PodRowProps) {
   const podId = `pod:${pod.name}`;
   const open = openCards?.has(podId) ?? false;
   const [history, setHistory] = useState<Record<string, HistoryResponse>>({});
   const fetchedRef = useRef<Set<string>>(new Set());
+  const generationRef = useRef(0);
   const [zoomed, setZoomed] = useState<ZoomedChart | null>(null);
 
-  // Invalidate cache when time range changes
+  // Invalidate cache when time range changes — bump generation so in-flight fetches are discarded
   useEffect(() => {
+    generationRef.current += 1;
     fetchedRef.current.clear();
     setHistory({});
   }, [timeRange]);
 
   useEffect(() => {
     if (!open || !prometheusAvailable) return;
+    const gen = generationRef.current;
     for (const c of pod.containers) {
       if (fetchedRef.current.has(c.name)) continue;
       fetchedRef.current.add(c.name);
       api.containerHistory(token, namespace, pod.name, c.name, timeRange)
-        .then((h) => setHistory((prev) => ({ ...prev, [c.name]: h })))
+        .then((h) => {
+          if (generationRef.current !== gen) return; // stale — discard
+          setHistory((prev) => ({ ...prev, [c.name]: h }));
+        })
         .catch(() => { fetchedRef.current.delete(c.name); });
     }
   }, [open, prometheusAvailable, pod, namespace, token, timeRange]);
@@ -71,36 +80,25 @@ export default function PodRow({
     : pod.phase === "Pending" ? "var(--yellow)"
     : "var(--red)";
 
-  const isFiltered = activePodFilter === pod.name;
-
   return (
-    <div className={styles.pod}>
-      <button
-        className={styles.header}
-        onClick={() => onToggleCard?.(podId)}
-        aria-expanded={open}
-      >
-        <span className={styles.arrow}>{open ? "▾" : "▸"}</span>
-        <span className={styles.name}>{pod.name}</span>
-        <span className={styles.phase} style={{ color: phaseColor }}>{pod.phase}</span>
-        <span className={styles.containers}>
-          {pod.containers.length} container{pod.containers.length !== 1 ? "s" : ""}
-        </span>
-        {onFilterByPod && (
-          <button
-            type="button"
-            className={`${styles.filterBtn} ${isFiltered ? styles.filterBtnActive : ""}`}
-            title={isFiltered ? "Clear pod filter" : "Show only this pod's suggestions"}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onFilterByPod(isFiltered ? null : pod.name);
-            }}
-          >
-            {isFiltered ? "⊗" : "⊕"}
-          </button>
-        )}
-      </button>
+    <div
+      id={deploymentName ? `pod-row-${deploymentName}-${pod.name}` : undefined}
+      className={styles.pod}
+    >
+      <div className={styles.header}>
+        <button
+          className={styles.toggleBtn}
+          onClick={() => onToggleCard?.(podId)}
+          aria-expanded={open}
+        >
+          <span className={styles.arrow}>{open ? "▾" : "▸"}</span>
+          <span className={styles.name}>{pod.name}</span>
+          <span className={styles.phase} style={{ color: phaseColor }}>{pod.phase}</span>
+          <span className={styles.containers}>
+            {pod.containers.length} container{pod.containers.length !== 1 ? "s" : ""}
+          </span>
+        </button>
+      </div>
 
       {open && (
         <div className={styles.body}>
@@ -125,7 +123,7 @@ export default function PodRow({
                           label: "CPU",
                           color: STATUS_COLOR[cpuStatus],
                           isCPU: true,
-                          title: `${pod.name} / ${c.name}`,
+                          title: `${shortPodName(pod.name)} / ${c.name}`,
                         })}
                       />
                     )}
@@ -141,7 +139,7 @@ export default function PodRow({
                           label: "Memory",
                           color: STATUS_COLOR[memStatus],
                           isCPU: false,
-                          title: `${pod.name} / ${c.name}`,
+                          title: `${shortPodName(pod.name)} / ${c.name}`,
                         })}
                       />
                     )}

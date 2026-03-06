@@ -10,7 +10,7 @@ KubeAdjust is a **read-only Kubernetes dashboard** (Go backend + Next.js fronten
 
 - **Backend**: Go 1.22, Chi v5 router, 3 production dependencies (chi, cors, errgroup), raw HTTP K8s API (no client-go)
 - **Frontend**: Next.js 16, React 19, TypeScript 5, no UI library, no charting library
-- **Infra**: Helm chart (v0.16.0), multi-stage Docker builds (amd64 + arm64), GitHub Actions CI with linting + tests + SBOM + cosign
+- **Infra**: Helm chart (v0.17.0), multi-stage Docker builds (amd64 + arm64), GitHub Actions CI with linting + tests + SBOM + cosign
 
 ---
 
@@ -130,14 +130,62 @@ See `.env.example` at repo root. Key variables:
 
 ## Known Issues & Backlog
 
-### Security — High Priority
+### Bugs — High Priority
 
-_(All High priority issues resolved in v0.14.0 — see Resolved section below.)_
+- ~~errgroup propagates best-effort errors~~ — RESOLVED (`handlers/resources.go` + `handlers/namespaces.go`: `_ = X.Wait()` replaced with proper `if err := X.Wait(); err != nil { log.Printf(...) }` pattern).
+- ~~`sessionStorage.setItem()` not wrapped in try-catch~~ — RESOLVED (extracted `safeGetItem`/`safeSetItem`/`safeRemoveItem` in `src/lib/storage.ts`; all dashboard sessionStorage calls replaced).
+- ~~Race condition in PodRow history fetch~~ — RESOLVED (`components/PodRow.tsx`: generation counter via `generationRef`; stale fetch results discarded on `timeRange` change).
+- ~~NetworkPolicy missing Prometheus egress rule~~ — RESOLVED (`networkpolicy.yaml`: conditional egress rule added when `prometheus.enabled=true`; `prometheus.port` (default 9090) added to `values.yaml`).
+
+### Bugs — Medium Priority
+
+- **Unsafe non-null assertion on `usage`** — `components/NodeCard.tsx:139`
+  - `usage!` can crash if `usage` is undefined. Fix: add null guard or optional chaining.
+
+- **Unsafe `pop()!` on split result** — `components/NodeCard.tsx:301`
+  - `t.key.split("/").pop()!` — if split returns empty array, `pop()` returns undefined. Fix: use nullish coalescing `?? ""`.
+
+- **`json.NewEncoder(w).Encode()` errors silently discarded** — `handlers/namespaces.go:125,132`, `handlers/auth.go:22`
+  - Response can be partially written or corrupted. Fix: check and log encode errors.
+
+- **`ParseCPUMillicores` silently returns 0 on invalid input** — `resources/parse.go:12`
+  - `ParseCPUMillicores("xyz123n")` → 0 without error. Misconfigured K8s resources invisible. Fix: return error or log warning.
+
+- **Comment references non-existent `src/middleware.ts`** — `next.config.mjs:21`
+  - CSP is actually set by `src/proxy.ts`. Fix: update comment.
+
+### Consistency — High Priority
+
+- ~~Go version mismatch~~ — RESOLVED (`go.mod` bumped to `go 1.26`; matches Dockerfile and CI).
+- ~~Node version mismatch~~ — RESOLVED (`ci.yml` updated to `node-version: "25"`; matches frontend Dockerfile).
+
+### Security — Medium Priority
+
+- **Base images without digest pinning** — `backend/Dockerfile`, `frontend/Dockerfile`
+  - `golang:1.26-alpine` and `node:25-alpine` use floating tags. Supply chain risk. Fix: pin with `@sha256:...`.
+
+- **K8s API path parameters not URL-encoded** — `k8s/client.go:332+`
+  - Namespace/pod/node names interpolated with `fmt.Sprintf` without `url.PathEscape()`. Path traversal risk (mitigated by K8s API server, but fragile). Fix: URL-encode all path segments.
+
+- **Missing `seccompProfile: RuntimeDefault`** — `helm/kubeadjust/templates/deployment.yaml`
+  - Neither backend nor frontend pod specs set seccomp profile. Fix: add `seccompProfile.type: RuntimeDefault` to both.
+
+- **Missing `fsGroup` on pod security contexts** — `helm/kubeadjust/templates/deployment.yaml`
+  - Fix: add `fsGroup: 65534` (backend) and `fsGroup: 1001` (frontend).
+
+- **Frontend `/tmp` emptyDir has no size limit** — `helm/kubeadjust/templates/deployment.yaml:133`
+  - Can grow unbounded and evict pod. Fix: add `sizeLimit: 100Mi`.
+
+- **Missing timezone data in scratch image** — `backend/Dockerfile`
+  - `FROM scratch` has no `/usr/share/zoneinfo`. Time parsing may fail. Fix: copy zoneinfo from builder.
 
 ### Performance — Medium Priority
 
 - **`ListAllPods` fetches all cluster pods per `/api/nodes` request** — `handlers/nodes.go`
   - Fix: short TTL in-memory cache (30s), or field-selector to exclude terminated pods.
+
+- **N+1 kubelet calls per node** — `handlers/resources.go:115-161`
+  - `GetNodeSummary()` called per node. Fix: batch or cache with short TTL.
 
 - **No virtualisation/pagination for large clusters** — `dashboard/page.tsx`
   - 100+ workloads render in a single list. Fix: react-window or "load more" pagination.
@@ -147,11 +195,14 @@ _(All High priority issues resolved in v0.14.0 — see Resolved section below.)_
 
 ### Performance — Low Priority
 
-- **Sparkline min/max recalculated every render** — `Sparkline.tsx`
+- **Sparkline min/max recalculated every render** — `Sparkline.tsx:12-14`, `SparklineModal.tsx:54-56`
   - Fix: wrap in `useMemo`.
 
 - **No connection pooling on Prometheus client** — `prometheus/client.go`
   - Fix: custom Transport with `MaxIdleConnsPerHost: 10`.
+
+- **`buildHistoryMap()` called every render in suggestions** — `suggestions.ts:206`
+  - Fix: memoize or cache when history hasn't changed.
 
 ### Robustness — Medium Priority
 
@@ -161,16 +212,29 @@ _(All High priority issues resolved in v0.14.0 — see Resolved section below.)_
 - **ESLint disabled in CI** — `.github/workflows/ci.yml`
   - `next lint` removed in Next.js 16. Fix: configure `eslint .` directly.
 
+- **`docker-compose.yml` passes unused `BACKEND_URL` build arg** — `docker-compose.yml:23`
+  - Build arg is unused; runtime env var (line 27) is the correct one. Fix: remove from `args`.
+
 ### Robustness — Low Priority
 
 - **`openCards` sessionStorage can grow unbounded** — `dashboard/page.tsx`
   - Fix: cap at ~100 entries, or clear on namespace switch.
 
-- **sessionStorage writes not wrapped in try-catch** — `dashboard/page.tsx`
-  - Fix: wrap all `sessionStorage.setItem` for `QuotaExceededError`.
-
-- **Silent `.catch(() => {})` on background fetches** — `dashboard/page.tsx`
+- **Silent `.catch(() => {})` on background fetches** — `dashboard/page.tsx:191-195`
   - Fix: `console.warn` in dev, optional UI indicator when Prometheus fails.
+
+- **No loading indicator before first pod fetch in NodeCard** — `components/NodeCard.tsx:360`
+  - `pods === null && loadingPods === false` shows nothing. Fix: show "Loading pods…" when `podsOpen && pods === null`.
+
+### Maintainability — Medium Priority
+
+- ~~`dashboard/page.tsx` is 570 lines~~ — RESOLVED (session state extracted to `src/hooks/useSessionState.ts`; types `View`/`AutoRefresh`/`AUTO_REFRESH_MS` moved there; `src/lib/storage.ts` added with `STORAGE_KEYS` + safe helpers; page reduced to ~490 lines).
+
+- **`STATUS_COLOR` duplicated in 4 files** — `PodRow.tsx`, `ResourceBar.tsx`, `VolumeSection.tsx`, `NodeCard.tsx`
+  - Fix: extract to shared constant in `lib/colors.ts` or similar.
+
+- **`shortPodName()` duplicated in 3 files** — `PodRow.tsx`, `NodeCard.tsx`, `SuggestionPanel.tsx`
+  - Fix: extract to shared utility.
 
 ### Maintainability — Low Priority
 
@@ -186,16 +250,55 @@ _(All High priority issues resolved in v0.14.0 — see Resolved section below.)_
 - **Inconsistent errgroup initialisation** — `handlers/resources.go` vs `handlers/namespaces.go`
   - Some use `errgroup.WithContext()`, others `new(errgroup.Group)`. Fix: standardise.
 
+- **`KUBE_MIN_VERSION` exported but never used** — `frontend/src/lib/version.ts:2`
+  - Fix: remove dead export.
+
+- **Inconsistent error handling patterns in frontend** — multiple files
+  - Mix of `.catch(() => {})`, `.catch(e => setError(...))`, and silent swallows. Fix: standardise approach.
+
+### Accessibility — Low Priority
+
+- **No `:focus-visible` styles on interactive elements** — multiple CSS modules
+  - Buttons have `:hover` but no focus indicator for keyboard users. Fix: add `:focus-visible` outlines.
+
+- **`button:disabled` uses only `opacity: 0.4`** — `globals.css:43`
+  - No `cursor: not-allowed`. Fix: add cursor style for disabled state.
+
+- **Sidebar has fixed 200px width, no responsive collapse** — `dashboard.module.css:170`
+  - Fix: add responsive breakpoint to collapse/hide sidebar on mobile.
+
+### Font/CSS Consistency — Low Priority
+
+- **Inconsistent font size scale** — multiple CSS modules
+  - Arbitrary sizes: 9px, 10px, 11px, 12px, 13px, 14px, 16px, 20px, 22px, 28px. Fix: define a type scale with CSS custom properties.
+
+- **Taint colors hardcoded in JS instead of CSS** — `NodeCard.tsx:49-58`
+  - `TAINT_EFFECT_COLOR` and `TAINT_EFFECT_BORDER` are RGBA literals. Fix: move to CSS custom properties.
+
 ### Resolved
 
+- ~~Cluster switch requires re-entering token~~ — RESOLVED (v0.17.0, per-cluster token storage `kube-token:<cluster>`; seamless switch if already authenticated, login redirect otherwise).
+- ~~Suggestion click on PVC/EmptyDir doesn't scroll~~ — RESOLVED (v0.17.0, volume suggestions scroll to `pod-row-${dep}-${pod}` instead of nonexistent container ID).
+- ~~Ghost scroll on auto-refresh after failed scroll attempt~~ — RESOLVED (v0.17.0, scroll ref always cleared before attempt).
+- ~~No favicon~~ — RESOLVED (v0.17.0, SVG hexagon icon in `frontend/src/app/icon.svg`).
+- ~~No version indicator in the UI~~ — RESOLVED (v0.17.0, `v0.17.0` in topbar brand; `k8s ≥1.21` label removed).
+- ~~Node pod list shows all pods paginated~~ — RESOLVED (v0.17.0, top 10 by usage with CPU/MEM sort toggle, no pagination).
+- ~~Node grid unresponsive (always single column)~~ — RESOLVED (v0.17.0, `repeat(auto-fill, minmax(560px, 1fr))` — 2 columns on wide viewports, 1 below 680px).
+- ~~Time range selector not shown on initial nodes view~~ — RESOLVED (v0.17.0, `/nodes` response now includes `prometheusAvailable`; range selector visible immediately).
+- ~~Sparkline modal too wide with long pod names~~ — RESOLVED (v0.17.0, `max-width: min(540px, 95vw)` on modal; pod name shortened in title).
 - ~~Node conditions (DiskPressure, MemoryPressure, PIDPressure) not visible~~ — RESOLVED (v0.16.0, red badges in node card header when active).
-- ~~No node age/version info~~ — RESOLVED (v0.16.0, compact info line: age, kubelet version, kernel, OS image).
+- ~~No node age/version info~~ — RESOLVED (v0.16.0, compact info line: age, kernel, OS image; kubelet version removed in v0.17.0).
 - ~~No limit overcommit indicator on nodes~~ — RESOLVED (v0.16.0, `lim X%` + `OVERCOMMIT` badge in CircleGauge when sum(limits) > allocatable).
 - ~~No namespace limit/request ratio~~ — RESOLVED (v0.16.0, `GET /api/namespaces/stats`, `CPU ×N.N MEM ×N.N` in mainHeader).
 - ~~Node pod bars auto-loaded on mount~~ — RESOLVED (v0.16.0, lazy fetch on first expand, 10 pods/page with pagination).
 - ~~ResourceBar track invisible (same color as card)~~ — RESOLVED (v0.16.0, `--bg` + border on all track elements).
 - ~~Suggestion scroll race condition~~ — RESOLVED (v0.16.0, `preventDefault` + post-render `useEffect` scroll).
-- ~~Pod filter button propagation~~ — RESOLVED (v0.16.0, `<button type="button">` with `stopPropagation`).
+- ~~Pod filter button (`⊕`) unreliable~~ — RESOLVED (v0.17.0, nested-button HTML bug: pod header converted from `<button>` to `<div>`, toggle and filter are now sibling elements).
+- ~~Suggestion panel groups fragmented by resource sub-type~~ — RESOLVED (v0.17.0, groups by severity: critical / warning / over-prov; resource shown as badge per item).
+- ~~Suggestion panel gear icon / dual kind-filter mechanisms~~ — RESOLVED (v0.17.0, `excludedKinds` + sessionStorage dropdown removed; chips are now the single filter).
+- ~~Node card header dense / non-responsive~~ — RESOLVED (v0.17.0, two-row header: identity + metadata; pressures + taints in dedicated alert row).
+- ~~`kubeletVersion` in API response unused~~ — RESOLVED (v0.17.0, removed from `NodeOverview` in backend and frontend).
+- ~~Pod filter button propagation~~ — RESOLVED (v0.16.0, partial — replaced `<span>` with `<button type="button">`; fully fixed in v0.17.0).
 - ~~Taint display on node view~~ — RESOLVED (v0.15.0, colored badges per effect in node card header).
 - ~~No per-pod resource overview on node view~~ — RESOLVED (v0.15.0, auto-fetch + horizontal bar diagram per pod, no click needed).
 - ~~No sparkline zoom~~ — RESOLVED (v0.15.0, click sparkline → modal with time axis, min/max, current).

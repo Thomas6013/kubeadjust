@@ -4,6 +4,36 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.17.0] - 2026-03-06
+
+### Added
+- **Top pods view in node cards** — the pod list in the node card now shows the top 10 pods sorted by resource use, with a CPU/MEM sort toggle. Replaces the previous paginated full list. More actionable at a glance for spotting heavy consumers on a node.
+- **Time range selector visible on nodes view** — the `/nodes` endpoint now returns `prometheusAvailable`. The 1h / 6h / 24h / 7d range selector appears in the topbar from the first page load regardless of which view (nodes or workloads) is visited first.
+
+### Changed
+- **Suggestion panel filtered by workload search** — the `⊕` pod-level filter button on pod rows has been removed. The suggestion panel now reacts to the workload search bar: typing a deployment name or pod name filters both the deployment list and the suggestion panel simultaneously. Simplifies the UX to a single filter mechanism.
+
+- **Node card header restructured** — the node card now uses two distinct rows: identity (icon + name + status + roles) and metadata (age · OS image · kernel). The pod count badge (`running / max`) moves to the right end of the identity row. Pressure badges and taint labels are consolidated into a single alert row, hidden when the node is healthy.
+- **Node grid: 2 columns on wide screens, 1 on narrow** — the node grid uses `grid-template-columns: repeat(auto-fill, minmax(560px, 1fr))`, giving 2 side-by-side cards on wide viewports and a single column below 680px.
+- **Topbar version simplified** — the `k8s ≥1.21` minimum version indicator is removed from the topbar. Only the app version (`v0.17.0`) is shown.
+- **`kubeletVersion` removed from backend and frontend** — field removed from `NodeOverview` in `backend/resources/types.go`, handler, and TypeScript interface. Was returned by the API but never rendered.
+- **Suggestion panel: groups by severity, filter by resource** — the suggestion list is now grouped by severity (▲ critical / ● warning / ▼ over-prov) instead of resource type. All critical items appear first regardless of resource. Each item shows a `resourceTag` badge. Within each group, items are sorted by resource type.
+- **Suggestion filter chips: resource category (CPU / Memory / Storage)** — chips filter by resource category instead of severity. CPU covers all CPU sub-types, Memory covers all memory sub-types, Storage covers Ephemeral, PVC, and EmptyDir.
+- **Suggestion panel: gear icon and persistent kind-exclusion removed** — the ⚙ dropdown was redundant with the chip filter. Chips are now the single filtering mechanism.
+- **Favicon updated** — the SVG icon is now a Kubernetes-style hexagon with a helm wheel in Kubernetes blue (`#326CE5`).
+- **Per-cluster token storage** — tokens are now stored per cluster (`kube-token:<cluster>`) in sessionStorage. Switching to a cluster already visited in the current session is seamless (no re-authentication). Backwards-compatible with single-cluster sessions.
+
+### Fixed
+- **Pod filter button (`⊕`) unreliable** — was nested inside a `<button>` (invalid HTML). Browsers flatten nested interactive elements, making `stopPropagation()` unreliable. Pod header converted from `<button>` to `<div>` with a `.toggleBtn` inside; filter button is now a sibling.
+- **Stale duplicate test files in handlers/** — `handlers/prometheus_test.go` and `handlers/resources_test.go` referenced unexported functions (`isValidLabelValue`, `parseCPUMillicores`, `parseMemoryBytes`) that were moved to the `resources/` package in v0.13.0. Files removed; coverage provided by `resources/validate_test.go` and `resources/parse_test.go`.
+- **Conflicting `middleware.ts` / `proxy.ts`** — Next.js 16 renamed the middleware entrypoint to `proxy.ts`; the old `src/middleware.ts` was still present, causing a build error. Removed `middleware.ts`.
+- **Suggestion click on PVC/EmptyDir doesn't scroll** — these suggestions used the volume name as the container identifier, generating a scroll target that never existed in the DOM. Now correctly scrolls to the pod row for volume-type suggestions.
+- **`TimeRange` type not imported in dashboard page** — TypeScript build error (`Cannot find name 'TimeRange'`) caused by a missing import in `dashboard/page.tsx`. Type was already exported from `@/lib/api` but not imported.
+- **Ghost scroll on subsequent renders** — the scroll ref was only cleared when the target element was found. Ref is now always cleared immediately before the attempt.
+- **Sparkline modal too wide with long pod names** — the modal now has a fixed `max-width: min(540px, 95vw)`. Pod names in the modal title are shortened (last two random suffixes stripped, matching the pod bar display).
+
+---
+
 ## [0.16.0] - 2026-03-04
 
 ### Added

@@ -83,7 +83,8 @@ metrics-server:
 # Optional: connect to an existing Prometheus for CPU/memory sparklines
 prometheus:
   enabled: false
-  url: ""  # e.g. http://prometheus-operated.monitoring.svc.cluster.local:9090
+  url: ""    # e.g. http://prometheus-operated.monitoring.svc.cluster.local:9090
+  port: 9090 # used for NetworkPolicy egress rule when networkPolicy.enabled=true
 
 # Optional: restrict network traffic between pods (requires a CNI that supports NetworkPolicy)
 networkPolicy:

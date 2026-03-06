@@ -21,6 +21,17 @@
   font-weight: 700;
   font-size: 16px;
 }
+
+.version {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  opacity: 0.5;
+  font-family: monospace;
+  align-self: flex-end;
+  margin-bottom: 1px;
+}
+
 .clusterBadge {
   font-size: 11px;
   font-weight: 600;
@@ -95,7 +106,7 @@
 
 .clusterMenuItem:hover { background: var(--surface2); }
 .clusterMenuItemActive { color: var(--accent); background: rgba(108, 142, 247, 0.12); }
-.actions { display: flex; align-items: center; gap: 10px; }
+.actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .refreshed { font-size: 12px; color: var(--muted); }
 
 /* Auto-refresh selector */
@@ -248,6 +259,10 @@
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
+}
+
+@media (max-width: 1300px) {
+  .nodeGrid { grid-template-columns: 1fr; }
 }
 
 .nodeBtn { flex-direction: row; align-items: center; gap: 6px; padding: 7px 10px; }

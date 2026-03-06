@@ -158,7 +158,9 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 			return nil
 		})
 	}
-	_ = storageG.Wait()
+	if err := storageG.Wait(); err != nil {
+		log.Printf("storage stat error: %v", err)
+	}
 
 	// 6. Build PVC lookup
 	pvcMap := map[string]k8s.PVC{}
