@@ -13,8 +13,8 @@ Thank you for taking the time to contribute!
 
 ### Prerequisites
 
-- Go 1.22+
-- Node.js 20+
+- Go 1.26+
+- Node.js 25+
 - Docker + Docker Compose (optional)
 - A Kubernetes cluster (required for the backend)
 

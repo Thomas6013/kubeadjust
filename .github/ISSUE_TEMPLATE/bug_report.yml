@@ -37,7 +37,7 @@ body:
     id: version
     attributes:
       label: KubeAdjust version
-      placeholder: "0.2.0"
+      placeholder: "0.17.0"
     validations:
       required: true
 
