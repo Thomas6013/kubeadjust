@@ -188,9 +188,14 @@ func parseClusters(env string) map[string]string {
 	return clusters
 }
 
-// parseSATokens reads SA tokens from SA_TOKEN (single-cluster) and SA_TOKENS (multi-cluster).
-// SA_TOKEN is stored under the "default" key.
-// SA_TOKENS format: "prod=token1,staging=token2"
+// parseSATokens reads SA tokens from three sources (last write wins for a given cluster name):
+//   - SA_TOKEN           → stored under "default" (single-cluster override)
+//   - SA_TOKENS          → "prod=token1,staging=token2" (legacy multi-cluster)
+//   - SA_TOKEN_<CLUSTER> → one env var per cluster, e.g. SA_TOKEN_PROD (Helm-preferred)
+//
+// If no "default" token is found from env vars, falls back to the in-cluster SA token
+// mounted at /var/run/secrets/kubernetes.io/serviceaccount/token.
+// Cluster names are lower-cased when derived from the SA_TOKEN_* prefix.
 func parseSATokens() map[string]string {
 	tokens := make(map[string]string)
 	if t := os.Getenv("SA_TOKEN"); t != "" {
@@ -207,6 +212,28 @@ func parseSATokens() map[string]string {
 			token := strings.TrimSpace(pair[idx+1:])
 			if name != "" && token != "" {
 				tokens[name] = token
+			}
+		}
+	}
+	for _, env := range os.Environ() {
+		if !strings.HasPrefix(env, "SA_TOKEN_") {
+			continue
+		}
+		idx := strings.Index(env, "=")
+		if idx <= 0 {
+			continue
+		}
+		name := strings.ToLower(strings.ReplaceAll(env[len("SA_TOKEN_"):idx], "_", "-"))
+		token := env[idx+1:]
+		if name != "" && token != "" {
+			tokens[name] = token
+		}
+	}
+	if _, ok := tokens["default"]; !ok {
+		if b, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token"); err == nil {
+			if t := strings.TrimSpace(string(b)); t != "" {
+				tokens["default"] = t
+				log.Printf("OIDC: using in-cluster SA token for default cluster")
 			}
 		}
 	}

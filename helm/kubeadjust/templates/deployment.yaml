@@ -41,7 +41,11 @@ spec:
           {{- end }}
           {{- if .Values.backend.clusters }}
             - name: CLUSTERS
-              value: {{ .Values.backend.clusters | quote }}
+              {{- $parts := list }}
+              {{- range $name, $url := .Values.backend.clusters }}
+              {{- $parts = append $parts (printf "%s=%s" $name $url) }}
+              {{- end }}
+              value: {{ join "," $parts | quote }}
           {{- end }}
           {{- with .Values.backend.env }}
             {{- toYaml . | nindent 12 }}
@@ -62,26 +66,19 @@ spec:
             - name: OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "kubeadjust.fullname" . }}-oidc
+                  name: {{ include "kubeadjust.oidcSecretName" . }}
                   key: clientSecret
             - name: SESSION_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "kubeadjust.fullname" . }}-oidc
+                  name: {{ include "kubeadjust.oidcSecretName" . }}
                   key: sessionSecret
-            {{- if .Values.oidc.saToken }}
-            - name: SA_TOKEN
+            {{- range $name, $_ := .Values.oidc.saTokens }}
+            - name: SA_TOKEN_{{ $name | upper | replace "-" "_" }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "kubeadjust.fullname" . }}-oidc
-                  key: saToken
-            {{- end }}
-            {{- if .Values.oidc.saTokens }}
-            - name: SA_TOKENS
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "kubeadjust.fullname" . }}-oidc
-                  key: saTokens
+                  name: {{ include "kubeadjust.oidcTokenSecretName" $ }}
+                  key: {{ $name }}
             {{- end }}
           {{- end }}
           livenessProbe:
