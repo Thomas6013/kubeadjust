@@ -9,14 +9,21 @@ const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8080";
  * resulting session token to the client via a short-lived readable cookie.
  * The /auth/done client page moves it to sessionStorage and clears the cookie.
  */
+function publicOrigin(req: NextRequest): string {
+  const proto = req.headers.get("x-forwarded-proto") ?? req.nextUrl.protocol.replace(/:$/, "");
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? req.nextUrl.host;
+  return `${proto}://${host}`;
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const code = searchParams.get("code");
   const state = searchParams.get("state");
   const savedState = req.cookies.get("oidc-state")?.value;
+  const origin = publicOrigin(req);
 
   if (!code || !state || !savedState || state !== savedState) {
-    return NextResponse.redirect(new URL("/?error=auth_failed", req.url));
+    return NextResponse.redirect(new URL("/?error=auth_failed", origin));
   }
 
   try {
@@ -28,12 +35,12 @@ export async function GET(req: NextRequest) {
     });
 
     if (!res.ok) {
-      return NextResponse.redirect(new URL("/?error=auth_failed", req.url));
+      return NextResponse.redirect(new URL("/?error=auth_failed", origin));
     }
 
     const { token } = (await res.json()) as { token: string };
 
-    const response = NextResponse.redirect(new URL("/auth/done", req.url));
+    const response = NextResponse.redirect(new URL("/auth/done", origin));
 
     // Pass the session token to the client-side /auth/done page via a short-lived
     // readable cookie (30s). The client immediately moves it to sessionStorage.

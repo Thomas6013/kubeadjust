@@ -12,7 +12,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [clusters, setClusters] = useState<ClusterItem[]>([]);
   const [selectedCluster, setSelectedCluster] = useState("");
-  const [oidcEnabled, setOidcEnabled] = useState(false);
+  const [oidcEnabled, setOidcEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
     api.clusters().then((list) => {
@@ -85,7 +85,7 @@ export default function LoginPage() {
           </>
         )}
 
-        {oidcEnabled ? (
+        {oidcEnabled === null ? null : oidcEnabled ? (
           <>
             {error && <p className={styles.error}>{error}</p>}
             <button type="button" onClick={handleSSOLogin} className={styles.ssoButton}>
@@ -111,7 +111,7 @@ export default function LoginPage() {
           </form>
         )}
 
-        {!oidcEnabled && (
+        {oidcEnabled === false && (
           <p className={styles.hint}>
             Generate a token with:<br />
             <code>kubectl create token &lt;service-account&gt; -n &lt;namespace&gt;</code>
