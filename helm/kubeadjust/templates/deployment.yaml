@@ -50,6 +50,40 @@ spec:
             - name: PROMETHEUS_URL
               value: {{ .Values.prometheus.url | quote }}
           {{- end }}
+          {{- if .Values.oidc.enabled }}
+            - name: OIDC_ENABLED
+              value: "true"
+            - name: OIDC_ISSUER_URL
+              value: {{ .Values.oidc.issuerUrl | quote }}
+            - name: OIDC_CLIENT_ID
+              value: {{ .Values.oidc.clientId | quote }}
+            - name: OIDC_REDIRECT_URL
+              value: {{ .Values.oidc.redirectUrl | quote }}
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kubeadjust.fullname" . }}-oidc
+                  key: clientSecret
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kubeadjust.fullname" . }}-oidc
+                  key: sessionSecret
+            {{- if .Values.oidc.saToken }}
+            - name: SA_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kubeadjust.fullname" . }}-oidc
+                  key: saToken
+            {{- end }}
+            {{- if .Values.oidc.saTokens }}
+            - name: SA_TOKENS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kubeadjust.fullname" . }}-oidc
+                  key: saTokens
+            {{- end }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

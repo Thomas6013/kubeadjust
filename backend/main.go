@@ -52,6 +52,51 @@ func main() {
 		log.Println("Prometheus client configured")
 	}
 
+	// OIDC mode: OIDC_ENABLED=true + SA tokens per cluster
+	oidcEnabled := os.Getenv("OIDC_ENABLED") == "true"
+	var oidcHandler *handlers.OIDCHandler
+	var saTokens map[string]string
+
+	if oidcEnabled {
+		issuerURL := os.Getenv("OIDC_ISSUER_URL")
+		clientID := os.Getenv("OIDC_CLIENT_ID")
+		clientSecret := os.Getenv("OIDC_CLIENT_SECRET")
+		redirectURL := os.Getenv("OIDC_REDIRECT_URL")
+		sessionSecret := []byte(os.Getenv("SESSION_SECRET"))
+
+		var missing []string
+		if issuerURL == "" {
+			missing = append(missing, "OIDC_ISSUER_URL")
+		}
+		if clientID == "" {
+			missing = append(missing, "OIDC_CLIENT_ID")
+		}
+		if clientSecret == "" {
+			missing = append(missing, "OIDC_CLIENT_SECRET")
+		}
+		if redirectURL == "" {
+			missing = append(missing, "OIDC_REDIRECT_URL")
+		}
+		if len(sessionSecret) < 32 {
+			missing = append(missing, "SESSION_SECRET (must be ≥32 chars)")
+		}
+		if len(missing) > 0 {
+			log.Fatalf("OIDC_ENABLED=true but missing required env vars: %s", strings.Join(missing, ", "))
+		}
+
+		saTokens = parseSATokens()
+		if len(saTokens) == 0 {
+			log.Fatal("OIDC_ENABLED=true but no SA tokens configured (set SA_TOKEN or SA_TOKENS)")
+		}
+
+		h, err := handlers.NewOIDCHandler(issuerURL, clientID, clientSecret, redirectURL, sessionSecret)
+		if err != nil {
+			log.Fatalf("OIDC init failed: %v", err)
+		}
+		oidcHandler = h
+		log.Printf("OIDC mode enabled (issuer: %s, %d SA token(s))", issuerURL, len(saTokens))
+	}
+
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -74,11 +119,23 @@ func main() {
 	r.Route("/api", func(r chi.Router) {
 		// Public — no auth required
 		r.Get("/clusters", handlers.ListClusters(clusters))
+		r.Get("/auth/config", handlers.AuthConfig(oidcEnabled))
+
+		if oidcEnabled {
+			// OIDC-specific endpoints: called server-side by Next.js, not by the browser directly.
+			r.Get("/auth/loginurl", oidcHandler.LoginURL())
+			r.Post("/auth/session", oidcHandler.CreateSession())
+		}
 
 		// Auth + cluster-routing required
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.BearerToken)
-			r.Use(middleware.ClusterURL(clusters))
+			if oidcEnabled {
+				r.Use(middleware.ClusterURL(clusters))
+				r.Use(middleware.SessionAuth(saTokens, []byte(os.Getenv("SESSION_SECRET"))))
+			} else {
+				r.Use(middleware.BearerToken)
+				r.Use(middleware.ClusterURL(clusters))
+			}
 			r.Use(chiMiddleware.Throttle(20)) // max 20 concurrent requests
 
 			// Auth
@@ -129,4 +186,29 @@ func parseClusters(env string) map[string]string {
 		}
 	}
 	return clusters
+}
+
+// parseSATokens reads SA tokens from SA_TOKEN (single-cluster) and SA_TOKENS (multi-cluster).
+// SA_TOKEN is stored under the "default" key.
+// SA_TOKENS format: "prod=token1,staging=token2"
+func parseSATokens() map[string]string {
+	tokens := make(map[string]string)
+	if t := os.Getenv("SA_TOKEN"); t != "" {
+		tokens["default"] = t
+	}
+	if env := os.Getenv("SA_TOKENS"); env != "" {
+		for _, pair := range strings.Split(env, ",") {
+			pair = strings.TrimSpace(pair)
+			idx := strings.Index(pair, "=")
+			if idx <= 0 {
+				continue
+			}
+			name := strings.TrimSpace(pair[:idx])
+			token := strings.TrimSpace(pair[idx+1:])
+			if name != "" && token != "" {
+				tokens[name] = token
+			}
+		}
+	}
+	return tokens
 }

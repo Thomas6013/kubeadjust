@@ -80,6 +80,22 @@ metrics-server:
   args:
     - --kubelet-insecure-tls
 
+# Optional: OIDC authentication (replaces manual token entry)
+# When enabled, users log in via an OIDC provider (e.g. Keycloak, Dex, Google).
+# A Service Account token must be configured per cluster (SA_TOKEN / SA_TOKENS).
+oidc:
+  enabled: false
+  issuerUrl: ""        # e.g. https://keycloak.example.com/realms/myrealm
+  clientId: ""
+  clientSecret: ""     # stored in a K8s Secret — do not put in plain values
+  redirectUrl: ""      # e.g. https://kubeadjust.example.com/auth/callback
+  # Session signing secret — must be ≥32 chars, stored in a K8s Secret
+  sessionSecret: ""
+  # SA token for the default (single) cluster
+  saToken: ""
+  # SA tokens for named clusters: "prod=token1,staging=token2"
+  saTokens: ""
+
 # Optional: connect to an existing Prometheus for CPU/memory sparklines
 prometheus:
   enabled: false

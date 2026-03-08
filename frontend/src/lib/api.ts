@@ -142,6 +142,21 @@ async function fetchClusters(): Promise<ClusterItem[]> {
   }
 }
 
+export interface AuthConfig {
+  oidcEnabled: boolean;
+}
+
+/** Returns OIDC configuration — no auth required. */
+async function fetchAuthConfig(): Promise<AuthConfig> {
+  try {
+    const res = await fetch("/api/auth/config", { headers: { Accept: "application/json" } });
+    if (!res.ok) return { oidcEnabled: false };
+    return res.json() as Promise<AuthConfig>;
+  } catch {
+    return { oidcEnabled: false };
+  }
+}
+
 export interface DataPoint {
   t: number; // unix seconds
   v: number; // millicores (cpu) or bytes (memory)
@@ -178,6 +193,7 @@ export interface NodesResponse {
 
 export const api = {
   clusters: () => fetchClusters(),
+  authConfig: () => fetchAuthConfig(),
   verify: (token: string) =>
     apiFetch<{ status: string }>("/auth/verify", token),
   namespaces: (token: string) =>

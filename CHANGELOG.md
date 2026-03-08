@@ -4,6 +4,21 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.18.0] - 2026-03-08
+
+### Added
+- **OIDC authentication** — optional SSO login via any OIDC provider (Keycloak, Dex, Google, etc.). Set `OIDC_ENABLED=true` along with `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URL`, `SESSION_SECRET`, and `SA_TOKEN`/`SA_TOKENS`. When enabled, the login page shows a "Sign in with SSO" button instead of the token form. Fully backward-compatible: leaving `OIDC_ENABLED` unset preserves the existing token-based flow.
+- **`GET /api/auth/config`** — public endpoint returning `{"oidcEnabled": bool}`. Used by the frontend login page to decide which authentication UI to show.
+- **`GET /api/auth/loginurl`** — public endpoint (called server-side by Next.js) that generates a fresh OIDC authorization URL with a cryptographically random state.
+- **`POST /api/auth/session`** — public endpoint (called server-side by Next.js) that exchanges an OIDC authorization code for a signed session JWT. Uses `coreos/go-oidc/v3` for JWKS-based ID token verification.
+- **`middleware/session.go`** — `SessionAuth` middleware validates the session JWT and substitutes the pre-configured Service Account token into the request context. All downstream resource handlers are unchanged.
+- **`oidc/session.go`** — minimal HS256 session JWT implementation using Go stdlib only (`crypto/hmac`, `crypto/sha256`). No external JWT library.
+- **`/auth/login`, `/auth/callback`, `/auth/done`, `/auth/logout`** — Next.js server/client routes implementing the OIDC Authorization Code flow. CSRF protection via httpOnly `oidc-state` cookie (5 min TTL). Session token passed to the client via a short-lived readable cookie (30s, `Path=/auth/done`), then moved to `sessionStorage`.
+- **Helm `oidc.*` values** — `oidc.enabled`, `oidc.issuerUrl`, `oidc.clientId`, `oidc.clientSecret`, `oidc.redirectUrl`, `oidc.sessionSecret`, `oidc.saToken`, `oidc.saTokens`. Secrets stored in a dedicated `kubeadjust-oidc` K8s Secret.
+- **`docs/oidc.md`** — OIDC setup guide covering Keycloak configuration, Helm values, and multi-cluster SA token configuration.
+
+---
+
 ## [0.17.0] - 2026-03-06
 
 ### Added

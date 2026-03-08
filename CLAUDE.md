@@ -21,9 +21,12 @@ backend/
   main.go                  # Chi router, CORS (configurable via ALLOWED_ORIGINS), routes
   k8s/client.go            # Raw HTTP K8s API client (shared transport, token forwarding, LimitReader)
   prometheus/client.go     # Optional Prometheus client (LimitReader, TimeRange, namespace batch)
-  middleware/auth.go       # Bearer token extraction from Authorization header
+  middleware/auth.go       # Bearer token extraction from Authorization header (token mode)
   middleware/cluster.go    # ClusterURL middleware — routes X-Cluster header to API server URL
+  middleware/session.go    # SessionAuth middleware (OIDC mode) — validates session JWT, injects SA token
+  oidc/session.go          # HS256 session JWT creation/verification + state generation (stdlib only)
   handlers/clusters.go     # ListClusters — returns configured cluster names (no auth required)
+  handlers/oidc.go         # AuthConfig, LoginURL, CreateSession — public OIDC endpoints
   resources/
     types.go               # Shared response types (ResourceValue, PodDetail, NodeOverview, etc.)
     parse.go               # ParseCPUMillicores, ParseMemoryBytes, ParseResource, ParseStorageBytes
@@ -41,10 +44,14 @@ backend/
     prometheus.go          # PromQL proxy + namespace batch history endpoint
 
 frontend/
-  src/app/page.tsx         # Login page (token → sessionStorage)
+  src/app/page.tsx         # Login page (token form OR SSO button depending on OIDC_ENABLED)
   src/app/dashboard/       # Main dashboard (persistent state: view, ns, timeRange, openCards)
   src/app/api/[...path]/   # Runtime API proxy (reads BACKEND_URL at runtime, not build time)
-  src/lib/api.ts           # Typed API client (TimeRange, ContainerHistory, NamespaceHistoryResponse)
+  src/app/auth/login/      # Server-side route: gets OIDC auth URL, sets oidc-state cookie, redirects
+  src/app/auth/callback/   # Server-side route: validates state, exchanges code, passes token to client
+  src/app/auth/done/       # Client component: moves token from cookie → sessionStorage → /dashboard
+  src/app/auth/logout/     # Client component: clears all kube-token* from sessionStorage → /
+  src/lib/api.ts           # Typed API client (TimeRange, ContainerHistory, NamespaceHistoryResponse, AuthConfig)
   src/lib/suggestions.ts   # Suggestion computation (P95/mean weighted, no-limit warning, confidence indicator)
   src/components/          # ResourceBar, PodRow, DeploymentCard, SuggestionPanel, Sparkline
   src/proxy.ts             # Next.js proxy (nonce-based CSP per request)
@@ -106,13 +113,30 @@ See `.env.example` at repo root. Key variables:
 | `PROMETHEUS_URL` | _(empty)_ | Prometheus base URL (auto-prepends `http://` if scheme missing) |
 | `BACKEND_URL` | auto-generated from Helm | Frontend → backend proxy (FQDN: `<release>-backend.<namespace>:<port>`) |
 | `PORT` | `8080` | Backend listen port |
+| `OIDC_ENABLED` | `false` | Enable OIDC authentication (replaces manual token entry) |
+| `OIDC_ISSUER_URL` | _(empty)_ | OIDC provider issuer URL (e.g. `https://keycloak.../realms/myrealm`) |
+| `OIDC_CLIENT_ID` | _(empty)_ | OIDC client ID |
+| `OIDC_CLIENT_SECRET` | _(empty)_ | OIDC client secret (store in K8s Secret) |
+| `OIDC_REDIRECT_URL` | _(empty)_ | Must match `https://<frontend-host>/auth/callback` |
+| `SESSION_SECRET` | _(empty)_ | ≥32-char secret for signing session JWTs (store in K8s Secret) |
+| `SA_TOKEN` | _(empty)_ | Service Account token for default/single cluster (OIDC mode) |
+| `SA_TOKENS` | _(empty)_ | SA tokens for named clusters: `prod=token1,staging=token2` (OIDC mode) |
 
 ---
 
 ## Security Model
 
+### Token mode (default, `OIDC_ENABLED=false`)
 - The user's Kubernetes token is stored in `sessionStorage` (frontend) and forwarded as `Authorization: Bearer` on every backend request. The backend never persists it.
 - The backend acts as a transparent proxy — all K8s API permissions are those of the user's token.
+
+### OIDC mode (`OIDC_ENABLED=true`)
+- The user authenticates via an OIDC provider (Keycloak, Dex, Google, etc.). The OIDC client secret stays on the backend.
+- After authentication, the backend issues a signed HS256 session JWT (8h TTL, `SESSION_SECRET`). It is stored in `sessionStorage` under the same `kube-token:<cluster>` key used in token mode — no change to the frontend API layer.
+- The session JWT is validated by `middleware/session.go` on every request. A pre-configured Service Account token is then substituted into the context; all downstream handlers are unchanged.
+- All K8s API calls use the SA token — this is a shared credential (no per-user K8s RBAC). Acceptable for read-only dashboards.
+- OIDC flow: browser → `/auth/login` (Next.js server route) → provider → `/auth/callback` (Next.js server route) → `/auth/done` (client page, moves token to sessionStorage) → `/dashboard`.
+- The OIDC state parameter is validated (stored in httpOnly `oidc-state` cookie, max 5 min) to prevent CSRF attacks.
 - The Helm ClusterRole is read-only (no `create`, `update`, `delete`, `patch`). **Never add write permissions.**
 - Token is never logged server-side (verified: no `log.*token` in any Go file).
 - PromQL injection is prevented via `isValidLabelValue()` in `handlers/prometheus.go` — whitelist `[a-zA-Z0-9._-]`.
