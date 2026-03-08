@@ -28,9 +28,9 @@ Browser → /auth/login (Next.js)
 
 ## Prerequisites
 
-1. A Service Account with read-only permissions deployed in each target cluster — use the existing `deploy/viewer-serviceaccount.yaml`.
-2. A long-lived SA token (K8s Secret of type `kubernetes.io/service-account-token`) or a projected token with sufficient TTL.
-3. An OIDC provider with a registered client (`redirect_uri = https://<your-host>/auth/callback`).
+1. An OIDC provider with a registered client (`redirect_uri = https://<your-host>/auth/callback`).
+2. For multi-cluster: a Service Account with read-only permissions in each remote cluster — use `helm/kubeadjust/deploy/viewer-serviceaccount.yaml`.
+3. For single-cluster: no SA token configuration needed — the pod uses its own in-cluster SA token automatically.
 
 ---
 
@@ -49,13 +49,10 @@ Browser → /auth/login (Next.js)
 
 ## Helm installation
 
-```bash
-# Generate a strong session secret (≥32 chars)
-SESSION_SECRET=$(openssl rand -hex 32)
+### Single-cluster (recommended — no SA token config needed)
 
-# Get the SA token from each cluster
-SA_TOKEN=$(kubectl get secret kubeadjust-viewer-token -n kubeadjust \
-  -o jsonpath='{.data.token}' | base64 -d)
+```bash
+SESSION_SECRET=$(openssl rand -hex 32)
 
 helm upgrade --install kubeadjust ./helm/kubeadjust \
   --namespace kubeadjust --create-namespace \
@@ -66,27 +63,87 @@ helm upgrade --install kubeadjust ./helm/kubeadjust \
   --set oidc.clientId=kubeadjust \
   --set oidc.clientSecret=<keycloak-client-secret> \
   --set oidc.redirectUrl=https://kubeadjust.example.com/auth/callback \
-  --set oidc.sessionSecret=$SESSION_SECRET \
-  --set oidc.saToken=$SA_TOKEN
+  --set oidc.sessionSecret=$SESSION_SECRET
 ```
 
-The Helm chart creates a `kubeadjust-oidc` K8s Secret holding all sensitive values (`clientSecret`, `sessionSecret`, `saToken`/`saTokens`). Do not put these in plain `values.yaml` files committed to version control — pass them via `--set` or from a secrets manager.
+The pod uses its own mounted Service Account token to call the Kubernetes API — no `saToken` needed.
+
+### Using an existing secret (recommended for production)
+
+Create the secrets once (or via Sealed Secrets / External Secrets Operator):
+
+```bash
+kubectl create secret generic kubeadjust-oidc \
+  --from-literal=clientSecret=<keycloak-client-secret> \
+  --from-literal=sessionSecret=$(openssl rand -hex 32) \
+  -n kubeadjust
+```
+
+Then reference it in values:
+
+```yaml
+oidc:
+  enabled: true
+  issuerUrl: "https://keycloak.example.com/realms/myrealm"
+  clientId: "kubeadjust"
+  redirectUrl: "https://kubeadjust.example.com/auth/callback"
+  existingSecret: "kubeadjust-oidc"
+```
 
 ---
 
 ## Multi-cluster OIDC
 
-For multi-cluster deployments, provide one SA token per cluster using `oidc.saTokens`:
+For multi-cluster deployments, configure clusters as a map and provide one SA token per remote cluster.
 
-```bash
-helm upgrade --install kubeadjust ./helm/kubeadjust \
-  --set backend.clusters="prod=https://k8s.prod.example.com:6443,staging=https://k8s.staging.example.com:6443" \
-  --set oidc.enabled=true \
-  --set oidc.saTokens="prod=<prod-sa-token>,staging=<staging-sa-token>" \
-  # ... other OIDC flags
+### values.yaml
+
+```yaml
+backend:
+  clusters:
+    prod: "https://k8s.prod.example.com:6443"
+    staging: "https://k8s.staging.example.com:6443"
+
+oidc:
+  enabled: true
+  issuerUrl: "https://keycloak.example.com/realms/myrealm"
+  clientId: "kubeadjust"
+  redirectUrl: "https://kubeadjust.example.com/auth/callback"
+  existingSecret: "kubeadjust-oidc"
+  existingTokenSecret: "kubeadjust-oidc-tokens"
 ```
 
-The cluster is selected by the `X-Cluster` header sent by the frontend (matching the names in `CLUSTERS`). The backend looks up the corresponding SA token.
+### SA tokens secret
+
+```yaml
+# kubectl apply -f this file
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kubeadjust-oidc-tokens
+  namespace: kubeadjust
+type: Opaque
+stringData:
+  prod: "eyJhbG..."      # SA token for the prod cluster
+  staging: "eyJhbG..."   # SA token for the staging cluster
+  # No "default" key needed — the local cluster uses the pod's in-cluster token
+```
+
+Secret key names must match the keys in `backend.clusters`. The default (local) cluster always uses the pod's in-cluster SA token automatically.
+
+Get a long-lived SA token for a remote cluster:
+
+```bash
+# Using a Secret-based token (long-lived)
+kubectl get secret kubeadjust-viewer-token -n kubeadjust \
+  --context=prod-cluster \
+  -o jsonpath='{.data.token}' | base64 -d
+
+# Or using a projected token (recommended, 1 year)
+kubectl create token kubeadjust-viewer -n kubeadjust \
+  --context=prod-cluster \
+  --duration=8760h
+```
 
 ---
 
@@ -100,10 +157,9 @@ The cluster is selected by the `X-Cluster` header sent by the frontend (matching
 | `OIDC_CLIENT_SECRET` | Yes | OIDC client secret — keep in a K8s Secret |
 | `OIDC_REDIRECT_URL` | Yes | Must exactly match the redirect URI registered in the provider |
 | `SESSION_SECRET` | Yes | ≥32-char random string for signing session JWTs — keep in a K8s Secret |
-| `SA_TOKEN` | Yes* | SA token for the default/single cluster |
-| `SA_TOKENS` | Yes* | SA tokens for named clusters: `prod=token1,staging=token2` |
-
-\* At least one of `SA_TOKEN` or `SA_TOKENS` must be set.
+| `SA_TOKEN` | No | SA token override for the default cluster (normally not needed — uses in-cluster token) |
+| `SA_TOKEN_<CLUSTER>` | No | SA token for a named cluster, e.g. `SA_TOKEN_PROD` for cluster `prod` (Helm-generated) |
+| `SA_TOKENS` | No | Legacy: `prod=token1,staging=token2` (still supported) |
 
 ---
 
@@ -120,3 +176,4 @@ Session JWTs have an 8-hour TTL. After expiry, the next API call returns 401 and
 - The CSRF state is validated via an httpOnly `oidc-state` cookie (5-minute TTL).
 - The token transfer from server to client uses a short-lived (30s) cookie scoped to `Path=/auth/done`.
 - Logging out (`/auth/logout`) clears all `kube-token*` keys from sessionStorage.
+- The frontend auth routes read `x-forwarded-proto` / `x-forwarded-host` headers to construct redirect URLs correctly behind an ingress or reverse proxy.

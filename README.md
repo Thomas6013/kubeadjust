@@ -108,14 +108,14 @@ cd frontend && npm install && npm run dev
 | `OIDC_CLIENT_SECRET` | _(empty)_ | OIDC client secret |
 | `OIDC_REDIRECT_URL` | _(empty)_ | `https://<host>/auth/callback` |
 | `SESSION_SECRET` | _(empty)_ | ≥32-char random string for signing session tokens |
-| `SA_TOKEN` | _(empty)_ | Service Account token (single cluster, OIDC mode) |
-| `SA_TOKENS` | _(empty)_ | `prod=token1,staging=token2` (multi-cluster, OIDC mode) |
+| `SA_TOKEN_<CLUSTER>` | _(empty)_ | SA token for a named cluster, e.g. `SA_TOKEN_PROD` (OIDC multi-cluster) |
+| `SA_TOKEN` | _(empty)_ | SA token override for the default cluster (normally not needed — uses in-cluster token) |
 
 **Prometheus:** set `PROMETHEUS_URL` to enable sparklines and P95-based suggestions. Works with or without `http://` prefix.
 
 **metrics-server:** required for live usage data. If not installed, enable the sub-chart: `--set metrics-server.enabled=true`.
 
-**Multi-cluster:** set `CLUSTERS=prod=https://...,staging=https://...` to expose a cluster selector on the login page. Each cluster stores its token independently in sessionStorage — switching between clusters visited in the same session requires no re-authentication.
+**Multi-cluster:** configure clusters as a Helm map (`backend.clusters.prod`, `backend.clusters.staging`, …). Each cluster stores its token independently in sessionStorage — switching between clusters requires no re-authentication.
 
 **OIDC / SSO:** see [docs/oidc.md](docs/oidc.md) for a full setup guide. Works with any OIDC provider and on managed clusters (EKS, GKE, AKS) — no K8s API server configuration required.
 
