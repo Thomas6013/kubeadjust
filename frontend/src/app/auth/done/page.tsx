@@ -26,7 +26,9 @@ export default function AuthDone() {
       const key = cluster ? `kube-token:${cluster}` : "kube-token";
       sessionStorage.setItem(key, token);
     } catch {
-      // sessionStorage unavailable — proceed anyway (the session cookie fallback will be used)
+      // sessionStorage unavailable — can't persist the session token
+      router.replace("/?error=auth_failed");
+      return;
     }
 
     // Clear the transfer cookie

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strings"
 
@@ -36,6 +37,7 @@ func SessionAuth(saTokens map[string]string, secret []byte) func(http.Handler) h
 			}
 			saToken, ok := saTokens[clusterName]
 			if !ok {
+				log.Printf("OIDC: SA token not configured for cluster %q — check SA_TOKEN_%s env var", clusterName, strings.ToUpper(strings.ReplaceAll(clusterName, "-", "_")))
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusBadRequest)
 				_, _ = w.Write([]byte(`{"error":"unknown cluster"}`))

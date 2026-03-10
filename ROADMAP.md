@@ -24,6 +24,7 @@ Items are not committed to any timeline — this is a solo side project.
 - [ ] **Alert thresholds configuration** — let users customize the Critical/Warning/Over-provisioned thresholds (currently hardcoded)
 - [ ] **Dark mode** — CSS variable-based theming
 
+
 ## Code Quality
 
 - [x] **Backend unit tests** — resource parsing (nanocores, bytes) and PromQL validation _(v0.7.0)_

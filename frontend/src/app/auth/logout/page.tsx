@@ -10,10 +10,10 @@ export default function Logout() {
   const router = useRouter();
 
   useEffect(() => {
-    // Clear all kube-token keys from sessionStorage
+    // Clear all KubeAdjust session data
     try {
       const keysToRemove = Object.keys(sessionStorage).filter(
-        (k) => k === "kube-token" || k.startsWith("kube-token:"),
+        (k) => k === "kube-token" || k.startsWith("kube-token:") || k === "kube-cluster" || k.startsWith("kubeadjust:"),
       );
       for (const k of keysToRemove) sessionStorage.removeItem(k);
     } catch { /* ignore */ }

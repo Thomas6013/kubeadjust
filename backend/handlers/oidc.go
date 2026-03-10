@@ -24,7 +24,9 @@ type OIDCHandler struct {
 // NewOIDCHandler initialises the OIDC handler by fetching the provider discovery document.
 // Returns an error if the provider is unreachable or misconfigured.
 func NewOIDCHandler(issuerURL, clientID, clientSecret, redirectURL string, secret []byte) (*OIDCHandler, error) {
-	provider, err := gooidc.NewProvider(context.Background(), issuerURL)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	provider, err := gooidc.NewProvider(ctx, issuerURL)
 	if err != nil {
 		return nil, fmt.Errorf("OIDC provider init (%s): %w", issuerURL, err)
 	}
@@ -101,6 +103,8 @@ func (h *OIDCHandler) CreateSession() http.HandlerFunc {
 			jsonError(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+
+		log.Printf("OIDC session issued: subject=%q remote=%s", idToken.Subject, r.RemoteAddr)
 
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]string{"token": sessionToken}); err != nil {

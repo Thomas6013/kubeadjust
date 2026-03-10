@@ -88,6 +88,12 @@ func main() {
 		if len(saTokens) == 0 {
 			log.Fatal("OIDC_ENABLED=true but no SA tokens configured (set SA_TOKEN or SA_TOKENS)")
 		}
+		// Warn if a configured cluster has no matching SA token (common misconfiguration).
+		for name := range clusters {
+			if _, ok := saTokens[name]; !ok {
+				log.Printf("WARN: cluster %q has no SA token — set SA_TOKEN_%s or SA_TOKENS", name, strings.ToUpper(strings.ReplaceAll(name, "-", "_")))
+			}
+		}
 
 		h, err := handlers.NewOIDCHandler(issuerURL, clientID, clientSecret, redirectURL, sessionSecret)
 		if err != nil {
@@ -123,8 +129,11 @@ func main() {
 
 		if oidcEnabled {
 			// OIDC-specific endpoints: called server-side by Next.js, not by the browser directly.
-			r.Get("/auth/loginurl", oidcHandler.LoginURL())
-			r.Post("/auth/session", oidcHandler.CreateSession())
+			r.Group(func(r chi.Router) {
+				r.Use(chiMiddleware.Throttle(10))
+				r.Get("/auth/loginurl", oidcHandler.LoginURL())
+				r.Post("/auth/session", oidcHandler.CreateSession())
+			})
 		}
 
 		// Auth + cluster-routing required

@@ -116,7 +116,11 @@ async function apiFetch<T>(path: string, token: string): Promise<T> {
   const res = await fetch(`/api${path}`, { headers: reqHeaders });
   if (!res.ok) {
     if (res.status === 401) {
-      sessionStorage.removeItem("kube-token");
+      try {
+        for (const k of Object.keys(sessionStorage).filter((k) => k === "kube-token" || k.startsWith("kube-token:"))) {
+          sessionStorage.removeItem(k);
+        }
+      } catch { /* ignore */ }
       window.location.href = "/";
       throw new APIError(401, "Session expired");
     }
