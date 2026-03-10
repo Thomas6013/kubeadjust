@@ -6,6 +6,66 @@ import (
 	"testing"
 )
 
+func TestHasRequiredGroup(t *testing.T) {
+	tests := []struct {
+		name           string
+		userGroups     []string
+		requiredGroups []string
+		want           bool
+	}{
+		{
+			"user is in required group",
+			[]string{"kubeadjust-users", "devs"},
+			[]string{"kubeadjust-users"},
+			true,
+		},
+		{
+			"user matches one of multiple required groups",
+			[]string{"devs"},
+			[]string{"kubeadjust-users", "devs"},
+			true,
+		},
+		{
+			"user not in any required group",
+			[]string{"other-team"},
+			[]string{"kubeadjust-users"},
+			false,
+		},
+		{
+			"user has no groups",
+			[]string{},
+			[]string{"kubeadjust-users"},
+			false,
+		},
+		{
+			"partial name does not match",
+			[]string{"kubeadjust"},
+			[]string{"kubeadjust-users"},
+			false,
+		},
+		{
+			"no required groups returns false (caller must guard)",
+			[]string{"devs"},
+			[]string{},
+			false,
+		},
+		{
+			"case-sensitive: lowercase ≠ uppercase",
+			[]string{"KubeAdjust-Users"},
+			[]string{"kubeadjust-users"},
+			false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := hasRequiredGroup(tt.userGroups, tt.requiredGroups)
+			if got != tt.want {
+				t.Errorf("hasRequiredGroup(%v, %v) = %v, want %v", tt.userGroups, tt.requiredGroups, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAuthConfig(t *testing.T) {
 	for _, tt := range []struct {
 		name        string

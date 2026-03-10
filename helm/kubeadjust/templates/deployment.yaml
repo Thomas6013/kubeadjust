@@ -73,6 +73,10 @@ spec:
                 secretKeyRef:
                   name: {{ include "kubeadjust.oidcSecretName" . }}
                   key: sessionSecret
+            {{- if .Values.oidc.groups }}
+            - name: OIDC_GROUPS
+              value: {{ .Values.oidc.groups | quote }}
+            {{- end }}
             {{- range $name, $_ := .Values.oidc.saTokens }}
             - name: SA_TOKEN_{{ $name | upper | replace "-" "_" }}
               valueFrom:

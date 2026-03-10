@@ -30,7 +30,11 @@ export default function LoginPage() {
     // Show error from OIDC redirect if present
     const params = new URLSearchParams(window.location.search);
     const err = params.get("error");
-    if (err) setError(err === "auth_failed" ? "Authentication failed. Please try again." : "OIDC provider unavailable.");
+    if (err) {
+      if (err === "access_denied") setError("Access denied. Your account is not authorised to use this dashboard.");
+      else if (err === "auth_failed") setError("Authentication failed. Please try again.");
+      else setError("OIDC provider unavailable.");
+    }
   }, []);
 
   async function handleLogin(e: React.FormEvent) {

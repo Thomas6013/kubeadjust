@@ -35,7 +35,8 @@ export async function GET(req: NextRequest) {
     });
 
     if (!res.ok) {
-      return NextResponse.redirect(new URL("/?error=auth_failed", origin));
+      const errorParam = res.status === 403 ? "access_denied" : "auth_failed";
+      return NextResponse.redirect(new URL(`/?error=${errorParam}`, origin));
     }
 
     const { token } = (await res.json()) as { token: string };

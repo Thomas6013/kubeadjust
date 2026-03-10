@@ -147,6 +147,39 @@ kubectl create token kubeadjust-viewer -n kubeadjust \
 
 ---
 
+## Group-based access control
+
+By default, any user who successfully authenticates with the OIDC provider can access the dashboard. To restrict access, set `OIDC_GROUPS` to a comma-separated list of group names. The user must belong to **at least one** of those groups.
+
+```bash
+--set oidc.groups="kubeadjust-users,platform-team"
+```
+
+If the user is not in any required group, the backend returns HTTP 403 and the login page shows: *"Access denied. Your account is not authorised to use this dashboard."*
+
+Group names are **case-sensitive** and matched exactly.
+
+### Configuring the groups claim in Keycloak
+
+The `groups` claim is not included in ID tokens by default. You need to add a mapper:
+
+1. In your client, go to **Client scopes** → **dedicated scope** (or a shared scope) → **Mappers**.
+2. Click **Add mapper** → **By configuration** → **Group Membership**.
+3. Set **Token Claim Name** to `groups`, enable **Add to ID token**.
+4. Optionally enable **Full group path** if your groups use paths like `/platform-team` (in that case, set `OIDC_GROUPS=/platform-team`).
+
+### Configuring the groups claim in Dex
+
+Add a `groups` claim via the connector configuration. For LDAP, set `groupSearch` and ensure the groups are mapped. For GitHub, `orgs` are automatically included as groups.
+
+### Configuring the groups claim in other providers
+
+- **Azure AD**: add a `groupMembershipClaims: "SecurityGroup"` in the app manifest and use group object IDs as group names.
+- **Okta**: add a **Groups claim** filter in the authorization server.
+- **Google Workspace**: use Dex as a proxy with `hostedDomains` filtering, or use the `hd` claim for domain-level restriction.
+
+---
+
 ## Environment variables reference
 
 | Variable | Required | Description |
@@ -157,6 +190,7 @@ kubectl create token kubeadjust-viewer -n kubeadjust \
 | `OIDC_CLIENT_SECRET` | Yes | OIDC client secret — keep in a K8s Secret |
 | `OIDC_REDIRECT_URL` | Yes | Must exactly match the redirect URI registered in the provider |
 | `SESSION_SECRET` | Yes | ≥32-char random string for signing session JWTs — keep in a K8s Secret |
+| `OIDC_GROUPS` | No | Comma-separated list of allowed groups — empty = any authenticated user (not recommended) |
 | `SA_TOKEN` | No | SA token override for the default cluster (normally not needed — uses in-cluster token) |
 | `SA_TOKEN_<CLUSTER>` | No | SA token for a named cluster, e.g. `SA_TOKEN_PROD` for cluster `prod` (Helm-generated) |
 | `SA_TOKENS` | No | Legacy: `prod=token1,staging=token2` (still supported) |
@@ -175,5 +209,12 @@ Session JWTs have an 8-hour TTL. After expiry, the next API call returns 401 and
 - The session JWT is stored in `sessionStorage` (cleared on tab close), same as the K8s token in default mode.
 - The CSRF state is validated via an httpOnly `oidc-state` cookie (5-minute TTL).
 - The token transfer from server to client uses a short-lived (30s) cookie scoped to `Path=/auth/done`.
-- Logging out (`/auth/logout`) clears all `kube-token*` keys from sessionStorage.
+- If `sessionStorage` is unavailable when `/auth/done` runs (private browsing, storage quota exceeded), the user is redirected to `/?error=auth_failed` rather than silently continuing to the dashboard.
+- Logging out (`/auth/logout`) clears all `kube-token*`, `kube-cluster`, and `kubeadjust:*` keys from `sessionStorage`.
+- The `/api/auth/loginurl` and `/api/auth/session` endpoints are rate-limited to 10 concurrent requests (Chi Throttle).
+- Every successful session creation is logged server-side with the OIDC subject and remote address for audit purposes.
+- OIDC provider discovery uses a 10-second timeout — a misconfigured or unreachable issuer URL causes a clean startup failure rather than a hang.
+- At startup, the backend logs a `WARN` for each configured cluster that has no matching SA token, surfacing misconfiguration before it causes runtime errors.
+- At startup, if `OIDC_GROUPS` is not set, a `WARN` is logged as a reminder that all authenticated users have access.
+- Group membership is checked server-side after JWKS-based ID token verification; the backend returns HTTP 403 and the frontend shows a distinct "Access denied" message (not the generic "Authentication failed").
 - The frontend auth routes read `x-forwarded-proto` / `x-forwarded-host` headers to construct redirect URLs correctly behind an ingress or reverse proxy.

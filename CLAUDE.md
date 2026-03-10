@@ -10,7 +10,7 @@ KubeAdjust is a **read-only Kubernetes dashboard** (Go backend + Next.js fronten
 
 - **Backend**: Go 1.22, Chi v5 router, 3 production dependencies (chi, cors, errgroup), raw HTTP K8s API (no client-go)
 - **Frontend**: Next.js 16, React 19, TypeScript 5, no UI library, no charting library
-- **Infra**: Helm chart (v0.17.0), multi-stage Docker builds (amd64 + arm64), GitHub Actions CI with linting + tests + SBOM + cosign
+- **Infra**: Helm chart (v0.18.0), multi-stage Docker builds (amd64 + arm64), GitHub Actions CI with linting + tests + SBOM + cosign
 
 ---
 
@@ -25,8 +25,11 @@ backend/
   middleware/cluster.go    # ClusterURL middleware — routes X-Cluster header to API server URL
   middleware/session.go    # SessionAuth middleware (OIDC mode) — validates session JWT, injects SA token
   oidc/session.go          # HS256 session JWT creation/verification + state generation (stdlib only)
+  oidc/session_test.go     # Unit tests: CreateSessionToken, VerifySessionToken, GenerateState
   handlers/clusters.go     # ListClusters — returns configured cluster names (no auth required)
   handlers/oidc.go         # AuthConfig, LoginURL, CreateSession — public OIDC endpoints
+  handlers/oidc_test.go    # Unit tests: AuthConfig handler
+  main_test.go             # Unit tests: parseClusters, parseSATokens
   resources/
     types.go               # Shared response types (ResourceValue, PodDetail, NodeOverview, etc.)
     parse.go               # ParseCPUMillicores, ParseMemoryBytes, ParseResource, ParseStorageBytes
@@ -42,6 +45,8 @@ backend/
     nodes.go               # ListNodes — K8s API orchestration, delegates to resources/
     namespaces.go          # ListNamespaces + GetNamespaceStats — filters empty namespaces, aggregates limit/request ratios
     prometheus.go          # PromQL proxy + namespace batch history endpoint
+  middleware/
+    session_test.go        # Unit tests: extractSessionToken, SessionAuth middleware (6 cases)
 
 frontend/
   src/app/page.tsx         # Login page (token form OR SSO button depending on OIDC_ENABLED)
@@ -50,7 +55,7 @@ frontend/
   src/app/auth/login/      # Server-side route: gets OIDC auth URL, sets oidc-state cookie, redirects
   src/app/auth/callback/   # Server-side route: validates state, exchanges code, passes token to client
   src/app/auth/done/       # Client component: moves token from cookie → sessionStorage → /dashboard
-  src/app/auth/logout/     # Client component: clears all kube-token* from sessionStorage → /
+  src/app/auth/logout/     # Client component: clears all kube-token*, kube-cluster, kubeadjust:* from sessionStorage → /
   src/lib/api.ts           # Typed API client (TimeRange, ContainerHistory, NamespaceHistoryResponse, AuthConfig)
   src/lib/suggestions.ts   # Suggestion computation (P95/mean weighted, no-limit warning, confidence indicator)
   src/components/          # ResourceBar, PodRow, DeploymentCard, SuggestionPanel, Sparkline
@@ -135,7 +140,12 @@ See `.env.example` at repo root. Key variables:
 - After authentication, the backend issues a signed HS256 session JWT (8h TTL, `SESSION_SECRET`). It is stored in `sessionStorage` under the same `kube-token:<cluster>` key used in token mode — no change to the frontend API layer.
 - The session JWT is validated by `middleware/session.go` on every request. A pre-configured Service Account token is then substituted into the context; all downstream handlers are unchanged.
 - All K8s API calls use the SA token — this is a shared credential (no per-user K8s RBAC). Acceptable for read-only dashboards.
-- OIDC flow: browser → `/auth/login` (Next.js server route) → provider → `/auth/callback` (Next.js server route) → `/auth/done` (client page, moves token to sessionStorage) → `/dashboard`.
+- OIDC flow: browser → `/auth/login` (Next.js server route) → provider → `/auth/callback` (Next.js server route) → `/auth/done` (client page, moves token to sessionStorage, redirects to `/?error=auth_failed` if sessionStorage unavailable) → `/dashboard`.
+- OIDC public endpoints (`/api/auth/loginurl`, `/api/auth/session`) are rate-limited to 10 concurrent requests via Chi Throttle.
+- OIDC provider discovery uses a 10s timeout to prevent hanging at startup.
+- Every successful OIDC session creation is logged server-side with subject and remote addr for audit.
+- At startup, warns if any configured cluster has no matching SA token (helps diagnose misconfiguration).
+- Group-based access control: `OIDC_GROUPS` env var (comma-separated) — user must belong to at least one group. Checked server-side after JWKS verification. HTTP 403 on mismatch; frontend shows distinct "Access denied" message. Case-sensitive exact match against `groups` claim in ID token. When unset, startup WARN logged.
 - The OIDC state parameter is validated (stored in httpOnly `oidc-state` cookie, max 5 min) to prevent CSRF attacks.
 - The Helm ClusterRole is read-only (no `create`, `update`, `delete`, `patch`). **Never add write permissions.**
 - Token is never logged server-side (verified: no `log.*token` in any Go file).
@@ -301,6 +311,18 @@ See `.env.example` at repo root. Key variables:
 
 ### Resolved
 
+- ~~OIDC provider discovery no timeout~~ — RESOLVED (`handlers/oidc.go`: `context.WithTimeout(10s)` on `gooidc.NewProvider()`).
+- ~~No rate limiting on OIDC public endpoints~~ — RESOLVED (`main.go`: `Throttle(10)` group wrapping `/auth/loginurl` + `/api/auth/session`).
+- ~~No audit logging for OIDC authentications~~ — RESOLVED (`handlers/oidc.go`: `log.Printf("OIDC session issued: subject=%q remote=%s", ...)` on every successful session creation).
+- ~~Unknown cluster in SessionAuth logs nothing~~ — RESOLVED (`middleware/session.go`: `log.Printf` with the expected env var name to set).
+- ~~SA token misconfiguration silent at startup~~ — RESOLVED (`main.go`: startup loop warns for each configured cluster with no matching SA token).
+- ~~sessionStorage failure in /auth/done silently continues to /dashboard~~ — RESOLVED (`auth/done/page.tsx`: catch block now redirects to `/?error=auth_failed`).
+- ~~Logout only clears kube-token* keys~~ — RESOLVED (`auth/logout/page.tsx`: also clears `kube-cluster` and all `kubeadjust:*` keys).
+- ~~apiFetch 401 only clears kube-token (default cluster)~~ — RESOLVED (`lib/api.ts`: clears all `kube-token` and `kube-token:*` keys on 401).
+- ~~No unit tests for OIDC session JWT~~ — RESOLVED (`oidc/session_test.go`: 7 test cases covering round-trip, expiry, tamper, malformed, GenerateState).
+- ~~No unit tests for SessionAuth middleware~~ — RESOLVED (`middleware/session_test.go`: extractSessionToken + SessionAuth with 6 auth scenarios).
+- ~~No unit tests for parseClusters / parseSATokens~~ — RESOLVED (`main_test.go`: 5 parseClusters + 6 parseSATokens cases including lowercase normalization and override priority).
+- ~~No group-based access control in OIDC mode~~ — RESOLVED (`OIDC_GROUPS` env var + `oidc.groups` Helm value; `hasRequiredGroup()` in `handlers/oidc.go`; 7 test cases in `handlers/oidc_test.go`; distinct 403/`access_denied` flow in frontend).
 - ~~Cluster switch requires re-entering token~~ — RESOLVED (v0.17.0, per-cluster token storage `kube-token:<cluster>`; seamless switch if already authenticated, login redirect otherwise).
 - ~~Suggestion click on PVC/EmptyDir doesn't scroll~~ — RESOLVED (v0.17.0, volume suggestions scroll to `pod-row-${dep}-${pod}` instead of nonexistent container ID).
 - ~~Ghost scroll on auto-refresh after failed scroll attempt~~ — RESOLVED (v0.17.0, scroll ref always cleared before attempt).

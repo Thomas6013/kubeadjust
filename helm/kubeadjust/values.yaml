@@ -91,6 +91,11 @@ oidc:
   issuerUrl: ""        # e.g. https://keycloak.example.com/realms/myrealm
   clientId: ""
   redirectUrl: ""      # e.g. https://kubeadjust.example.com/auth/callback
+  # Optional: restrict access to users belonging to at least one of these OIDC groups.
+  # Comma-separated list, e.g. "kubeadjust-users,platform-team".
+  # Empty = any authenticated user can access (not recommended for production).
+  # Requires the OIDC provider to include a "groups" claim in the ID token.
+  groups: ""
   # Existing secret for OIDC credentials (clientSecret + sessionSecret).
   # When set, clientSecret and sessionSecret fields below are ignored.
   existingSecret: ""

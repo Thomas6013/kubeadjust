@@ -16,14 +16,16 @@ import (
 
 // OIDCHandler handles OIDC login URL generation and authorization code exchange.
 type OIDCHandler struct {
-	oauth2Cfg oauth2.Config
-	verifier  *gooidc.IDTokenVerifier
-	secret    []byte
+	oauth2Cfg      oauth2.Config
+	verifier       *gooidc.IDTokenVerifier
+	secret         []byte
+	requiredGroups []string // empty = allow all authenticated users
 }
 
 // NewOIDCHandler initialises the OIDC handler by fetching the provider discovery document.
+// requiredGroups is an optional list of OIDC group names; the user must belong to at least one.
 // Returns an error if the provider is unreachable or misconfigured.
-func NewOIDCHandler(issuerURL, clientID, clientSecret, redirectURL string, secret []byte) (*OIDCHandler, error) {
+func NewOIDCHandler(issuerURL, clientID, clientSecret, redirectURL string, secret []byte, requiredGroups []string) (*OIDCHandler, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	provider, err := gooidc.NewProvider(ctx, issuerURL)
@@ -40,8 +42,21 @@ func NewOIDCHandler(issuerURL, clientID, clientSecret, redirectURL string, secre
 			Endpoint:     provider.Endpoint(),
 			Scopes:       []string{gooidc.ScopeOpenID, "email", "profile"},
 		},
-		secret: secret,
+		secret:         secret,
+		requiredGroups: requiredGroups,
 	}, nil
+}
+
+// hasRequiredGroup returns true if userGroups contains at least one group from requiredGroups.
+func hasRequiredGroup(userGroups, requiredGroups []string) bool {
+	for _, req := range requiredGroups {
+		for _, ug := range userGroups {
+			if ug == req {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // LoginURL generates a fresh OIDC authorization URL with a random state.
@@ -95,6 +110,22 @@ func (h *OIDCHandler) CreateSession() http.HandlerFunc {
 			log.Printf("OIDC ID token verification failed: %v", err)
 			jsonError(w, "authentication failed", http.StatusUnauthorized)
 			return
+		}
+
+		if len(h.requiredGroups) > 0 {
+			var claims struct {
+				Groups []string `json:"groups"`
+			}
+			if err := idToken.Claims(&claims); err != nil {
+				log.Printf("OIDC: failed to extract claims for subject=%q: %v", idToken.Subject, err)
+				jsonError(w, "authentication failed", http.StatusUnauthorized)
+				return
+			}
+			if !hasRequiredGroup(claims.Groups, h.requiredGroups) {
+				log.Printf("OIDC: access denied for subject=%q: not in required groups %v (has: %v)", idToken.Subject, h.requiredGroups, claims.Groups)
+				jsonError(w, "access denied", http.StatusForbidden)
+				return
+			}
 		}
 
 		sessionToken, err := oidc.CreateSessionToken(idToken.Subject, h.secret, 8*time.Hour)

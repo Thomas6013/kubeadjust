@@ -95,12 +95,25 @@ func main() {
 			}
 		}
 
-		h, err := handlers.NewOIDCHandler(issuerURL, clientID, clientSecret, redirectURL, sessionSecret)
+		var requiredGroups []string
+		if groups := os.Getenv("OIDC_GROUPS"); groups != "" {
+			for _, g := range strings.Split(groups, ",") {
+				if g = strings.TrimSpace(g); g != "" {
+					requiredGroups = append(requiredGroups, g)
+				}
+			}
+		}
+
+		h, err := handlers.NewOIDCHandler(issuerURL, clientID, clientSecret, redirectURL, sessionSecret, requiredGroups)
 		if err != nil {
 			log.Fatalf("OIDC init failed: %v", err)
 		}
 		oidcHandler = h
-		log.Printf("OIDC mode enabled (issuer: %s, %d SA token(s))", issuerURL, len(saTokens))
+		if len(requiredGroups) > 0 {
+			log.Printf("OIDC mode enabled (issuer: %s, %d SA token(s), required groups: %v)", issuerURL, len(saTokens), requiredGroups)
+		} else {
+			log.Printf("OIDC mode enabled (issuer: %s, %d SA token(s), WARN: no OIDC_GROUPS set — any authenticated user can access)", issuerURL, len(saTokens))
+		}
 	}
 
 	r := chi.NewRouter()
