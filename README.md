@@ -53,11 +53,14 @@ KubeAdjust shows for every Deployment, StatefulSet and CronJob:
 
 ### Helm (production)
 
+The Helm chart lives in a dedicated repository — [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm).
+
 ```bash
-helm install kubeadjust ./helm/kubeadjust \
+helm repo add kubeadjust https://thomas6013.github.io/kubeadjust-helm
+helm repo update
+
+helm install kubeadjust kubeadjust/kubeadjust \
   --namespace kubeadjust --create-namespace \
-  --set backend.image.repository=ghcr.io/thomas6013/kubeadjust/kubeadjust-backend \
-  --set frontend.image.repository=ghcr.io/thomas6013/kubeadjust/kubeadjust-frontend \
   --set ingress.enabled=true \
   --set ingress.host=kubeadjust.your-domain.com
 ```
@@ -115,7 +118,7 @@ cd frontend && npm install && npm run dev
 
 **metrics-server:** required for live usage data. If not installed, enable the sub-chart: `--set metrics-server.enabled=true`.
 
-**Multi-cluster:** configure clusters as a Helm map (`backend.clusters.prod`, `backend.clusters.staging`, …). Each cluster stores its token independently in sessionStorage — switching between clusters requires no re-authentication.
+**Multi-cluster:** configure clusters as a Helm map (`backend.clusters.prod`, `backend.clusters.staging`, …). Each cluster stores its token independently in sessionStorage — switching between clusters requires no re-authentication. Full Helm values reference is in [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm).
 
 **OIDC / SSO:** see [docs/oidc.md](docs/oidc.md) for a full setup guide. Works with any OIDC provider and on managed clusters (EKS, GKE, AKS) — no K8s API server configuration required.
 

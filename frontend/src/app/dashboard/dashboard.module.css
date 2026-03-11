@@ -33,15 +33,25 @@
 }
 
 .clusterBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px;
   font-weight: 600;
   color: var(--accent);
   background: rgba(99, 179, 237, 0.12);
   border: 1px solid rgba(99, 179, 237, 0.3);
-  border-radius: 4px;
-  padding: 2px 7px;
+  border-radius: 5px;
+  padding: 2px 8px 2px 6px;
   font-family: monospace;
   letter-spacing: 0.02em;
+}
+
+.clusterDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 /* Cluster switcher (multi-cluster) */
@@ -89,7 +99,7 @@
 .clusterMenuItem {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
   padding: 7px 10px;
   background: none;
@@ -105,7 +115,7 @@
 }
 
 .clusterMenuItem:hover { background: var(--surface2); }
-.clusterMenuItemActive { color: var(--accent); background: rgba(108, 142, 247, 0.12); }
+.clusterMenuItemActive { /* color + background set via inline style per cluster */ }
 .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .refreshed { font-size: 12px; color: var(--muted); }
 

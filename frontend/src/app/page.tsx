@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api, type ClusterItem } from "@/lib/api";
 import { MANAGED_TOKEN, tokenKey } from "@/lib/storage";
+import { clusterColor } from "@/lib/clusterColor";
+import { KubeLogo } from "@/components/KubeLogo";
 import styles from "./login.module.css";
 
 export default function LoginPage() {
@@ -82,7 +84,7 @@ export default function LoginPage() {
     <main className={styles.container}>
       <div className={styles.card}>
         <div className={styles.logo}>
-          <span className={styles.logoIcon}>⎈</span>
+          <KubeLogo size={36} />
           <h1>KubeAdjust</h1>
         </div>
         <p className={styles.subtitle}>Resource limits &amp; requests dashboard</p>
@@ -91,17 +93,31 @@ export default function LoginPage() {
           <>
             <label>Cluster</label>
             <div className={styles.clusterGrid}>
-              {clusters.map((c) => (
-                <button
-                  key={c.name}
-                  type="button"
-                  className={`${styles.clusterCard} ${selectedCluster === c.name ? styles.clusterCardActive : ""}`}
-                  onClick={() => setSelectedCluster(c.name)}
-                >
-                  <span className={styles.clusterIcon}>⎈</span>
-                  {c.name}
-                </button>
-              ))}
+              {clusters.map((c) => {
+                const color = clusterColor(c.name);
+                const isActive = selectedCluster === c.name;
+                return (
+                  <button
+                    key={c.name}
+                    type="button"
+                    className={`${styles.clusterCard} ${isActive ? styles.clusterCardActive : ""}`}
+                    onClick={() => setSelectedCluster(c.name)}
+                    style={{
+                      "--cluster-accent": color.accent,
+                      "--cluster-bg": color.bg,
+                      "--cluster-border": color.border,
+                    } as React.CSSProperties}
+                  >
+                    <span
+                      className={styles.clusterAvatar}
+                      style={{ background: color.bg, borderColor: color.border, color: color.accent }}
+                    >
+                      {c.name.charAt(0).toUpperCase()}
+                    </span>
+                    <span className={styles.clusterName}>{c.name}</span>
+                  </button>
+                );
+              })}
             </div>
           </>
         )}

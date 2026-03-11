@@ -19,7 +19,7 @@ All notable changes to KubeAdjust are documented here.
 
 ### Changed
 - **Docker images build on release tag only** — `docker-publish.yml` now triggers on `*.*.*` tag pushes instead of every push to `main`. Create a tag (`git tag 0.19.0 && git push origin 0.19.0`) to publish images. Prevents unversioned image churn on every commit.
-- **Helm chart will be moved to a dedicated chart repository** — the `helm/kubeadjust/` directory will be extracted to a separate repository in a future release to enable independent versioning and `helm repo add` installation. The chart remains in this repo for now.
+- **Helm chart moved to a dedicated chart repository** — `helm/kubeadjust/` has been extracted to [github.com/Thomas6013/kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm). Install via `helm repo add kubeadjust https://thomas6013.github.io/kubeadjust-helm`. The `helm/` directory has been removed from this repository.
 
 ---
 

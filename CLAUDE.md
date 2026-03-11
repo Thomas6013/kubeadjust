@@ -10,7 +10,7 @@ KubeAdjust is a **read-only Kubernetes dashboard** (Go backend + Next.js fronten
 
 - **Backend**: Go 1.26, Chi v5 router, 3 production dependencies (chi, cors, errgroup), raw HTTP K8s API (no client-go)
 - **Frontend**: Next.js 16, React 19, TypeScript 5, no UI library, no charting library
-- **Infra**: Helm chart (v0.19.0, will be moved to a dedicated chart repo in a future release), multi-stage Docker builds (amd64 + arm64), GitHub Actions CI with linting + tests + SBOM + cosign. Docker images publish on `v*.*.*` tag push only (not on every merge to main).
+- **Infra**: Helm chart moved to [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm) (separate repo, independent versioning, published via GitHub Pages). Multi-stage Docker builds (amd64 + arm64), GitHub Actions CI with linting + tests + SBOM + cosign. Docker images publish on `v*.*.*` tag push only (not on every merge to main).
 
 ---
 
@@ -62,20 +62,16 @@ frontend/
   src/proxy.ts             # Next.js proxy (nonce-based CSP per request)
   next.config.mjs          # Standalone output, security headers (CSP handled by proxy.ts)
 
-helm/kubeadjust/
-  Chart.yaml               # Source of truth for version (appVersion: "0.15.0")
-  values.yaml              # Defaults: 1 replica, 50m CPU, 64/128Mi mem
-  templates/
-    deployment.yaml        # Backend + frontend deployments, FQDN BACKEND_URL, security contexts
-    rbac.yaml              # Read-only ClusterRole (no write permissions ever)
-    networkpolicy.yaml     # Optional NetworkPolicy (networkPolicy.enabled=true)
-
 deploy/
-  viewer-serviceaccount.yaml  # Standalone SA + ClusterRole for remote clusters
+  viewer-serviceaccount.yaml  # Standalone SA + ClusterRole for remote clusters (still used in SA token setup docs)
 
 .github/workflows/
   ci.yml                   # go build/vet/test + golangci-lint + npm build/lint
   docker-publish.yml       # Push to GHCR (amd64+arm64) + SBOM + cosign signing
+
+# Helm chart — separate repository
+# https://github.com/Thomas6013/kubeadjust-helm
+# helm repo add kubeadjust https://thomas6013.github.io/kubeadjust-helm
 ```
 
 ---
@@ -96,11 +92,12 @@ cd frontend && npm run lint
 # Full stack local dev
 docker compose up --build
 
-# Helm (production)
-helm upgrade --install kubeadjust ./helm/kubeadjust \
-  --set backend.kubeApiServer=https://your-k8s-api \
-  --set backend.kubeInsecureTls=false \
-  --set backend.allowedOrigins=https://your-frontend-domain.com
+# Helm (production) — chart is now in https://github.com/Thomas6013/kubeadjust-helm
+helm repo add kubeadjust https://thomas6013.github.io/kubeadjust-helm
+helm repo update
+helm upgrade --install kubeadjust kubeadjust/kubeadjust \
+  --set ingress.enabled=true \
+  --set ingress.host=kubeadjust.your-domain.com
 ```
 
 ---
@@ -411,7 +408,8 @@ See `.env.example` at repo root. Key variables:
 
 ## Deployment Reminders
 
-- The `helm/kubeadjust/templates/rbac.yaml` creates a `ClusterRoleBinding`. On RBAC-restricted clusters, the installer needs `cluster-admin` or equivalent.
+- Helm chart is now at [github.com/Thomas6013/kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm). `helm repo add kubeadjust https://thomas6013.github.io/kubeadjust-helm`.
+- The chart's `rbac.yaml` creates a `ClusterRoleBinding`. On RBAC-restricted clusters, the installer needs `cluster-admin` or equivalent.
 - `KUBE_API_SERVER` must be reachable from within the cluster when deployed via Helm (use the cluster's internal API server URL, typically `https://kubernetes.default.svc`).
 - `metrics-server` is an optional sub-chart. Enable with `metricsServer.enabled=true` only if not already deployed in the cluster.
 - Set `ALLOWED_ORIGINS` in production to restrict CORS to your frontend domain.

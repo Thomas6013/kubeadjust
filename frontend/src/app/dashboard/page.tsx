@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type ContainerHistory, type TimeRange } from "@/lib/api";
 import { APP_VERSION } from "@/lib/version";
+import { clusterColor } from "@/lib/clusterColor";
+import { KubeLogo } from "@/components/KubeLogo";
 import { useSessionState, AUTO_REFRESH_MS, type View, type AutoRefresh } from "@/hooks/useSessionState";
 import { STORAGE_KEYS, MANAGED_TOKEN, safeGetItem, safeSetItem, safeRemoveItem, tokenKey } from "@/lib/storage";
 import DeploymentCard from "@/components/DeploymentCard";
@@ -269,7 +271,8 @@ export default function DashboardPage() {
     <div className={styles.layout}>
       <header className={styles.topbar}>
         <div className={styles.brand}>
-          <span>⎈</span> KubeAdjust
+          <KubeLogo size={22} />
+          KubeAdjust
           <span className={styles.version}>v{APP_VERSION}</span>
           {cluster && (
             clusters.length > 1 ? (
@@ -279,25 +282,51 @@ export default function DashboardPage() {
                   onClick={() => setShowClusterMenu((o) => !o)}
                   title="Switch cluster"
                 >
-                  <span className={styles.clusterBadge}>{cluster}</span>
+                  <span
+                    className={styles.clusterBadge}
+                    style={{
+                      borderColor: clusterColor(cluster).border,
+                      color: clusterColor(cluster).accent,
+                      background: clusterColor(cluster).bg,
+                    }}
+                  >
+                    <span className={styles.clusterDot} style={{ background: clusterColor(cluster).accent }} />
+                    {cluster}
+                  </span>
                   <span className={styles.clusterChevron}>{showClusterMenu ? "▴" : "▾"}</span>
                 </button>
                 {showClusterMenu && (
                   <div className={styles.clusterMenu}>
-                    {clusters.map((c) => (
-                      <button
-                        key={c.name}
-                        className={`${styles.clusterMenuItem} ${c.name === cluster ? styles.clusterMenuItemActive : ""}`}
-                        onClick={() => handleClusterSwitch(c.name)}
-                      >
-                        ⎈ {c.name}
-                      </button>
-                    ))}
+                    {clusters.map((c) => {
+                      const color = clusterColor(c.name);
+                      const isActive = c.name === cluster;
+                      return (
+                        <button
+                          key={c.name}
+                          className={`${styles.clusterMenuItem} ${isActive ? styles.clusterMenuItemActive : ""}`}
+                          onClick={() => handleClusterSwitch(c.name)}
+                          style={isActive ? { color: color.accent, background: color.bg } : undefined}
+                        >
+                          <span className={styles.clusterDot} style={{ background: color.accent }} />
+                          {c.name}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
             ) : (
-              <span className={styles.clusterBadge}>{cluster}</span>
+              <span
+                className={styles.clusterBadge}
+                style={{
+                  borderColor: clusterColor(cluster).border,
+                  color: clusterColor(cluster).accent,
+                  background: clusterColor(cluster).bg,
+                }}
+              >
+                <span className={styles.clusterDot} style={{ background: clusterColor(cluster).accent }} />
+                {cluster}
+              </span>
             )
           )}
         </div>
