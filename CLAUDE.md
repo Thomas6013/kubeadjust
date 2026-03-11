@@ -397,8 +397,8 @@ See `.env.example` at repo root. Key variables:
 ## CI/CD Notes
 
 - `ci.yml` runs on every push/PR: `go build`, `go vet`, `go test`, `golangci-lint`, `npm ci`, `npm run build`, `npm run lint`.
-- `docker-publish.yml` builds and pushes to `ghcr.io/thomas6013/kubeadjust/` on merge to `main`.
-- Image tags: `latest`, `<appVersion>` (from Chart.yaml), `<commit-sha>`.
+- `docker-publish.yml` builds and pushes to `ghcr.io/thomas6013/kubeadjust/` on `*.*.*` tag push only (not on every merge to `main`).
+- Image tags: `latest`, `<git-tag>` (authoritative version from `$GITHUB_REF_NAME`), `<commit-sha>`.
 - Multi-arch: `linux/amd64` + `linux/arm64` via QEMU + buildx. Backend uses native Go cross-compilation (`BUILDPLATFORM`/`TARGETARCH`).
 - SBOM generated per image with `anchore/sbom-action` (SPDX format).
 - Images signed with `sigstore/cosign` (keyless, OIDC-based).
