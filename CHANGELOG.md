@@ -4,6 +4,13 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.19.1] - 2026-03-11
+
+### Fixed
+- **`docker-publish.yml` version derived from `version.ts`** — the workflow was parsing `APP_VERSION` from `frontend/src/lib/version.ts` to tag Docker images. If the file was not updated before pushing a git tag, images would be tagged with the wrong version. The workflow now uses `github.ref_name` (the git tag itself) as the authoritative image tag, removing the coupling between `version.ts` and image publication.
+
+---
+
 ## [0.19.0] - 2026-03-11
 
 ### Added

@@ -26,11 +26,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Read version from version.ts
+      - name: Resolve version and owner
         id: version
         run: |
-          VERSION=$(grep 'APP_VERSION' frontend/src/lib/version.ts | sed 's/.*"\([^"]*\)".*/\1/')
-          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "value=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
