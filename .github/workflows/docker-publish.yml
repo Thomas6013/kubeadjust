@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - '*.*.*'
+  workflow_dispatch:
 
 jobs:
   build-and-push:
@@ -25,10 +26,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Read version from Chart.yaml
+      - name: Resolve version and owner
         id: version
         run: |
-          VERSION=$(grep '^appVersion:' helm/kubeadjust/Chart.yaml | sed 's/appVersion: *"\?\([^"]*\)"\?/\1/')
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="$GITHUB_REF_NAME"
+          else
+            VERSION=$(grep 'APP_VERSION' frontend/src/lib/version.ts | sed 's/.*"\([^"]*\)".*/\1/')
+          fi
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
           echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
