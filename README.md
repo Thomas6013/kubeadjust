@@ -33,6 +33,7 @@ KubeAdjust shows for every Deployment, StatefulSet and CronJob:
 - Cluster-wide **node overview** with capacity, usage, limit overcommit indicator, node conditions (DiskPressure / MemoryPressure / PIDPressure), age, kubelet version, kernel, and OS image
 - **Namespace limit/request ratios** — CPU ×N.N and MEM ×N.N at a glance above the workload list
 - **Multi-cluster support** — configure multiple clusters via `CLUSTERS` env var; tokens are stored per cluster so switching between visited clusters requires no re-authentication
+- **OIDC / SSO authentication** — optional SSO login via Keycloak, Dex, Google, or any OIDC provider. Works on managed clusters (EKS, GKE, AKS) with no K8s API server configuration required
 
 ---
 
@@ -101,12 +102,22 @@ cd frontend && npm install && npm run dev
 | `PROMETHEUS_URL` | _(empty)_ | Prometheus URL for sparklines (optional) |
 | `ALLOWED_ORIGINS` | `*` | CORS origins (comma-separated) |
 | `PORT` | `8080` | Backend listen port |
+| `OIDC_ENABLED` | `false` | Enable OIDC/SSO login |
+| `OIDC_ISSUER_URL` | _(empty)_ | OIDC provider issuer URL |
+| `OIDC_CLIENT_ID` | _(empty)_ | OIDC client ID |
+| `OIDC_CLIENT_SECRET` | _(empty)_ | OIDC client secret |
+| `OIDC_REDIRECT_URL` | _(empty)_ | `https://<host>/auth/callback` |
+| `SESSION_SECRET` | _(empty)_ | ≥32-char random string for signing session tokens |
+| `SA_TOKEN_<CLUSTER>` | _(empty)_ | SA token for a named cluster, e.g. `SA_TOKEN_PROD` (OIDC multi-cluster) |
+| `SA_TOKEN` | _(empty)_ | SA token override for the default cluster (normally not needed — uses in-cluster token) |
 
 **Prometheus:** set `PROMETHEUS_URL` to enable sparklines and P95-based suggestions. Works with or without `http://` prefix.
 
 **metrics-server:** required for live usage data. If not installed, enable the sub-chart: `--set metrics-server.enabled=true`.
 
-**Multi-cluster:** set `CLUSTERS=prod=https://...,staging=https://...` to expose a cluster selector on the login page. Each cluster stores its token independently in sessionStorage — switching between clusters visited in the same session requires no re-authentication.
+**Multi-cluster:** configure clusters as a Helm map (`backend.clusters.prod`, `backend.clusters.staging`, …). Each cluster stores its token independently in sessionStorage — switching between clusters requires no re-authentication.
+
+**OIDC / SSO:** see [docs/oidc.md](docs/oidc.md) for a full setup guide. Works with any OIDC provider and on managed clusters (EKS, GKE, AKS) — no K8s API server configuration required.
 
 ---
 
@@ -119,7 +130,9 @@ Browser → Next.js (port 3000) → /api/* proxy → Go backend (port 8080)
                                                   └── Prometheus (optional)
 ```
 
-Stateless — no database, no cache. Your K8s token is forwarded on every request, never stored server-side.
+**Token mode (default):** stateless — no database, no cache. Your K8s token is forwarded on every request, never stored server-side.
+
+**OIDC mode:** the backend validates the OIDC ID token and issues a signed session JWT. A pre-configured Service Account token is used for all K8s API calls.
 
 ---
 

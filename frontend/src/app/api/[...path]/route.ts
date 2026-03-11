@@ -32,6 +32,9 @@ async function proxy(req: NextRequest, path: string[]) {
   if (auth) headers.set("Authorization", auth);
   const cluster = req.headers.get("x-cluster");
   if (cluster) headers.set("X-Cluster", cluster);
+  // Forward the session cookie in OIDC mode so the backend can validate the session.
+  const sessionCookie = req.cookies.get("kubeadjust-session");
+  if (sessionCookie) headers.set("Cookie", `kubeadjust-session=${sessionCookie.value}`);
   headers.set("Accept", "application/json");
 
   try {

@@ -109,3 +109,21 @@
   flex-shrink: 0;
   opacity: 0.7;
 }
+
+/* SSO login button (OIDC mode) */
+.ssoButton {
+  width: 100%;
+  padding: 12px 20px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: opacity 0.15s;
+}
+.ssoButton:hover {
+  opacity: 0.85;
+}

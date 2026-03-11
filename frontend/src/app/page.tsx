@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [clusters, setClusters] = useState<ClusterItem[]>([]);
   const [selectedCluster, setSelectedCluster] = useState("");
+  const [oidcEnabled, setOidcEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
     api.clusters().then((list) => {
@@ -24,6 +25,16 @@ export default function LoginPage() {
         setSelectedCluster(list[0].name);
       }
     });
+    api.authConfig().then((cfg) => setOidcEnabled(cfg.oidcEnabled));
+
+    // Show error from OIDC redirect if present
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get("error");
+    if (err) {
+      if (err === "access_denied") setError("Access denied. Your account is not authorised to use this dashboard.");
+      else if (err === "auth_failed") setError("Authentication failed. Please try again.");
+      else setError("OIDC provider unavailable.");
+    }
   }, []);
 
   async function handleLogin(e: React.FormEvent) {
@@ -43,6 +54,13 @@ export default function LoginPage() {
     }
   }
 
+  function handleSSOLogin() {
+    if (selectedCluster) {
+      try { sessionStorage.setItem("kube-cluster", selectedCluster); } catch { /* ignore */ }
+    }
+    window.location.href = "/auth/login";
+  }
+
   return (
     <main className={styles.container}>
       <div className={styles.card}>
@@ -52,45 +70,57 @@ export default function LoginPage() {
         </div>
         <p className={styles.subtitle}>Resource limits &amp; requests dashboard</p>
 
-        <form onSubmit={handleLogin} className={styles.form}>
-          {clusters.length > 0 && (
-            <>
-              <label>Cluster</label>
-              <div className={styles.clusterGrid}>
-                {clusters.map((c) => (
-                  <button
-                    key={c.name}
-                    type="button"
-                    className={`${styles.clusterCard} ${selectedCluster === c.name ? styles.clusterCardActive : ""}`}
-                    onClick={() => setSelectedCluster(c.name)}
-                  >
-                    <span className={styles.clusterIcon}>⎈</span>
-                    {c.name}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          <label htmlFor="token">Service Account Token</label>
-          <textarea
-            id="token"
-            rows={5}
-            placeholder="eyJhbGciOiJSUzI1NiIsImtpZCI6..."
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            spellCheck={false}
-            autoComplete="off"
-          />
-          {error && <p className={styles.error}>{error}</p>}
-          <button type="submit" disabled={!token.trim() || loading}>
-            {loading ? "Verifying…" : "Sign in"}
-          </button>
-        </form>
+        {clusters.length > 0 && (
+          <>
+            <label>Cluster</label>
+            <div className={styles.clusterGrid}>
+              {clusters.map((c) => (
+                <button
+                  key={c.name}
+                  type="button"
+                  className={`${styles.clusterCard} ${selectedCluster === c.name ? styles.clusterCardActive : ""}`}
+                  onClick={() => setSelectedCluster(c.name)}
+                >
+                  <span className={styles.clusterIcon}>⎈</span>
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
 
-        <p className={styles.hint}>
-          Generate a token with:<br />
-          <code>kubectl create token &lt;service-account&gt; -n &lt;namespace&gt;</code>
-        </p>
+        {oidcEnabled === null ? null : oidcEnabled ? (
+          <>
+            {error && <p className={styles.error}>{error}</p>}
+            <button type="button" onClick={handleSSOLogin} className={styles.ssoButton}>
+              Sign in with SSO
+            </button>
+          </>
+        ) : (
+          <form onSubmit={handleLogin} className={styles.form}>
+            <label htmlFor="token">Service Account Token</label>
+            <textarea
+              id="token"
+              rows={5}
+              placeholder="eyJhbGciOiJSUzI1NiIsImtpZCI6..."
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              spellCheck={false}
+              autoComplete="off"
+            />
+            {error && <p className={styles.error}>{error}</p>}
+            <button type="submit" disabled={!token.trim() || loading}>
+              {loading ? "Verifying…" : "Sign in"}
+            </button>
+          </form>
+        )}
+
+        {oidcEnabled === false && (
+          <p className={styles.hint}>
+            Generate a token with:<br />
+            <code>kubectl create token &lt;service-account&gt; -n &lt;namespace&gt;</code>
+          </p>
+        )}
       </div>
     </main>
   );

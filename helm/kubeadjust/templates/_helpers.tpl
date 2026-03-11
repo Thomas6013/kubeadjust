@@ -26,6 +26,22 @@ Expand the name of the chart.
 {{- end }}
 {{- end }}
 
+{{/*
+Name of the OIDC credentials secret (clientSecret + sessionSecret).
+Uses existingSecret if provided, otherwise the generated one.
+*/}}
+{{- define "kubeadjust.oidcSecretName" -}}
+{{- .Values.oidc.existingSecret | default (printf "%s-oidc" (include "kubeadjust.fullname" .)) }}
+{{- end }}
+
+{{/*
+Name of the SA tokens secret (saToken / saToken-<cluster> keys).
+Uses existingTokenSecret if provided, otherwise the generated one.
+*/}}
+{{- define "kubeadjust.oidcTokenSecretName" -}}
+{{- .Values.oidc.existingTokenSecret | default (printf "%s-oidc-tokens" (include "kubeadjust.fullname" .)) }}
+{{- end }}
+
 {{- define "kubeadjust.labels" -}}
 helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 app.kubernetes.io/name: {{ include "kubeadjust.name" . }}

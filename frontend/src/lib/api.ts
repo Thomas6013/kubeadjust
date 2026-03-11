@@ -116,7 +116,11 @@ async function apiFetch<T>(path: string, token: string): Promise<T> {
   const res = await fetch(`/api${path}`, { headers: reqHeaders });
   if (!res.ok) {
     if (res.status === 401) {
-      sessionStorage.removeItem("kube-token");
+      try {
+        for (const k of Object.keys(sessionStorage).filter((k) => k === "kube-token" || k.startsWith("kube-token:"))) {
+          sessionStorage.removeItem(k);
+        }
+      } catch { /* ignore */ }
       window.location.href = "/";
       throw new APIError(401, "Session expired");
     }
@@ -139,6 +143,21 @@ async function fetchClusters(): Promise<ClusterItem[]> {
     return res.json() as Promise<ClusterItem[]>;
   } catch {
     return [];
+  }
+}
+
+export interface AuthConfig {
+  oidcEnabled: boolean;
+}
+
+/** Returns OIDC configuration — no auth required. */
+async function fetchAuthConfig(): Promise<AuthConfig> {
+  try {
+    const res = await fetch("/api/auth/config", { headers: { Accept: "application/json" } });
+    if (!res.ok) return { oidcEnabled: false };
+    return res.json() as Promise<AuthConfig>;
+  } catch {
+    return { oidcEnabled: false };
   }
 }
 
@@ -178,6 +197,7 @@ export interface NodesResponse {
 
 export const api = {
   clusters: () => fetchClusters(),
+  authConfig: () => fetchAuthConfig(),
   verify: (token: string) =>
     apiFetch<{ status: string }>("/auth/verify", token),
   namespaces: (token: string) =>

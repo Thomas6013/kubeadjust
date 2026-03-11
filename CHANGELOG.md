@@ -4,6 +4,38 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.18.0] - 2026-03-08
+
+### Added
+- **OIDC authentication** — optional SSO login via any OIDC provider (Keycloak, Dex, Google, etc.). Set `OIDC_ENABLED=true` along with `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URL`, `SESSION_SECRET`, and `SA_TOKEN`/`SA_TOKENS`. When enabled, the login page shows a "Sign in with SSO" button instead of the token form. Fully backward-compatible: leaving `OIDC_ENABLED` unset preserves the existing token-based flow.
+- **`GET /api/auth/config`** — public endpoint returning `{"oidcEnabled": bool}`. Used by the frontend login page to decide which authentication UI to show.
+- **`GET /api/auth/loginurl`** — public endpoint (called server-side by Next.js) that generates a fresh OIDC authorization URL with a cryptographically random state.
+- **`POST /api/auth/session`** — public endpoint (called server-side by Next.js) that exchanges an OIDC authorization code for a signed session JWT. Uses `coreos/go-oidc/v3` for JWKS-based ID token verification.
+- **`middleware/session.go`** — `SessionAuth` middleware validates the session JWT and substitutes the pre-configured Service Account token into the request context. All downstream resource handlers are unchanged.
+- **`oidc/session.go`** — minimal HS256 session JWT implementation using Go stdlib only (`crypto/hmac`, `crypto/sha256`). No external JWT library.
+- **`/auth/login`, `/auth/callback`, `/auth/done`, `/auth/logout`** — Next.js server/client routes implementing the OIDC Authorization Code flow. CSRF protection via httpOnly `oidc-state` cookie (5 min TTL). Session token passed to the client via a short-lived readable cookie (30s, `Path=/auth/done`), then moved to `sessionStorage`.
+- **Helm `oidc.*` values** — `oidc.enabled`, `oidc.issuerUrl`, `oidc.clientId`, `oidc.clientSecret`, `oidc.redirectUrl`, `oidc.sessionSecret`, `oidc.saToken`, `oidc.saTokens`. Secrets stored in a dedicated `kubeadjust-oidc` K8s Secret.
+- **`docs/oidc.md`** — OIDC setup guide covering Keycloak configuration, Helm values, and multi-cluster SA token configuration.
+- **Group-based access control** (`OIDC_GROUPS`) — optional comma-separated list of OIDC group names. The user must belong to at least one group to be granted a session JWT. When unset, any authenticated user can access (startup warning logged). The backend returns HTTP 403 on group mismatch; the frontend shows a distinct "Access denied" message. Group names are case-sensitive and matched exactly against the `groups` claim in the ID token. `docs/oidc.md` includes configuration guides for Keycloak, Dex, Azure AD, Okta, and Google Workspace.
+
+### Fixed
+- **OIDC provider discovery timeout** — `NewOIDCHandler` now passes a 10-second context to `gooidc.NewProvider()`. Previously the discovery fetch had no timeout and could hang indefinitely on a misconfigured or unreachable provider.
+- **Group check returns generic `auth_failed` instead of distinct error** — `/auth/callback` now maps HTTP 403 from the backend to `/?error=access_denied`; the login page shows "Access denied. Your account is not authorised to use this dashboard." instead of the generic authentication failure message.
+- **No rate limiting on OIDC public endpoints** — `/api/auth/loginurl` and `/api/auth/session` are now wrapped in a `Throttle(10)` group. These endpoints were the only API routes without concurrent request limiting.
+- **Startup cluster/token mismatch not logged** — at startup, the backend now logs a `WARN` for every cluster in `CLUSTERS` that has no matching SA token, making misconfiguration visible immediately instead of surfacing as a runtime 400.
+- **Unknown cluster in SessionAuth logged** — when `SessionAuth` receives a valid session JWT but an unknown `X-Cluster`, it now logs the expected env var name (`SA_TOKEN_<CLUSTER>`) to aid debugging.
+- **sessionStorage failure in `/auth/done` silently redirected to dashboard** — if `sessionStorage.setItem()` throws (private browsing, storage full), the page now redirects to `/?error=auth_failed` instead of proceeding to `/dashboard` where every API call would fail with 401.
+- **Logout only cleared `kube-token*` keys** — `/auth/logout` now also removes `kube-cluster` and all `kubeadjust:*` keys (view, namespace, time range, open cards) from `sessionStorage`, preventing stale state from leaking into a subsequent session.
+- **401 handler only cleared default cluster token** — `apiFetch` now clears all `kube-token` and `kube-token:*` keys on a 401 response, not just the default-cluster key.
+
+### Tests
+- **`oidc/session_test.go`** — 7 cases: valid round-trip (subject preserved), expired token, wrong secret, tampered payload, tampered header, malformed tokens, empty subject, GenerateState uniqueness.
+- **`middleware/session_test.go`** — `extractSessionToken` (header, cookie, precedence, empty, whitespace-only Bearer) + `SessionAuth` (no token, invalid, expired, valid default cluster, valid named cluster, unknown cluster, JSON Content-Type on 401).
+- **`handlers/oidc_test.go`** — `AuthConfig` with `oidcEnabled=true/false` (status, Content-Type, body).
+- **`main_test.go`** — `parseClusters` (empty, single, multi, whitespace, malformed skip) + `parseSATokens` (SA_TOKEN, SA_TOKENS, SA_TOKEN_* lowercase, underscore→hyphen, override priority between sources).
+
+---
+
 ## [0.17.0] - 2026-03-06
 
 ### Added
