@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type ContainerHistory, type TimeRange } from "@/lib/api";
 import { APP_VERSION } from "@/lib/version";
 import { useSessionState, AUTO_REFRESH_MS, type View, type AutoRefresh } from "@/hooks/useSessionState";
-import { STORAGE_KEYS, safeGetItem, safeSetItem, safeRemoveItem, tokenKey } from "@/lib/storage";
+import { STORAGE_KEYS, MANAGED_TOKEN, safeGetItem, safeSetItem, safeRemoveItem, tokenKey } from "@/lib/storage";
 import DeploymentCard from "@/components/DeploymentCard";
 import SuggestionPanel from "@/components/SuggestionPanel";
 import NodeCard from "@/components/NodeCard";
@@ -65,7 +65,8 @@ export default function DashboardPage() {
     if (savedCluster) setCluster(savedCluster);
     // fall back to legacy "kube-token" for sessions created before per-cluster storage
     const t = safeGetItem(tokenKey(savedCluster)) ?? safeGetItem("kube-token");
-    if (!t) { router.replace("/"); return; }
+    // null = no token at all (redirect to login); empty string or MANAGED_TOKEN = managed cluster (ok)
+    if (t === null) { router.replace("/"); return; }
     setToken(t);
   }, [router]);
 
@@ -185,14 +186,19 @@ export default function DashboardPage() {
   function handleClusterSwitch(name: string) {
     if (name === cluster) { setShowClusterMenu(false); return; }
     const existingToken = safeGetItem(tokenKey(name));
+    const targetManaged = clusters.find((c) => c.name === name)?.managed === true;
     safeSetItem(STORAGE_KEYS.cluster, name);
     safeRemoveItem(STORAGE_KEYS.selectedNs);
     setShowClusterMenu(false);
-    if (existingToken) {
-      // Already authenticated for this cluster in this session — reload seamlessly
+    if (targetManaged && !existingToken) {
+      // Managed cluster: store sentinel and reload — no user token needed.
+      safeSetItem(tokenKey(name), MANAGED_TOKEN);
+      window.location.reload();
+    } else if (existingToken) {
+      // Already authenticated for this cluster in this session — reload seamlessly.
       window.location.reload();
     } else {
-      // No token for this cluster yet — go to login (cluster pre-selected)
+      // No token for this cluster yet — go to login (cluster pre-selected).
       router.push("/");
     }
   }
@@ -227,16 +233,18 @@ export default function DashboardPage() {
     });
   }
 
-  // Scroll to target after openCards state update causes re-render
+  // Scroll to target once openCards/workloadSearch update has rendered the target element into DOM.
+  // Scoped to [openCards, workloadSearch] to avoid consuming the ref on unrelated renders
+  // (auto-refresh, stats load, etc.) before the element exists.
   useEffect(() => {
     if (!scrollTargetRef.current) return;
     const target = scrollTargetRef.current;
-    scrollTargetRef.current = null; // always clear — prevents ghost scroll on subsequent renders
+    scrollTargetRef.current = null;
     const el = document.getElementById(target);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
     }
-  });
+  }, [openCards, workloadSearch]);
 
   const [nsSearch, setNsSearch] = useState("");
 

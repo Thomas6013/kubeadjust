@@ -8,9 +8,9 @@ Context file for Claude Code. Covers architecture, commands, conventions, and kn
 
 KubeAdjust is a **read-only Kubernetes dashboard** (Go backend + Next.js frontend) that shows resource usage and optimization suggestions. It forwards the user's Kubernetes bearer token on every request — no server-side state, no database.
 
-- **Backend**: Go 1.22, Chi v5 router, 3 production dependencies (chi, cors, errgroup), raw HTTP K8s API (no client-go)
+- **Backend**: Go 1.26, Chi v5 router, 3 production dependencies (chi, cors, errgroup), raw HTTP K8s API (no client-go)
 - **Frontend**: Next.js 16, React 19, TypeScript 5, no UI library, no charting library
-- **Infra**: Helm chart (v0.18.0), multi-stage Docker builds (amd64 + arm64), GitHub Actions CI with linting + tests + SBOM + cosign
+- **Infra**: Helm chart (v0.19.0, will be moved to a dedicated chart repo in a future release), multi-stage Docker builds (amd64 + arm64), GitHub Actions CI with linting + tests + SBOM + cosign. Docker images publish on `v*.*.*` tag push only (not on every merge to main).
 
 ---
 
@@ -339,6 +339,7 @@ See `.env.example` at repo root. Key variables:
 - ~~Node pod bars auto-loaded on mount~~ — RESOLVED (v0.16.0, lazy fetch on first expand, 10 pods/page with pagination).
 - ~~ResourceBar track invisible (same color as card)~~ — RESOLVED (v0.16.0, `--bg` + border on all track elements).
 - ~~Suggestion scroll race condition~~ — RESOLVED (v0.16.0, `preventDefault` + post-render `useEffect` scroll).
+- ~~Suggestion scroll consumed on unrelated renders~~ — RESOLVED (v0.19.0, `useEffect` dependency array changed from none to `[openCards, workloadSearch]`; prevents auto-refresh and other state updates from consuming `scrollTargetRef` before the target element is in the DOM).
 - ~~Pod filter button (`⊕`) unreliable~~ — RESOLVED (v0.17.0, nested-button HTML bug: pod header converted from `<button>` to `<div>`, toggle and filter are now sibling elements).
 - ~~Suggestion panel groups fragmented by resource sub-type~~ — RESOLVED (v0.17.0, groups by severity: critical / warning / over-prov; resource shown as badge per item).
 - ~~Suggestion panel gear icon / dual kind-filter mechanisms~~ — RESOLVED (v0.17.0, `excludedKinds` + sessionStorage dropdown removed; chips are now the single filter).
@@ -387,7 +388,7 @@ See `.env.example` at repo root. Key variables:
 - **No client-go**: raw `net/http` calls to the K8s API only. Do not add `k8s.io/client-go`.
 - **No CSS frameworks**: CSS Modules only (`*.module.css`). No Tailwind, no MUI.
 - **No charting libraries**: SVG sparklines hand-rolled. No Chart.js, Recharts, etc.
-- **Versioning**: follow [Semantic Versioning](https://semver.org/). Bump `appVersion` in `helm/kubeadjust/Chart.yaml` — it is the single source of truth. CI reads it for Docker image tags. Keep CHANGELOG.md, CLAUDE.md, and README.md aligned on the current version.
+- **Versioning**: follow [Semantic Versioning](https://semver.org/). Bump `appVersion` in `helm/kubeadjust/Chart.yaml` — it is the single source of truth. Also update `frontend/src/lib/version.ts` (`APP_VERSION`). Keep CHANGELOG.md, CLAUDE.md, and README.md aligned. Docker images publish only when a `*.*.*` git tag is pushed (`git tag 0.19.0 && git push origin 0.19.0`).
 - **RBAC**: keep the ClusterRole strictly read-only. Any new K8s resource access needs a `get`/`list`/`watch` verb only.
 - **Error handling**: never return raw K8s API errors to HTTP clients. Log server-side with `log.Printf`, return generic messages.
 - **Token safety**: never log, store, or cache the bearer token.

@@ -1,3 +1,5 @@
+import { MANAGED_TOKEN } from "@/lib/storage";
+
 export interface ResourceValue {
   raw: string;
   millicores?: number;
@@ -108,7 +110,11 @@ class APIError extends Error {
 
 /** Generic authenticated fetch helper. Throws APIError on non-2xx responses. */
 async function apiFetch<T>(path: string, token: string): Promise<T> {
-  const reqHeaders: Record<string, string> = { Authorization: `Bearer ${token}` };
+  const reqHeaders: Record<string, string> = {};
+  // Managed clusters use a backend SA token — no Authorization header sent.
+  if (token && token !== MANAGED_TOKEN) {
+    reqHeaders["Authorization"] = `Bearer ${token}`;
+  }
   if (typeof window !== "undefined") {
     const cluster = sessionStorage.getItem("kube-cluster");
     if (cluster) reqHeaders["X-Cluster"] = cluster;
@@ -133,6 +139,7 @@ async function apiFetch<T>(path: string, token: string): Promise<T> {
 
 export interface ClusterItem {
   name: string;
+  managed: boolean; // true = backend holds SA token, no user token required
 }
 
 /** Fetches configured cluster names — no auth required. Returns [] on error. */
@@ -148,16 +155,17 @@ async function fetchClusters(): Promise<ClusterItem[]> {
 
 export interface AuthConfig {
   oidcEnabled: boolean;
+  managedDefault: boolean; // true = single-cluster, backend SA token, no user token required
 }
 
 /** Returns OIDC configuration — no auth required. */
 async function fetchAuthConfig(): Promise<AuthConfig> {
   try {
     const res = await fetch("/api/auth/config", { headers: { Accept: "application/json" } });
-    if (!res.ok) return { oidcEnabled: false };
+    if (!res.ok) return { oidcEnabled: false, managedDefault: false };
     return res.json() as Promise<AuthConfig>;
   } catch {
-    return { oidcEnabled: false };
+    return { oidcEnabled: false, managedDefault: false };
   }
 }
 

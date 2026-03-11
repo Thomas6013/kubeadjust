@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api, type ClusterItem } from "@/lib/api";
+import { MANAGED_TOKEN, tokenKey } from "@/lib/storage";
 import styles from "./login.module.css";
 
 export default function LoginPage() {
@@ -13,6 +14,7 @@ export default function LoginPage() {
   const [clusters, setClusters] = useState<ClusterItem[]>([]);
   const [selectedCluster, setSelectedCluster] = useState("");
   const [oidcEnabled, setOidcEnabled] = useState<boolean | null>(null);
+  const [managedDefault, setManagedDefault] = useState(false);
 
   useEffect(() => {
     api.clusters().then((list) => {
@@ -25,7 +27,10 @@ export default function LoginPage() {
         setSelectedCluster(list[0].name);
       }
     });
-    api.authConfig().then((cfg) => setOidcEnabled(cfg.oidcEnabled));
+    api.authConfig().then((cfg) => {
+      setOidcEnabled(cfg.oidcEnabled);
+      setManagedDefault(cfg.managedDefault);
+    });
 
     // Show error from OIDC redirect if present
     const params = new URLSearchParams(window.location.search);
@@ -37,6 +42,19 @@ export default function LoginPage() {
     }
   }, []);
 
+  // Derived: is the currently selected cluster backend-managed?
+  const selectedClusterManaged =
+    managedDefault ||
+    (clusters.length > 0 && clusters.find((c) => c.name === selectedCluster)?.managed === true);
+
+  function handleManagedEnter() {
+    try {
+      if (selectedCluster) sessionStorage.setItem("kube-cluster", selectedCluster);
+      sessionStorage.setItem(tokenKey(selectedCluster), MANAGED_TOKEN);
+    } catch { /* ignore */ }
+    router.push("/dashboard");
+  }
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -44,8 +62,7 @@ export default function LoginPage() {
     try {
       if (selectedCluster) sessionStorage.setItem("kube-cluster", selectedCluster);
       await api.verify(token.trim());
-      const tokenKey = selectedCluster ? `kube-token:${selectedCluster}` : "kube-token";
-      sessionStorage.setItem(tokenKey, token.trim());
+      sessionStorage.setItem(tokenKey(selectedCluster), token.trim());
       router.push("/dashboard");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Authentication failed");
@@ -89,7 +106,14 @@ export default function LoginPage() {
           </>
         )}
 
-        {oidcEnabled === null ? null : oidcEnabled ? (
+        {oidcEnabled === null ? null : selectedClusterManaged ? (
+          <>
+            {error && <p className={styles.error}>{error}</p>}
+            <button type="button" onClick={handleManagedEnter} className={styles.ssoButton}>
+              Enter dashboard
+            </button>
+          </>
+        ) : oidcEnabled ? (
           <>
             {error && <p className={styles.error}>{error}</p>}
             <button type="button" onClick={handleSSOLogin} className={styles.ssoButton}>
@@ -115,7 +139,7 @@ export default function LoginPage() {
           </form>
         )}
 
-        {oidcEnabled === false && (
+        {oidcEnabled === false && !selectedClusterManaged && (
           <p className={styles.hint}>
             Generate a token with:<br />
             <code>kubectl create token &lt;service-account&gt; -n &lt;namespace&gt;</code>

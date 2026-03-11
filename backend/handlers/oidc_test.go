@@ -68,16 +68,18 @@ func TestHasRequiredGroup(t *testing.T) {
 
 func TestAuthConfig(t *testing.T) {
 	for _, tt := range []struct {
-		name        string
-		oidcEnabled bool
+		name           string
+		oidcEnabled    bool
+		managedDefault bool
 	}{
-		{"oidc disabled", false},
-		{"oidc enabled", true},
+		{"oidc disabled, not managed", false, false},
+		{"oidc enabled, not managed", true, false},
+		{"oidc disabled, managed default", false, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "/api/auth/config", nil)
 			w := httptest.NewRecorder()
-			AuthConfig(tt.oidcEnabled)(w, req)
+			AuthConfig(tt.oidcEnabled, tt.managedDefault)(w, req)
 
 			if w.Code != 200 {
 				t.Errorf("got %d, want 200", w.Code)
@@ -92,6 +94,9 @@ func TestAuthConfig(t *testing.T) {
 			}
 			if got["oidcEnabled"] != tt.oidcEnabled {
 				t.Errorf("oidcEnabled = %v, want %v", got["oidcEnabled"], tt.oidcEnabled)
+			}
+			if got["managedDefault"] != tt.managedDefault {
+				t.Errorf("managedDefault = %v, want %v", got["managedDefault"], tt.managedDefault)
 			}
 		})
 	}

@@ -3,7 +3,7 @@
 > See what your Kubernetes workloads actually use vs what they request — and get suggestions to right-size them.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/go-1.22+-00ADD8.svg)](https://golang.org/)
+[![Go](https://img.shields.io/badge/go-1.26+-00ADD8.svg)](https://golang.org/)
 [![Next.js](https://img.shields.io/badge/next.js-16-black.svg)](https://nextjs.org/)
 [![Kubernetes](https://img.shields.io/badge/kubernetes-%E2%89%A51.21-326CE5.svg)](https://kubernetes.io/)
 
