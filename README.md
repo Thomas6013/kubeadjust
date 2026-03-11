@@ -3,7 +3,7 @@
 > See what your Kubernetes workloads actually use vs what they request — and get suggestions to right-size them.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/go-1.22+-00ADD8.svg)](https://golang.org/)
+[![Go](https://img.shields.io/badge/go-1.26+-00ADD8.svg)](https://golang.org/)
 [![Next.js](https://img.shields.io/badge/next.js-16-black.svg)](https://nextjs.org/)
 [![Kubernetes](https://img.shields.io/badge/kubernetes-%E2%89%A51.21-326CE5.svg)](https://kubernetes.io/)
 
@@ -53,11 +53,14 @@ KubeAdjust shows for every Deployment, StatefulSet and CronJob:
 
 ### Helm (production)
 
+The Helm chart lives in a dedicated repository — [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm).
+
 ```bash
-helm install kubeadjust ./helm/kubeadjust \
+helm repo add kubeadjust https://thomas6013.github.io/kubeadjust-helm
+helm repo update
+
+helm install kubeadjust kubeadjust/kubeadjust \
   --namespace kubeadjust --create-namespace \
-  --set backend.image.repository=ghcr.io/thomas6013/kubeadjust/kubeadjust-backend \
-  --set frontend.image.repository=ghcr.io/thomas6013/kubeadjust/kubeadjust-frontend \
   --set ingress.enabled=true \
   --set ingress.host=kubeadjust.your-domain.com
 ```
@@ -115,7 +118,7 @@ cd frontend && npm install && npm run dev
 
 **metrics-server:** required for live usage data. If not installed, enable the sub-chart: `--set metrics-server.enabled=true`.
 
-**Multi-cluster:** configure clusters as a Helm map (`backend.clusters.prod`, `backend.clusters.staging`, …). Each cluster stores its token independently in sessionStorage — switching between clusters requires no re-authentication.
+**Multi-cluster:** configure clusters as a Helm map (`backend.clusters.prod`, `backend.clusters.staging`, …). Each cluster stores its token independently in sessionStorage — switching between clusters requires no re-authentication. Full Helm values reference is in [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm).
 
 **OIDC / SSO:** see [docs/oidc.md](docs/oidc.md) for a full setup guide. Works with any OIDC provider and on managed clusters (EKS, GKE, AKS) — no K8s API server configuration required.
 

@@ -144,12 +144,17 @@ func (h *OIDCHandler) CreateSession() http.HandlerFunc {
 	}
 }
 
-// AuthConfig returns OIDC enablement status. Always public, no auth required.
+// AuthConfig returns OIDC enablement status and whether the default (single-cluster)
+// setup is backend-managed (SA token present, no user token required).
+// Always public, no auth required.
 // GET /api/auth/config
-func AuthConfig(oidcEnabled bool) http.HandlerFunc {
+func AuthConfig(oidcEnabled bool, managedDefault bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]bool{"oidcEnabled": oidcEnabled}); err != nil {
+		if err := json.NewEncoder(w).Encode(map[string]bool{
+			"oidcEnabled":    oidcEnabled,
+			"managedDefault": managedDefault,
+		}); err != nil {
 			log.Printf("auth config encode error: %v", err)
 		}
 	}

@@ -1,3 +1,6 @@
+/** Sentinel stored in sessionStorage for managed clusters (no user token required). */
+export const MANAGED_TOKEN = "__managed__";
+
 export const STORAGE_KEYS = {
   view:        "kubeadjust:view",
   autoRefresh: "kubeadjust:autoRefresh",

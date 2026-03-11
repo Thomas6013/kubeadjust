@@ -3,6 +3,9 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api, type ClusterItem } from "@/lib/api";
+import { MANAGED_TOKEN, tokenKey } from "@/lib/storage";
+import { clusterColor } from "@/lib/clusterColor";
+import { KubeLogo } from "@/components/KubeLogo";
 import styles from "./login.module.css";
 
 export default function LoginPage() {
@@ -13,6 +16,7 @@ export default function LoginPage() {
   const [clusters, setClusters] = useState<ClusterItem[]>([]);
   const [selectedCluster, setSelectedCluster] = useState("");
   const [oidcEnabled, setOidcEnabled] = useState<boolean | null>(null);
+  const [managedDefault, setManagedDefault] = useState(false);
 
   useEffect(() => {
     api.clusters().then((list) => {
@@ -25,7 +29,10 @@ export default function LoginPage() {
         setSelectedCluster(list[0].name);
       }
     });
-    api.authConfig().then((cfg) => setOidcEnabled(cfg.oidcEnabled));
+    api.authConfig().then((cfg) => {
+      setOidcEnabled(cfg.oidcEnabled);
+      setManagedDefault(cfg.managedDefault);
+    });
 
     // Show error from OIDC redirect if present
     const params = new URLSearchParams(window.location.search);
@@ -37,6 +44,19 @@ export default function LoginPage() {
     }
   }, []);
 
+  // Derived: is the currently selected cluster backend-managed?
+  const selectedClusterManaged =
+    managedDefault ||
+    (clusters.length > 0 && clusters.find((c) => c.name === selectedCluster)?.managed === true);
+
+  function handleManagedEnter() {
+    try {
+      if (selectedCluster) sessionStorage.setItem("kube-cluster", selectedCluster);
+      sessionStorage.setItem(tokenKey(selectedCluster), MANAGED_TOKEN);
+    } catch { /* ignore */ }
+    router.push("/dashboard");
+  }
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -44,8 +64,7 @@ export default function LoginPage() {
     try {
       if (selectedCluster) sessionStorage.setItem("kube-cluster", selectedCluster);
       await api.verify(token.trim());
-      const tokenKey = selectedCluster ? `kube-token:${selectedCluster}` : "kube-token";
-      sessionStorage.setItem(tokenKey, token.trim());
+      sessionStorage.setItem(tokenKey(selectedCluster), token.trim());
       router.push("/dashboard");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Authentication failed");
@@ -65,7 +84,7 @@ export default function LoginPage() {
     <main className={styles.container}>
       <div className={styles.card}>
         <div className={styles.logo}>
-          <span className={styles.logoIcon}>⎈</span>
+          <KubeLogo size={36} />
           <h1>KubeAdjust</h1>
         </div>
         <p className={styles.subtitle}>Resource limits &amp; requests dashboard</p>
@@ -74,22 +93,43 @@ export default function LoginPage() {
           <>
             <label>Cluster</label>
             <div className={styles.clusterGrid}>
-              {clusters.map((c) => (
-                <button
-                  key={c.name}
-                  type="button"
-                  className={`${styles.clusterCard} ${selectedCluster === c.name ? styles.clusterCardActive : ""}`}
-                  onClick={() => setSelectedCluster(c.name)}
-                >
-                  <span className={styles.clusterIcon}>⎈</span>
-                  {c.name}
-                </button>
-              ))}
+              {clusters.map((c) => {
+                const color = clusterColor(c.name);
+                const isActive = selectedCluster === c.name;
+                return (
+                  <button
+                    key={c.name}
+                    type="button"
+                    className={`${styles.clusterCard} ${isActive ? styles.clusterCardActive : ""}`}
+                    onClick={() => setSelectedCluster(c.name)}
+                    style={{
+                      "--cluster-accent": color.accent,
+                      "--cluster-bg": color.bg,
+                      "--cluster-border": color.border,
+                    } as React.CSSProperties}
+                  >
+                    <span
+                      className={styles.clusterAvatar}
+                      style={{ background: color.bg, borderColor: color.border, color: color.accent }}
+                    >
+                      {c.name.charAt(0).toUpperCase()}
+                    </span>
+                    <span className={styles.clusterName}>{c.name}</span>
+                  </button>
+                );
+              })}
             </div>
           </>
         )}
 
-        {oidcEnabled === null ? null : oidcEnabled ? (
+        {oidcEnabled === null ? null : selectedClusterManaged ? (
+          <>
+            {error && <p className={styles.error}>{error}</p>}
+            <button type="button" onClick={handleManagedEnter} className={styles.ssoButton}>
+              Enter dashboard
+            </button>
+          </>
+        ) : oidcEnabled ? (
           <>
             {error && <p className={styles.error}>{error}</p>}
             <button type="button" onClick={handleSSOLogin} className={styles.ssoButton}>
@@ -115,7 +155,7 @@ export default function LoginPage() {
           </form>
         )}
 
-        {oidcEnabled === false && (
+        {oidcEnabled === false && !selectedClusterManaged && (
           <p className={styles.hint}>
             Generate a token with:<br />
             <code>kubectl create token &lt;service-account&gt; -n &lt;namespace&gt;</code>

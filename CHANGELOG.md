@@ -4,6 +4,25 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.19.0] - 2026-03-11
+
+### Added
+- **Managed cluster mode** — when `SA_TOKEN` (or the in-cluster service account at `/var/run/secrets/kubernetes.io/serviceaccount/token`) is configured without `OIDC_ENABLED`, the backend now serves as a transparent proxy using its own SA token. No user token required. The login page shows an "Enter dashboard" button instead of the token form. Multi-cluster: any cluster with a matching SA token is marked `managed: true` in `/api/clusters`; the cluster-switcher in the topbar skips the login redirect for managed clusters.
+- **`middleware.ManagedAuth`** — new backend middleware that accepts an optional user bearer token but falls back to the pre-configured SA token for the target cluster. Replaces `BearerToken` when SA tokens are available in non-OIDC mode.
+- **`/api/auth/config` now returns `managedDefault`** — `bool` field indicating single-cluster managed mode (no OIDC, no multi-cluster, SA token present). Frontend uses this to show "Enter dashboard" without cluster selection.
+- **`ClusterItem.managed`** — `/api/clusters` now includes `"managed": true` for clusters with a configured SA token, allowing the frontend to bypass token entry for those clusters.
+- **`MANAGED_TOKEN` sentinel** — `"__managed__"` stored in `sessionStorage` for managed clusters. `apiFetch` skips the `Authorization` header when the sentinel is present, letting `ManagedAuth` inject the backend SA token.
+
+### Fixed
+- **Suggestion scroll consumed on unrelated renders** — the `useEffect` responsible for scrolling to a suggestion target had no dependency array, causing it to run (and clear `scrollTargetRef`) after every render — including auto-refresh and stats loading. If any such render occurred between `handleOpenCards` setting the ref and `openCards` making the target element visible, the scroll was silently dropped. Fixed by scoping the effect to `[openCards, workloadSearch]`, the only states that affect element visibility.
+- **Frontend version stuck at `0.17.0`** — `src/lib/version.ts` was not updated alongside `Chart.yaml` in v0.18.0. Both now show `0.19.0`.
+
+### Changed
+- **Docker images build on release tag only** — `docker-publish.yml` now triggers on `*.*.*` tag pushes instead of every push to `main`. Create a tag (`git tag 0.19.0 && git push origin 0.19.0`) to publish images. Prevents unversioned image churn on every commit.
+- **Helm chart moved to a dedicated chart repository** — `helm/kubeadjust/` has been extracted to [github.com/Thomas6013/kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm). Install via `helm repo add kubeadjust https://thomas6013.github.io/kubeadjust-helm`. The `helm/` directory has been removed from this repository.
+
+---
+
 ## [0.18.0] - 2026-03-08
 
 ### Added

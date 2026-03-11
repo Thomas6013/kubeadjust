@@ -52,10 +52,12 @@ func main() {
 		log.Println("Prometheus client configured")
 	}
 
+	// SA tokens: used in OIDC mode and in managed-SA mode (no OIDC, backend holds the token).
+	saTokens := parseSATokens()
+
 	// OIDC mode: OIDC_ENABLED=true + SA tokens per cluster
 	oidcEnabled := os.Getenv("OIDC_ENABLED") == "true"
 	var oidcHandler *handlers.OIDCHandler
-	var saTokens map[string]string
 
 	if oidcEnabled {
 		issuerURL := os.Getenv("OIDC_ISSUER_URL")
@@ -84,7 +86,6 @@ func main() {
 			log.Fatalf("OIDC_ENABLED=true but missing required env vars: %s", strings.Join(missing, ", "))
 		}
 
-		saTokens = parseSATokens()
 		if len(saTokens) == 0 {
 			log.Fatal("OIDC_ENABLED=true but no SA tokens configured (set SA_TOKEN or SA_TOKENS)")
 		}
@@ -135,10 +136,17 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
+	// managedDefault: single-cluster mode where the backend holds the SA token (no OIDC, no CLUSTERS).
+	// Tells the frontend to skip token entry and go straight to dashboard.
+	managedDefault := !oidcEnabled && len(clusters) == 0 && saTokens["default"] != ""
+	if !oidcEnabled && len(saTokens) > 0 {
+		log.Printf("Managed SA token mode: %d SA token(s) configured", len(saTokens))
+	}
+
 	r.Route("/api", func(r chi.Router) {
 		// Public — no auth required
-		r.Get("/clusters", handlers.ListClusters(clusters))
-		r.Get("/auth/config", handlers.AuthConfig(oidcEnabled))
+		r.Get("/clusters", handlers.ListClusters(clusters, saTokens))
+		r.Get("/auth/config", handlers.AuthConfig(oidcEnabled, managedDefault))
 
 		if oidcEnabled {
 			// OIDC-specific endpoints: called server-side by Next.js, not by the browser directly.
@@ -154,6 +162,10 @@ func main() {
 			if oidcEnabled {
 				r.Use(middleware.ClusterURL(clusters))
 				r.Use(middleware.SessionAuth(saTokens, []byte(os.Getenv("SESSION_SECRET"))))
+			} else if len(saTokens) > 0 {
+				// Managed SA token mode: user token optional, falls back to SA token per cluster.
+				r.Use(middleware.ManagedAuth(saTokens))
+				r.Use(middleware.ClusterURL(clusters))
 			} else {
 				r.Use(middleware.BearerToken)
 				r.Use(middleware.ClusterURL(clusters))
