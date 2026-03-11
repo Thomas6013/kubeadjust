@@ -4,10 +4,18 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.19.2] - 2026-03-12
+
+### Fixed
+- **`sbom-action` fails with "Resource not accessible by integration"** — the workflow job had `contents: read`, which is insufficient for `anchore/sbom-action` to attach SBOM artifacts to a GitHub Release. Changed to `contents: write`.
+- **`docker-publish.yml` image version empty on `workflow_dispatch`** — v0.19.1 used `${{ github.ref_name }}` (template expression) inside the `run:` shell script, which resolves to an empty string in certain contexts. Replaced with the `$GITHUB_REF_TYPE` / `$GITHUB_REF_NAME` shell environment variables, which are always populated by GitHub Actions. For `workflow_dispatch` (manual trigger from a branch), the version falls back to `version.ts` so images are always tagged with a valid semver.
+
+---
+
 ## [0.19.1] - 2026-03-11
 
 ### Fixed
-- **`docker-publish.yml` version derived from `version.ts`** — the workflow was parsing `APP_VERSION` from `frontend/src/lib/version.ts` to tag Docker images. If the file was not updated before pushing a git tag, images would be tagged with the wrong version. The workflow now uses `github.ref_name` (the git tag itself) as the authoritative image tag, removing the coupling between `version.ts` and image publication.
+- **`docker-publish.yml` version coupled to `version.ts`** — the workflow was parsing `APP_VERSION` from `frontend/src/lib/version.ts` to tag Docker images. If the file was not updated before pushing a git tag, images would be tagged with the wrong version. Initial fix: derive version from the git tag instead of the source file. (Superseded by v0.19.2 which also fixes the `workflow_dispatch` edge case and the SBOM permissions error.)
 
 ---
 

@@ -308,6 +308,9 @@ See `.env.example` at repo root. Key variables:
 
 ### Resolved
 
+- ~~`docker-publish.yml` image version empty / wrong tag~~ — RESOLVED (v0.19.2, `docker-publish.yml`: version derived from `$GITHUB_REF_NAME` shell env var when `GITHUB_REF_TYPE=tag`; falls back to `version.ts` for `workflow_dispatch`. Fixes empty-tag build failure caused by expression-syntax `${{ github.ref_name }}` resolving to empty string in some contexts).
+- ~~`sbom-action` "Resource not accessible by integration"~~ — RESOLVED (v0.19.2, `docker-publish.yml`: job permissions changed from `contents: read` to `contents: write`, required for `anchore/sbom-action` to attach SBOM artifacts to GitHub Releases).
+
 - ~~OIDC provider discovery no timeout~~ — RESOLVED (`handlers/oidc.go`: `context.WithTimeout(10s)` on `gooidc.NewProvider()`).
 - ~~No rate limiting on OIDC public endpoints~~ — RESOLVED (`main.go`: `Throttle(10)` group wrapping `/auth/loginurl` + `/api/auth/session`).
 - ~~No audit logging for OIDC authentications~~ — RESOLVED (`handlers/oidc.go`: `log.Printf("OIDC session issued: subject=%q remote=%s", ...)` on every successful session creation).
@@ -397,8 +400,8 @@ See `.env.example` at repo root. Key variables:
 ## CI/CD Notes
 
 - `ci.yml` runs on every push/PR: `go build`, `go vet`, `go test`, `golangci-lint`, `npm ci`, `npm run build`, `npm run lint`.
-- `docker-publish.yml` builds and pushes to `ghcr.io/thomas6013/kubeadjust/` on merge to `main`.
-- Image tags: `latest`, `<appVersion>` (from Chart.yaml), `<commit-sha>`.
+- `docker-publish.yml` builds and pushes to `ghcr.io/thomas6013/kubeadjust/` on `*.*.*` tag push only (not on every merge to `main`).
+- Image tags: `latest`, `<git-tag>` (authoritative version from `$GITHUB_REF_NAME`), `<commit-sha>`.
 - Multi-arch: `linux/amd64` + `linux/arm64` via QEMU + buildx. Backend uses native Go cross-compilation (`BUILDPLATFORM`/`TARGETARCH`).
 - SBOM generated per image with `anchore/sbom-action` (SPDX format).
 - Images signed with `sigstore/cosign` (keyless, OIDC-based).

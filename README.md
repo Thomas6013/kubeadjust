@@ -34,6 +34,7 @@ KubeAdjust shows for every Deployment, StatefulSet and CronJob:
 - **Namespace limit/request ratios** — CPU ×N.N and MEM ×N.N at a glance above the workload list
 - **Multi-cluster support** — configure multiple clusters via `CLUSTERS` env var; tokens are stored per cluster so switching between visited clusters requires no re-authentication
 - **OIDC / SSO authentication** — optional SSO login via Keycloak, Dex, Google, or any OIDC provider. Works on managed clusters (EKS, GKE, AKS) with no K8s API server configuration required
+- **Managed cluster mode** — configure a Service Account token (`SA_TOKEN`) to skip the login form entirely. Users land directly on the dashboard with no token entry required
 
 ---
 
