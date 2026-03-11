@@ -308,6 +308,9 @@ See `.env.example` at repo root. Key variables:
 
 ### Resolved
 
+- ~~`docker-publish.yml` image version empty / wrong tag~~ — RESOLVED (v0.19.2, `docker-publish.yml`: version derived from `$GITHUB_REF_NAME` shell env var when `GITHUB_REF_TYPE=tag`; falls back to `version.ts` for `workflow_dispatch`. Fixes empty-tag build failure caused by expression-syntax `${{ github.ref_name }}` resolving to empty string in some contexts).
+- ~~`sbom-action` "Resource not accessible by integration"~~ — RESOLVED (v0.19.2, `docker-publish.yml`: job permissions changed from `contents: read` to `contents: write`, required for `anchore/sbom-action` to attach SBOM artifacts to GitHub Releases).
+
 - ~~OIDC provider discovery no timeout~~ — RESOLVED (`handlers/oidc.go`: `context.WithTimeout(10s)` on `gooidc.NewProvider()`).
 - ~~No rate limiting on OIDC public endpoints~~ — RESOLVED (`main.go`: `Throttle(10)` group wrapping `/auth/loginurl` + `/api/auth/session`).
 - ~~No audit logging for OIDC authentications~~ — RESOLVED (`handlers/oidc.go`: `log.Printf("OIDC session issued: subject=%q remote=%s", ...)` on every successful session creation).
