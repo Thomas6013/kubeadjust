@@ -308,13 +308,13 @@ See `.env.example` at repo root. Key variables:
 
 ### Resolved
 
-- ~~`docker-publish.yml` image version empty / wrong tag~~ — RESOLVED (v0.19.2, `docker-publish.yml`: version derived from `$GITHUB_REF_NAME` shell env var when `GITHUB_REF_TYPE=tag`; falls back to `version.ts` for `workflow_dispatch`. Fixes empty-tag build failure caused by expression-syntax `${{ github.ref_name }}` resolving to empty string in some contexts).
-- ~~`sbom-action` "Resource not accessible by integration"~~ — RESOLVED (v0.19.2, `docker-publish.yml`: job permissions changed from `contents: read` to `contents: write`, required for `anchore/sbom-action` to attach SBOM artifacts to GitHub Releases).
-- ~~OIDC mode bypassed when in-cluster SA token present~~ — RESOLVED (v0.19.3, `page.tsx`: `oidcEnabled` now checked before `selectedClusterManaged`; SSO button always shown in OIDC mode regardless of managed flag).
-- ~~"default" cluster invisible in cluster list~~ — RESOLVED (v0.19.3, `handlers/clusters.go`: "default" always included when `saTokens["default"]` exists and not already in `CLUSTERS` map; `middleware/cluster.go`: `X-Cluster: default` passes through to `KUBE_API_SERVER` when not in explicit cluster map; `middleware/session.go`: `SessionAuth` now falls back to `saTokens["default"]` like `ManagedAuth`).
-- ~~Cluster switch caused full page reload~~ — RESOLVED (v0.19.3, `dashboard/page.tsx`: `window.location.reload()` replaced with in-place state updates; `cluster` added to effect dependency arrays so re-fetch triggers even when JWT token is unchanged).
-- ~~Cluster switch required re-SSO in OIDC multi-cluster mode~~ — RESOLVED (v0.19.3, `handleClusterSwitch`: session JWT is cluster-agnostic — reused for new cluster without re-authentication).
-- ~~Duplicate cluster colors in multi-cluster dropdown~~ — RESOLVED (v0.19.3, `lib/clusterColor.ts`: `buildClusterColors()` assigns colors by alphabetical rank; palette updated — lime removed, orange added).
+- ~~`docker-publish.yml` image version empty / wrong tag~~ — RESOLVED (v0.20.0, `docker-publish.yml`: version derived from `$GITHUB_REF_NAME` shell env var when `GITHUB_REF_TYPE=tag`; falls back to `version.ts` for `workflow_dispatch`. Fixes empty-tag build failure caused by expression-syntax `${{ github.ref_name }}` resolving to empty string in some contexts).
+- ~~`sbom-action` "Resource not accessible by integration"~~ — RESOLVED (v0.20.0, `docker-publish.yml`: job permissions changed from `contents: read` to `contents: write`, required for `anchore/sbom-action` to attach SBOM artifacts to GitHub Releases).
+- ~~OIDC mode bypassed when in-cluster SA token present~~ — RESOLVED (v0.20.0, `page.tsx`: `oidcEnabled` now checked before `selectedClusterManaged`; SSO button always shown in OIDC mode regardless of managed flag).
+- ~~"default" cluster invisible in cluster list~~ — RESOLVED (v0.20.0, `handlers/clusters.go`: "default" always included when `saTokens["default"]` exists and not already in `CLUSTERS` map; `middleware/cluster.go`: `X-Cluster: default` passes through to `KUBE_API_SERVER` when not in explicit cluster map; `middleware/session.go`: `SessionAuth` now falls back to `saTokens["default"]` like `ManagedAuth`).
+- ~~Cluster switch caused full page reload~~ — RESOLVED (v0.20.0, `dashboard/page.tsx`: `window.location.reload()` replaced with in-place state updates; `cluster` added to effect dependency arrays so re-fetch triggers even when JWT token is unchanged).
+- ~~Cluster switch required re-SSO in OIDC multi-cluster mode~~ — RESOLVED (v0.20.0, `handleClusterSwitch`: session JWT is cluster-agnostic — reused for new cluster without re-authentication).
+- ~~Duplicate cluster colors in multi-cluster dropdown~~ — RESOLVED (v0.20.0, `lib/clusterColor.ts`: `buildClusterColors()` assigns colors by alphabetical rank; palette updated — lime removed, orange added).
 
 - ~~OIDC provider discovery no timeout~~ — RESOLVED (`handlers/oidc.go`: `context.WithTimeout(10s)` on `gooidc.NewProvider()`).
 - ~~No rate limiting on OIDC public endpoints~~ — RESOLVED (`main.go`: `Throttle(10)` group wrapping `/auth/loginurl` + `/api/auth/session`).

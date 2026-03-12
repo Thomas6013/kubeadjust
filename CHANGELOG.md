@@ -4,7 +4,7 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
-## [0.19.3] - 2026-03-12
+## [0.20.0] - 2026-03-12
 
 ### Fixed
 
@@ -17,6 +17,8 @@ All notable changes to KubeAdjust are documented here.
 - **Cluster switch caused full page reload** — `window.location.reload()` on every cluster switch reset all dashboard state (view, search, open cards, namespace selection). Replaced with in-place React state updates (`setCluster`, `setToken`, clear list states); existing effects re-fetch data for the new cluster without navigation.
 - **Duplicate colors in multi-cluster dropdown** — hash-based color assignment could map two different cluster names to the same palette slot. Replaced with `buildClusterColors()`: colors are assigned by alphabetical rank in the full cluster list, guaranteeing no two clusters share a color (up to 7 clusters).
 - **Misleading startup log "OIDC: using in-cluster SA token"** — the log message in `parseSATokens` prefixed "OIDC:" even in non-OIDC managed-SA mode. Removed the prefix.
+- **`sbom-action` fails with "Resource not accessible by integration"** — the workflow job had `contents: read`, which is insufficient for `anchore/sbom-action` to attach SBOM artifacts to a GitHub Release. Changed to `contents: write`.
+- **`docker-publish.yml` image version empty on `workflow_dispatch`** — v0.19.1 used `${{ github.ref_name }}` (template expression) inside the `run:` shell script, which resolves to an empty string in certain contexts. Replaced with the `$GITHUB_REF_TYPE` / `$GITHUB_REF_NAME` shell environment variables, which are always populated by GitHub Actions. For `workflow_dispatch` (manual trigger from a branch), the version falls back to `version.ts` so images are always tagged with a valid semver.
 
 ### Changed
 
@@ -26,14 +28,6 @@ All notable changes to KubeAdjust are documented here.
 
 - **`ManagedAuth` logs missing SA token** — when neither the requested cluster nor "default" has a configured SA token, logs the expected env var name (e.g. `SA_TOKEN_PROD`) to help diagnose misconfiguration.
 - **Startup log lists SA token cluster names** — instead of "N SA token(s) configured", now logs the cluster names e.g. `[default prod staging]`.
-
----
-
-## [0.19.2] - 2026-03-12
-
-### Fixed
-- **`sbom-action` fails with "Resource not accessible by integration"** — the workflow job had `contents: read`, which is insufficient for `anchore/sbom-action` to attach SBOM artifacts to a GitHub Release. Changed to `contents: write`.
-- **`docker-publish.yml` image version empty on `workflow_dispatch`** — v0.19.1 used `${{ github.ref_name }}` (template expression) inside the `run:` shell script, which resolves to an empty string in certain contexts. Replaced with the `$GITHUB_REF_TYPE` / `$GITHUB_REF_NAME` shell environment variables, which are always populated by GitHub Actions. For `workflow_dispatch` (manual trigger from a branch), the version falls back to `version.ts` so images are always tagged with a valid semver.
 
 ---
 
