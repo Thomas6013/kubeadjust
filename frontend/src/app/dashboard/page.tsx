@@ -101,7 +101,7 @@ export default function DashboardPage() {
     api.namespaceStats(token)
       .then((stats) => setNsStats(new Map(stats.map((s) => [s.name, s]))))
       .catch(() => { /* non-fatal */ });
-  }, [token]);
+  }, [token, cluster]);
 
   const loadDeployments = useCallback(async (ns: string, silent = false) => {
     if (!token || !ns) return;
@@ -119,7 +119,7 @@ export default function DashboardPage() {
       if (!silent) setLoadingDeps(false);
       loadingRef.current = false;
     }
-  }, [token, timeRange]);
+  }, [token, timeRange, cluster]);
 
   const loadNodes = useCallback(async (silent = false) => {
     if (!token) return;
@@ -136,7 +136,7 @@ export default function DashboardPage() {
       if (!silent) setLoadingNodes(false);
       loadingRef.current = false;
     }
-  }, [token]);
+  }, [token, cluster]);
 
   // Keep callback refs up to date so the interval always calls the latest version
   useEffect(() => { loadNodesRef.current = loadNodes; }, [loadNodes]);

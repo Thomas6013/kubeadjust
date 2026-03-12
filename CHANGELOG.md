@@ -4,6 +4,31 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.19.3] - 2026-03-12
+
+### Fixed
+
+- **OIDC mode bypassed when in-cluster SA token present** — `ListClusters` marked "default" as `managed: true` whenever the backend had an SA token (env `SA_TOKEN` or in-cluster mount). The login page evaluated `selectedClusterManaged` before `oidcEnabled`, showing "Enter dashboard" instead of "Sign in with SSO". Clicking it stored `__managed__` as the session token; `SessionAuth` found no JWT and returned 401; the user was bounced straight back to login with "Session expired". Fixed: `oidcEnabled` is now checked first in the login page conditional — SSO button always renders in OIDC mode regardless of the managed flag.
+- **"default" cluster invisible in cluster list** — `ListClusters` only included clusters from the `CLUSTERS` env var. When running in-cluster (SA token auto-mounted), the "default" cluster never appeared in the topbar badge or login page selector. Fixed: "default" is always included in the response when `saTokens["default"]` exists and no explicit "default" cluster is configured in `CLUSTERS`.
+- **`ClusterURL` rejected `X-Cluster: default` in multi-cluster mode** — with `CLUSTERS` configured, sending `X-Cluster: default` returned 400 "unknown cluster" because "default" was not in the clusters map. Fixed: the middleware now passes "default" through to `KUBE_API_SERVER` when it is not found in the explicit cluster map.
+- **`SessionAuth` no fallback to default SA token** — unlike `ManagedAuth`, `SessionAuth` used a strict cluster-name lookup with no fallback. Fixed: same two-step lookup as `ManagedAuth` (`saTokens[cluster]` → `saTokens["default"]`).
+- **Cluster switch redirected to login in OIDC mode** — switching to a new managed cluster stored `__managed__` as the token. `SessionAuth` received no Authorization header and returned 401. Fixed: the current session JWT is cluster-agnostic (backend validates it then injects the per-cluster SA token). The JWT is now reused for the new cluster — no re-authentication needed when switching within the same session.
+- **Cluster switch required manual page refresh** — in OIDC mode the same JWT is reused for all clusters. Since `token` state did not change, `useEffect([token])` did not re-fire and stale data from the previous cluster remained visible. Fixed: `cluster` added to the dependency arrays of `loadDeployments`, `loadNodes`, and the namespace fetch effect, so a cluster change always triggers a full re-fetch.
+- **Cluster switch caused full page reload** — `window.location.reload()` on every cluster switch reset all dashboard state (view, search, open cards, namespace selection). Replaced with in-place React state updates (`setCluster`, `setToken`, clear list states); existing effects re-fetch data for the new cluster without navigation.
+- **Duplicate colors in multi-cluster dropdown** — hash-based color assignment could map two different cluster names to the same palette slot. Replaced with `buildClusterColors()`: colors are assigned by alphabetical rank in the full cluster list, guaranteeing no two clusters share a color (up to 7 clusters).
+- **Misleading startup log "OIDC: using in-cluster SA token"** — the log message in `parseSATokens` prefixed "OIDC:" even in non-OIDC managed-SA mode. Removed the prefix.
+
+### Changed
+
+- **Cluster color palette** — removed lime (poor contrast on dark backgrounds); replaced with orange. Blue, emerald, amber, violet, cyan, pink, orange. Opacity slightly reduced for a more refined look on dark UI.
+
+### Improved
+
+- **`ManagedAuth` logs missing SA token** — when neither the requested cluster nor "default" has a configured SA token, logs the expected env var name (e.g. `SA_TOKEN_PROD`) to help diagnose misconfiguration.
+- **Startup log lists SA token cluster names** — instead of "N SA token(s) configured", now logs the cluster names e.g. `[default prod staging]`.
+
+---
+
 ## [0.19.2] - 2026-03-12
 
 ### Fixed
