@@ -37,6 +37,11 @@ func ClusterURL(clusters map[string]string) func(http.Handler) http.Handler {
 
 			url, ok := clusters[name]
 			if !ok {
+				if name == "default" {
+					// "default" cluster uses KUBE_API_SERVER (in-cluster) — no URL override needed.
+					next.ServeHTTP(w, r)
+					return
+				}
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusBadRequest)
 				_, _ = w.Write([]byte(`{"error":"unknown cluster"}`))

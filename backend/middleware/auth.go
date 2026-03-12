@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -57,6 +58,9 @@ func ManagedAuth(saTokens map[string]string) func(http.Handler) http.Handler {
 					token = t
 				} else if t, ok := saTokens["default"]; ok {
 					token = t
+				} else {
+					log.Printf("ManagedAuth: no SA token for cluster %q and no default — set SA_TOKEN_%s or SA_TOKEN env var",
+						clusterName, strings.ToUpper(strings.ReplaceAll(clusterName, "-", "_")))
 				}
 			}
 

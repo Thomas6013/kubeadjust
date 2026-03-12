@@ -140,7 +140,13 @@ func main() {
 	// Tells the frontend to skip token entry and go straight to dashboard.
 	managedDefault := !oidcEnabled && len(clusters) == 0 && saTokens["default"] != ""
 	if !oidcEnabled && len(saTokens) > 0 {
-		log.Printf("Managed SA token mode: %d SA token(s) configured", len(saTokens))
+		names := make([]string, 0, len(saTokens))
+		for n := range saTokens {
+			names = append(names, n)
+		}
+		log.Printf("Managed SA token mode: %d SA token(s) configured for clusters: %v", len(saTokens), names)
+	} else if !oidcEnabled {
+		log.Printf("WARN: no SA tokens configured — users must supply their own bearer token")
 	}
 
 	r.Route("/api", func(r chi.Router) {

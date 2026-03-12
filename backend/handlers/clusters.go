@@ -21,8 +21,10 @@ func ListClusters(clusters map[string]string, saTokens map[string]string) http.H
 		_, managed := saTokens[name]
 		items = append(items, ClusterItem{Name: name, Managed: managed})
 	}
-	// Single-cluster mode: expose "default" so the frontend always has a cluster name to display.
-	if len(clusters) == 0 {
+	// Always expose "default" when a default SA token exists and "default" is not already
+	// an explicitly configured cluster. This covers both single-cluster mode and multi-cluster
+	// mode where the in-cluster SA is available alongside other named clusters.
+	if _, alreadyConfigured := clusters["default"]; !alreadyConfigured {
 		if _, ok := saTokens["default"]; ok {
 			items = append(items, ClusterItem{Name: "default", Managed: true})
 		}
