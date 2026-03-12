@@ -308,12 +308,12 @@ export default function DashboardPage() {
                   <span
                     className={styles.clusterBadge}
                     style={{
-                      borderColor: clusterColor(cluster).border,
-                      color: clusterColor(cluster).accent,
-                      background: clusterColor(cluster).bg,
+                      borderColor: getMenuColor(cluster).border,
+                      color: getMenuColor(cluster).accent,
+                      background: getMenuColor(cluster).bg,
                     }}
                   >
-                    <span className={styles.clusterDot} style={{ background: clusterColor(cluster).accent }} />
+                    <span className={styles.clusterDot} style={{ background: getMenuColor(cluster).accent }} />
                     {cluster}
                   </span>
                   <span className={styles.clusterChevron}>{showClusterMenu ? "▴" : "▾"}</span>
