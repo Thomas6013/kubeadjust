@@ -285,10 +285,10 @@ export default function DashboardPage() {
 
   const loading = view === "nodes" ? loadingNodes : loadingDeps;
 
-  // Build color map from the full cluster list so no two clusters share a color.
-  // Falls back to hash-based color while the list is still loading.
+  // Index-based color map for the dropdown menu (no two clusters share a color).
+  // Only used when the full list is available; the badge uses hash-based color to avoid flicker.
   const clusterColorMap = buildClusterColors(clusters.map((c) => c.name));
-  const getColor = (name: string) => clusterColorMap.get(name) ?? clusterColor(name);
+  const getMenuColor = (name: string) => clusterColorMap.get(name) ?? clusterColor(name);
 
   return (
     <div className={styles.layout}>
@@ -308,12 +308,12 @@ export default function DashboardPage() {
                   <span
                     className={styles.clusterBadge}
                     style={{
-                      borderColor: getColor(cluster).border,
-                      color: getColor(cluster).accent,
-                      background: getColor(cluster).bg,
+                      borderColor: clusterColor(cluster).border,
+                      color: clusterColor(cluster).accent,
+                      background: clusterColor(cluster).bg,
                     }}
                   >
-                    <span className={styles.clusterDot} style={{ background: getColor(cluster).accent }} />
+                    <span className={styles.clusterDot} style={{ background: clusterColor(cluster).accent }} />
                     {cluster}
                   </span>
                   <span className={styles.clusterChevron}>{showClusterMenu ? "▴" : "▾"}</span>
@@ -321,7 +321,7 @@ export default function DashboardPage() {
                 {showClusterMenu && (
                   <div className={styles.clusterMenu}>
                     {clusters.map((c) => {
-                      const color = getColor(c.name);
+                      const color = getMenuColor(c.name);
                       const isActive = c.name === cluster;
                       return (
                         <button
@@ -342,12 +342,12 @@ export default function DashboardPage() {
               <span
                 className={styles.clusterBadge}
                 style={{
-                  borderColor: getColor(cluster).border,
-                  color: getColor(cluster).accent,
-                  background: getColor(cluster).bg,
+                  borderColor: clusterColor(cluster).border,
+                  color: clusterColor(cluster).accent,
+                  background: clusterColor(cluster).bg,
                 }}
               >
-                <span className={styles.clusterDot} style={{ background: getColor(cluster).accent }} />
+                <span className={styles.clusterDot} style={{ background: clusterColor(cluster).accent }} />
                 {cluster}
               </span>
             )
