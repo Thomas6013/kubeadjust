@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type ContainerHistory, type TimeRange } from "@/lib/api";
 import { APP_VERSION } from "@/lib/version";
-import { clusterColor } from "@/lib/clusterColor";
+import { buildClusterColors, clusterColor } from "@/lib/clusterColor";
 import { KubeLogo } from "@/components/KubeLogo";
 import { useSessionState, AUTO_REFRESH_MS, type View, type AutoRefresh } from "@/hooks/useSessionState";
 import { STORAGE_KEYS, MANAGED_TOKEN, safeGetItem, safeSetItem, safeRemoveItem, tokenKey } from "@/lib/storage";
@@ -275,6 +275,11 @@ export default function DashboardPage() {
 
   const loading = view === "nodes" ? loadingNodes : loadingDeps;
 
+  // Build color map from the full cluster list so no two clusters share a color.
+  // Falls back to hash-based color while the list is still loading.
+  const clusterColorMap = buildClusterColors(clusters.map((c) => c.name));
+  const getColor = (name: string) => clusterColorMap.get(name) ?? clusterColor(name);
+
   return (
     <div className={styles.layout}>
       <header className={styles.topbar}>
@@ -293,12 +298,12 @@ export default function DashboardPage() {
                   <span
                     className={styles.clusterBadge}
                     style={{
-                      borderColor: clusterColor(cluster).border,
-                      color: clusterColor(cluster).accent,
-                      background: clusterColor(cluster).bg,
+                      borderColor: getColor(cluster).border,
+                      color: getColor(cluster).accent,
+                      background: getColor(cluster).bg,
                     }}
                   >
-                    <span className={styles.clusterDot} style={{ background: clusterColor(cluster).accent }} />
+                    <span className={styles.clusterDot} style={{ background: getColor(cluster).accent }} />
                     {cluster}
                   </span>
                   <span className={styles.clusterChevron}>{showClusterMenu ? "▴" : "▾"}</span>
@@ -306,7 +311,7 @@ export default function DashboardPage() {
                 {showClusterMenu && (
                   <div className={styles.clusterMenu}>
                     {clusters.map((c) => {
-                      const color = clusterColor(c.name);
+                      const color = getColor(c.name);
                       const isActive = c.name === cluster;
                       return (
                         <button
@@ -327,12 +332,12 @@ export default function DashboardPage() {
               <span
                 className={styles.clusterBadge}
                 style={{
-                  borderColor: clusterColor(cluster).border,
-                  color: clusterColor(cluster).accent,
-                  background: clusterColor(cluster).bg,
+                  borderColor: getColor(cluster).border,
+                  color: getColor(cluster).accent,
+                  background: getColor(cluster).bg,
                 }}
               >
-                <span className={styles.clusterDot} style={{ background: clusterColor(cluster).accent }} />
+                <span className={styles.clusterDot} style={{ background: getColor(cluster).accent }} />
                 {cluster}
               </span>
             )

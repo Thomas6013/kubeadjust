@@ -128,12 +128,31 @@ func TestSessionAuth(t *testing.T) {
 		}
 	})
 
-	t.Run("unknown cluster → 400", func(t *testing.T) {
+	t.Run("unknown cluster falls back to default SA token", func(t *testing.T) {
+		// In practice ClusterURL rejects unknown clusters before SessionAuth runs.
+		// But when only saTokens["default"] exists (single-cluster), any X-Cluster value
+		// should resolve via the fallback.
 		req := httptest.NewRequest("GET", "/", nil)
 		req.Header.Set("Authorization", "Bearer "+validToken)
 		req.Header.Set("X-Cluster", "nonexistent")
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Errorf("got %d, want 200 (fallback to default)", w.Code)
+		}
+		if got := w.Body.String(); got != "sa-token-default" {
+			t.Errorf("SA token = %q, want %q", got, "sa-token-default")
+		}
+	})
+
+	t.Run("unknown cluster, no default → 400", func(t *testing.T) {
+		noDefault := map[string]string{"prod": "sa-token-prod"}
+		h := SessionAuth(noDefault, testSecret)(inner)
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("Authorization", "Bearer "+validToken)
+		req.Header.Set("X-Cluster", "nonexistent")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
 		if w.Code != http.StatusBadRequest {
 			t.Errorf("got %d, want 400", w.Code)
 		}

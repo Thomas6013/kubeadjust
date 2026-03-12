@@ -8,12 +8,23 @@ const PALETTE = [
   { accent: "#fb923c", bg: "rgba(251,146,60,0.10)",  border: "rgba(251,146,60,0.28)"  }, // orange
 ];
 
-function hashStr(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  return Math.abs(h);
+export type ClusterColorEntry = (typeof PALETTE)[0];
+
+/**
+ * Builds a Map<clusterName, color> from a list of cluster names.
+ * Colors are assigned by alphabetical position so no two clusters share a color
+ * (up to 7 clusters; beyond that colors cycle but adjacent names stay distinct).
+ */
+export function buildClusterColors(names: string[]): Map<string, ClusterColorEntry> {
+  const sorted = [...names].sort();
+  const map = new Map<string, ClusterColorEntry>();
+  sorted.forEach((name, i) => map.set(name, PALETTE[i % PALETTE.length]));
+  return map;
 }
 
-export function clusterColor(name: string) {
-  return PALETTE[hashStr(name) % PALETTE.length];
+/** Fallback for single-name lookups (e.g. when the full list is unavailable). */
+export function clusterColor(name: string): ClusterColorEntry {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (Math.imul(31, h) + name.charCodeAt(i)) | 0;
+  return PALETTE[Math.abs(h) % PALETTE.length];
 }
