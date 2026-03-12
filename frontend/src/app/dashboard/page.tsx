@@ -193,14 +193,24 @@ export default function DashboardPage() {
     safeRemoveItem(STORAGE_KEYS.selectedNs);
     setShowClusterMenu(false);
 
-    if (!targetManaged && !existingToken) {
-      // No token for this cluster yet — go to login (cluster pre-selected).
+    let newToken: string;
+    if (existingToken) {
+      // Already authenticated for this cluster in this session.
+      newToken = existingToken;
+    } else if (targetManaged && token && token !== MANAGED_TOKEN) {
+      // OIDC mode: the session JWT is cluster-agnostic — reuse it for the new cluster.
+      // The backend validates the JWT then looks up its own SA token per cluster.
+      safeSetItem(tokenKey(name), token);
+      newToken = token;
+    } else if (targetManaged) {
+      // Non-OIDC managed SA mode: no user token needed.
+      safeSetItem(tokenKey(name), MANAGED_TOKEN);
+      newToken = MANAGED_TOKEN;
+    } else {
+      // No token and cluster is not managed — redirect to login (cluster pre-selected).
       router.push("/");
       return;
     }
-
-    if (targetManaged && !existingToken) safeSetItem(tokenKey(name), MANAGED_TOKEN);
-    const newToken = targetManaged && !existingToken ? MANAGED_TOKEN : existingToken ?? MANAGED_TOKEN;
 
     // Switch in-place: update state, let existing effects re-fetch for the new cluster.
     setCluster(name);
