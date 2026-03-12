@@ -140,7 +140,13 @@ func main() {
 	// Tells the frontend to skip token entry and go straight to dashboard.
 	managedDefault := !oidcEnabled && len(clusters) == 0 && saTokens["default"] != ""
 	if !oidcEnabled && len(saTokens) > 0 {
-		log.Printf("Managed SA token mode: %d SA token(s) configured", len(saTokens))
+		names := make([]string, 0, len(saTokens))
+		for n := range saTokens {
+			names = append(names, n)
+		}
+		log.Printf("Managed SA token mode: %d SA token(s) configured for clusters: %v", len(saTokens), names)
+	} else if !oidcEnabled {
+		log.Printf("WARN: no SA tokens configured — users must supply their own bearer token")
 	}
 
 	r.Route("/api", func(r chi.Router) {
@@ -267,7 +273,7 @@ func parseSATokens() map[string]string {
 		if b, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token"); err == nil {
 			if t := strings.TrimSpace(string(b)); t != "" {
 				tokens["default"] = t
-				log.Printf("OIDC: using in-cluster SA token for default cluster")
+				log.Printf("using in-cluster SA token for default cluster")
 			}
 		}
 	}

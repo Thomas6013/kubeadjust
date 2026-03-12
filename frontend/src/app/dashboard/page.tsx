@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type ContainerHistory, type TimeRange } from "@/lib/api";
 import { APP_VERSION } from "@/lib/version";
-import { clusterColor } from "@/lib/clusterColor";
+import { buildClusterColors, clusterColor } from "@/lib/clusterColor";
 import { KubeLogo } from "@/components/KubeLogo";
 import { useSessionState, AUTO_REFRESH_MS, type View, type AutoRefresh } from "@/hooks/useSessionState";
 import { STORAGE_KEYS, MANAGED_TOKEN, safeGetItem, safeSetItem, safeRemoveItem, tokenKey } from "@/lib/storage";
@@ -101,7 +101,7 @@ export default function DashboardPage() {
     api.namespaceStats(token)
       .then((stats) => setNsStats(new Map(stats.map((s) => [s.name, s]))))
       .catch(() => { /* non-fatal */ });
-  }, [token]);
+  }, [token, cluster]);
 
   const loadDeployments = useCallback(async (ns: string, silent = false) => {
     if (!token || !ns) return;
@@ -119,7 +119,7 @@ export default function DashboardPage() {
       if (!silent) setLoadingDeps(false);
       loadingRef.current = false;
     }
-  }, [token, timeRange]);
+  }, [token, timeRange, cluster]);
 
   const loadNodes = useCallback(async (silent = false) => {
     if (!token) return;
@@ -136,7 +136,7 @@ export default function DashboardPage() {
       if (!silent) setLoadingNodes(false);
       loadingRef.current = false;
     }
-  }, [token]);
+  }, [token, cluster]);
 
   // Keep callback refs up to date so the interval always calls the latest version
   useEffect(() => { loadNodesRef.current = loadNodes; }, [loadNodes]);
@@ -192,17 +192,35 @@ export default function DashboardPage() {
     safeSetItem(STORAGE_KEYS.cluster, name);
     safeRemoveItem(STORAGE_KEYS.selectedNs);
     setShowClusterMenu(false);
-    if (targetManaged && !existingToken) {
-      // Managed cluster: store sentinel and reload — no user token needed.
+
+    let newToken: string;
+    if (existingToken) {
+      // Already authenticated for this cluster in this session.
+      newToken = existingToken;
+    } else if (targetManaged && token && token !== MANAGED_TOKEN) {
+      // OIDC mode: the session JWT is cluster-agnostic — reuse it for the new cluster.
+      // The backend validates the JWT then looks up its own SA token per cluster.
+      safeSetItem(tokenKey(name), token);
+      newToken = token;
+    } else if (targetManaged) {
+      // Non-OIDC managed SA mode: no user token needed.
       safeSetItem(tokenKey(name), MANAGED_TOKEN);
-      window.location.reload();
-    } else if (existingToken) {
-      // Already authenticated for this cluster in this session — reload seamlessly.
-      window.location.reload();
+      newToken = MANAGED_TOKEN;
     } else {
-      // No token for this cluster yet — go to login (cluster pre-selected).
+      // No token and cluster is not managed — redirect to login (cluster pre-selected).
       router.push("/");
+      return;
     }
+
+    // Switch in-place: update state, let existing effects re-fetch for the new cluster.
+    setCluster(name);
+    setToken(newToken);
+    setSelectedNs("");
+    setNamespaces([]);
+    setNsStats(new Map());
+    setDeployments([]);
+    setNodes([]);
+    setNsHistory([]);
   }
 
   function hideNamespace(name: string) {
@@ -267,6 +285,11 @@ export default function DashboardPage() {
 
   const loading = view === "nodes" ? loadingNodes : loadingDeps;
 
+  // Index-based color map for the dropdown menu (no two clusters share a color).
+  // Only used when the full list is available; the badge uses hash-based color to avoid flicker.
+  const clusterColorMap = buildClusterColors(clusters.map((c) => c.name));
+  const getMenuColor = (name: string) => clusterColorMap.get(name) ?? clusterColor(name);
+
   return (
     <div className={styles.layout}>
       <header className={styles.topbar}>
@@ -285,12 +308,12 @@ export default function DashboardPage() {
                   <span
                     className={styles.clusterBadge}
                     style={{
-                      borderColor: clusterColor(cluster).border,
-                      color: clusterColor(cluster).accent,
-                      background: clusterColor(cluster).bg,
+                      borderColor: getMenuColor(cluster).border,
+                      color: getMenuColor(cluster).accent,
+                      background: getMenuColor(cluster).bg,
                     }}
                   >
-                    <span className={styles.clusterDot} style={{ background: clusterColor(cluster).accent }} />
+                    <span className={styles.clusterDot} style={{ background: getMenuColor(cluster).accent }} />
                     {cluster}
                   </span>
                   <span className={styles.clusterChevron}>{showClusterMenu ? "▴" : "▾"}</span>
@@ -298,7 +321,7 @@ export default function DashboardPage() {
                 {showClusterMenu && (
                   <div className={styles.clusterMenu}>
                     {clusters.map((c) => {
-                      const color = clusterColor(c.name);
+                      const color = getMenuColor(c.name);
                       const isActive = c.name === cluster;
                       return (
                         <button
