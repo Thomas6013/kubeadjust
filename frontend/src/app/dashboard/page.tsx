@@ -192,17 +192,25 @@ export default function DashboardPage() {
     safeSetItem(STORAGE_KEYS.cluster, name);
     safeRemoveItem(STORAGE_KEYS.selectedNs);
     setShowClusterMenu(false);
-    if (targetManaged && !existingToken) {
-      // Managed cluster: store sentinel and reload — no user token needed.
-      safeSetItem(tokenKey(name), MANAGED_TOKEN);
-      window.location.reload();
-    } else if (existingToken) {
-      // Already authenticated for this cluster in this session — reload seamlessly.
-      window.location.reload();
-    } else {
+
+    if (!targetManaged && !existingToken) {
       // No token for this cluster yet — go to login (cluster pre-selected).
       router.push("/");
+      return;
     }
+
+    if (targetManaged && !existingToken) safeSetItem(tokenKey(name), MANAGED_TOKEN);
+    const newToken = targetManaged && !existingToken ? MANAGED_TOKEN : existingToken ?? MANAGED_TOKEN;
+
+    // Switch in-place: update state, let existing effects re-fetch for the new cluster.
+    setCluster(name);
+    setToken(newToken);
+    setSelectedNs("");
+    setNamespaces([]);
+    setNsStats(new Map());
+    setDeployments([]);
+    setNodes([]);
+    setNsHistory([]);
   }
 
   function hideNamespace(name: string) {

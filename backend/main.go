@@ -267,7 +267,7 @@ func parseSATokens() map[string]string {
 		if b, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token"); err == nil {
 			if t := strings.TrimSpace(string(b)); t != "" {
 				tokens["default"] = t
-				log.Printf("OIDC: using in-cluster SA token for default cluster")
+				log.Printf("using in-cluster SA token for default cluster")
 			}
 		}
 	}
