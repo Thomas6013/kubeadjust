@@ -63,6 +63,7 @@ frontend/
   src/hooks/useSessionState.ts  # SessionStorage-backed dashboard preferences (view, autoRefresh, selectedNs, etc.)
   src/components/          # ResourceBar, PodRow, DeploymentCard, SuggestionPanel, Sparkline, Sidebar
   src/proxy.ts             # Next.js proxy (nonce-based CSP per request)
+  eslint.config.mjs        # ESLint 9 flat config (eslint-config-next + typescript)
   next.config.mjs          # Standalone output, security headers (CSP handled by proxy.ts)
 
 deploy/

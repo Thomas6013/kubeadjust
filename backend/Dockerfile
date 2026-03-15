@@ -2,6 +2,7 @@
 FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 ARG TARGETOS TARGETARCH
 WORKDIR /app
+RUN apk add --no-cache tzdata
 COPY . .
 RUN go mod download && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o kubeadjust-backend .
 

@@ -35,6 +35,7 @@ KubeAdjust shows for every Deployment, StatefulSet and CronJob:
 - **Multi-cluster support** — configure multiple clusters via `CLUSTERS` env var; tokens are stored per cluster so switching between visited clusters requires no re-authentication
 - **OIDC / SSO authentication** — optional SSO login via Keycloak, Dex, Google, or any OIDC provider. Works on managed clusters (EKS, GKE, AKS) with no K8s API server configuration required
 - **Managed cluster mode** — configure a Service Account token (`SA_TOKEN`) to skip the login form entirely. Users land directly on the dashboard with no token entry required
+- **Shareable URLs** — dashboard state (cluster, view, namespace) is reflected in query parameters. Share a link like `/dashboard?cluster=prod&view=namespaces&ns=payments` to point someone directly to the right context
 
 ---
 
@@ -45,8 +46,8 @@ KubeAdjust shows for every Deployment, StatefulSet and CronJob:
 | Kubernetes | **1.21** (`batch/v1` CronJobs) |
 | metrics-server | any (optional, enables live usage) |
 | Prometheus | any (optional, enables sparklines + P95) |
-| Go | 1.22+ (build only) |
-| Node.js | 20+ (build only) |
+| Go | 1.26+ (build only) |
+| Node.js | 25+ (build only) |
 
 ---
 
@@ -88,10 +89,10 @@ Open http://localhost:3000, paste your token, done.
 ### Local dev
 
 ```bash
-# Backend (Go 1.22+)
+# Backend (Go 1.26+)
 cd backend && KUBE_API_SERVER=https://<your-cluster> go run .
 
-# Frontend (Node 20+)
+# Frontend (Node 25+)
 cd frontend && npm install && npm run dev
 ```
 
@@ -146,7 +147,9 @@ Browser → Next.js (port 3000) → /api/* proxy → Go backend (port 8080)
 - **Token in sessionStorage** — cleared on tab close, never logged or persisted
 - **PromQL injection prevention** — strict whitelist validation on all label values
 - **10MB response cap** — `io.LimitReader` on all upstream responses
-- **CSP + security headers** — configured in Next.js
+- **Nonce-based CSP** — per-request nonce via `proxy.ts`, no `unsafe-inline` or `unsafe-eval`
+- **K8s API retry** — exponential backoff on transient 5xx/network errors (max 3 attempts)
+- **URL-encoded path parameters** — all K8s API path segments escaped to prevent path traversal
 
 ---
 
