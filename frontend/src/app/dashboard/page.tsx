@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type ContainerHistory, type TimeRange } from "@/lib/api";
 import { APP_VERSION } from "@/lib/version";
 import { buildClusterColors, clusterColor } from "@/lib/clusterColor";
@@ -15,6 +15,12 @@ import styles from "./dashboard.module.css";
 
 export default function DashboardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Capture URL params at mount time as non-reactive refs so mount effects
+  // can read the original URL even after router.replace starts rewriting it.
+  const initialUrlCluster = useRef(searchParams.get("cluster"));
+  const initialUrlView = useRef(searchParams.get("view") as View | null);
+  const initialUrlNs = useRef(searchParams.get("ns"));
   const [token, setToken] = useState<string>("");
   const {
     view, setView,
@@ -61,16 +67,27 @@ export default function DashboardPage() {
   const loadNodesRef = useRef<(silent?: boolean) => Promise<void>>(() => Promise.resolve());
   const loadDeploymentsRef = useRef<(ns: string, silent?: boolean) => Promise<void>>(() => Promise.resolve());
 
-  // Restore cluster and token on mount (session preferences are restored by useSessionState)
+  // Restore cluster and token on mount — URL param takes precedence over sessionStorage.
   useEffect(() => {
-    const savedCluster = safeGetItem(STORAGE_KEYS.cluster) ?? "";
-    if (savedCluster) setCluster(savedCluster);
+    const urlCluster = initialUrlCluster.current;
+    const savedCluster = urlCluster ?? safeGetItem(STORAGE_KEYS.cluster) ?? "";
+    if (savedCluster) {
+      setCluster(savedCluster);
+      if (urlCluster) safeSetItem(STORAGE_KEYS.cluster, urlCluster); // sync URL param to storage
+    }
     // fall back to legacy "kube-token" for sessions created before per-cluster storage
     const t = safeGetItem(tokenKey(savedCluster)) ?? safeGetItem("kube-token");
     // null = no token at all (redirect to login); empty string or MANAGED_TOKEN = managed cluster (ok)
     if (t === null) { router.replace("/"); return; }
     setToken(t);
   }, [router]);
+
+  // Apply URL-specified view once on mount (runs after useSessionState restores from sessionStorage,
+  // since that hook's effects are registered first).
+  useEffect(() => {
+    const urlView = initialUrlView.current;
+    if (urlView === "namespaces" || urlView === "nodes") setView(urlView);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- setView is a stable useState setter
 
   // Fetch available clusters (for switcher)
   useEffect(() => {
@@ -87,10 +104,11 @@ export default function DashboardPage() {
     api.namespaces(token)
       .then((ns) => {
         setNamespaces(ns);
-        // Keep persisted namespace if it still exists, otherwise pick first
-        const saved = safeGetItem(STORAGE_KEYS.selectedNs);
-        if (saved && ns.some((n) => n.name === saved)) {
-          setSelectedNs(saved);
+        // Priority: URL param (first load only) > sessionStorage > first namespace
+        const candidateNs = initialUrlNs.current ?? safeGetItem(STORAGE_KEYS.selectedNs);
+        initialUrlNs.current = null; // consume once — cluster switches fall back to sessionStorage
+        if (candidateNs && ns.some((n) => n.name === candidateNs)) {
+          setSelectedNs(candidateNs);
         } else if (ns.length > 0) {
           setSelectedNs(ns[0].name);
         }
@@ -236,6 +254,17 @@ export default function DashboardPage() {
       if (remaining) setSelectedNs(remaining.name);
     }
   }
+
+  // Keep URL in sync with navigation state so links are shareable.
+  // Guarded on cluster being known to avoid overwriting initial URL params before mount effects run.
+  useEffect(() => {
+    if (!cluster) return;
+    const params = new URLSearchParams();
+    params.set("cluster", cluster);
+    params.set("view", view);
+    if (view === "namespaces" && selectedNs) params.set("ns", selectedNs);
+    router.replace(`/dashboard?${params.toString()}`);
+  }, [cluster, view, selectedNs, router]);
 
   const scrollTargetRef = useRef<string | null>(null);
 

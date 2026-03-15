@@ -8,6 +8,8 @@ All notable changes to KubeAdjust are documented here.
 
 ### Added
 
+- **Shareable URL navigation** — `cluster`, `view`, and `ns` are now reflected in the URL as query parameters (e.g. `/dashboard?cluster=prod&view=namespaces&ns=payments`). Sharing a link brings the recipient directly to the right cluster, view, and namespace (they still need to authenticate). URL params take precedence over sessionStorage on load; the URL is kept in sync via `router.replace` on every navigation change.
+
 - **ESLint for frontend** — ESLint 9 + `eslint-config-next` (flat config) configured for the frontend (`src/`). `npm run lint` now runs `eslint src/` instead of a no-op echo. The CI step previously disabled with a TODO comment is now active.
 
 ### Changed
