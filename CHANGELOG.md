@@ -4,6 +4,18 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.21.0] - 2026-03-15
+
+### Added
+
+- **ESLint for frontend** — ESLint 9 + `eslint-config-next` (flat config) configured for the frontend (`src/`). `npm run lint` now runs `eslint src/` instead of a no-op echo. The CI step previously disabled with a TODO comment is now active.
+
+### Changed
+
+- **Dependency updates** — vitest 4.0.18 → 4.1.0, `@types/node` 25.4.0 → 25.5.0 (lockfile updates).
+
+---
+
 ## [0.20.0] - 2026-03-12
 
 ### Fixed

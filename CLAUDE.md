@@ -240,8 +240,7 @@ See `.env.example` at repo root. Key variables:
 - **Helm chart not linted in CI** — `.github/workflows/ci.yml`
   - Fix: add `helm lint helm/kubeadjust` and optionally `ct lint`.
 
-- **ESLint disabled in CI** — `.github/workflows/ci.yml`
-  - `next lint` removed in Next.js 16. Fix: configure `eslint .` directly.
+- ~~ESLint disabled in CI~~ — RESOLVED (v0.21.0, ESLint 9 + `eslint-config-next` flat config; `npm run lint` runs `eslint src/`; CI step re-enabled).
 
 - **`docker-compose.yml` passes unused `BACKEND_URL` build arg** — `docker-compose.yml:23`
   - Build arg is unused; runtime env var (line 27) is the correct one. Fix: remove from `args`.
