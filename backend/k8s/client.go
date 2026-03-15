@@ -3,9 +3,11 @@ package k8s
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 )
@@ -42,7 +44,28 @@ func New(token, apiServer string) *Client {
 	}
 }
 
+const maxRetries = 3
+
 func (c *Client) get(path string, out interface{}) error {
+	var lastErr error
+	for attempt := range maxRetries {
+		if attempt > 0 {
+			// Exponential backoff: 100ms, 400ms
+			time.Sleep(time.Duration(100*(1<<(2*uint(attempt-1)))) * time.Millisecond)
+		}
+		lastErr = c.doGet(path, out)
+		if lastErr == nil {
+			return nil
+		}
+		// Only retry on 5xx or network errors, not 4xx (auth/not-found/bad-request)
+		if isClientError(lastErr) {
+			return lastErr
+		}
+	}
+	return lastErr
+}
+
+func (c *Client) doGet(path string, out interface{}) error {
 	req, err := http.NewRequest(http.MethodGet, c.apiServer+path, nil)
 	if err != nil {
 		return err
@@ -64,9 +87,25 @@ func (c *Client) get(path string, out interface{}) error {
 		return fmt.Errorf("kubernetes api %s: response exceeded 10 MB limit", path)
 	}
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("kubernetes api %s: %d %s", path, resp.StatusCode, string(body))
+		return &apiError{statusCode: resp.StatusCode, message: fmt.Sprintf("kubernetes api %s: %d %s", path, resp.StatusCode, string(body))}
 	}
 	return json.Unmarshal(body, out)
+}
+
+// apiError wraps HTTP error responses so retry logic can distinguish 4xx from 5xx.
+type apiError struct {
+	statusCode int
+	message    string
+}
+
+func (e *apiError) Error() string { return e.message }
+
+func isClientError(err error) bool {
+	var ae *apiError
+	if errors.As(err, &ae) {
+		return ae.statusCode >= 400 && ae.statusCode < 500
+	}
+	return false
 }
 
 func (c *Client) VerifyToken() error {
@@ -322,6 +361,9 @@ type OwnerReference struct {
 
 // --- API methods ---
 
+// p escapes a path segment for safe interpolation into K8s API URLs.
+func p(segment string) string { return url.PathEscape(segment) }
+
 func (c *Client) ListNamespaces() (*NamespaceList, error) {
 	var out NamespaceList
 	return &out, c.get("/api/v1/namespaces", &out)
@@ -329,23 +371,23 @@ func (c *Client) ListNamespaces() (*NamespaceList, error) {
 
 func (c *Client) ListDeployments(namespace string) (*DeploymentList, error) {
 	var out DeploymentList
-	return &out, c.get(fmt.Sprintf("/apis/apps/v1/namespaces/%s/deployments", namespace), &out)
+	return &out, c.get(fmt.Sprintf("/apis/apps/v1/namespaces/%s/deployments", p(namespace)), &out)
 }
 
 func (c *Client) ListPods(namespace string) (*PodList, error) {
 	var out PodList
-	return &out, c.get(fmt.Sprintf("/api/v1/namespaces/%s/pods", namespace), &out)
+	return &out, c.get(fmt.Sprintf("/api/v1/namespaces/%s/pods", p(namespace)), &out)
 }
 
 // ListPodsLimit lists up to `limit` pods in a namespace (useful for existence checks).
 func (c *Client) ListPodsLimit(namespace string, limit int) (*PodList, error) {
 	var out PodList
-	return &out, c.get(fmt.Sprintf("/api/v1/namespaces/%s/pods?limit=%d", namespace, limit), &out)
+	return &out, c.get(fmt.Sprintf("/api/v1/namespaces/%s/pods?limit=%d", p(namespace), limit), &out)
 }
 
 func (c *Client) ListPodMetrics(namespace string) (*PodMetricsList, error) {
 	var out PodMetricsList
-	return &out, c.get(fmt.Sprintf("/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods", namespace), &out)
+	return &out, c.get(fmt.Sprintf("/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods", p(namespace)), &out)
 }
 
 // ListAllPodMetrics returns pod metrics for all pods across all namespaces.
@@ -372,34 +414,34 @@ func (c *Client) ListAllPods() (*PodList, error) {
 
 func (c *Client) ListPVCs(namespace string) (*PVCList, error) {
 	var out PVCList
-	return &out, c.get(fmt.Sprintf("/api/v1/namespaces/%s/persistentvolumeclaims", namespace), &out)
+	return &out, c.get(fmt.Sprintf("/api/v1/namespaces/%s/persistentvolumeclaims", p(namespace)), &out)
 }
 
 func (c *Client) ListReplicaSets(namespace string) (*ReplicaSetList, error) {
 	var out ReplicaSetList
-	return &out, c.get(fmt.Sprintf("/apis/apps/v1/namespaces/%s/replicasets", namespace), &out)
+	return &out, c.get(fmt.Sprintf("/apis/apps/v1/namespaces/%s/replicasets", p(namespace)), &out)
 }
 
 func (c *Client) ListStatefulSets(namespace string) (*StatefulSetList, error) {
 	var out StatefulSetList
-	return &out, c.get(fmt.Sprintf("/apis/apps/v1/namespaces/%s/statefulsets", namespace), &out)
+	return &out, c.get(fmt.Sprintf("/apis/apps/v1/namespaces/%s/statefulsets", p(namespace)), &out)
 }
 
 func (c *Client) ListJobs(namespace string) (*JobList, error) {
 	var out JobList
-	return &out, c.get(fmt.Sprintf("/apis/batch/v1/namespaces/%s/jobs", namespace), &out)
+	return &out, c.get(fmt.Sprintf("/apis/batch/v1/namespaces/%s/jobs", p(namespace)), &out)
 }
 
 func (c *Client) ListCronJobs(namespace string) (*CronJobList, error) {
 	var out CronJobList
-	return &out, c.get(fmt.Sprintf("/apis/batch/v1/namespaces/%s/cronjobs", namespace), &out)
+	return &out, c.get(fmt.Sprintf("/apis/batch/v1/namespaces/%s/cronjobs", p(namespace)), &out)
 }
 
 // GetNodeSummary calls the kubelet stats/summary via the API server proxy.
 // Requires nodes/proxy get permission. Best-effort: caller should handle errors.
 func (c *Client) GetNodeSummary(nodeName string) (*NodeSummary, error) {
 	var out NodeSummary
-	return &out, c.get(fmt.Sprintf("/api/v1/nodes/%s/proxy/stats/summary", nodeName), &out)
+	return &out, c.get(fmt.Sprintf("/api/v1/nodes/%s/proxy/stats/summary", p(nodeName)), &out)
 }
 
 func envOr(key, def string) string {

@@ -58,7 +58,10 @@ frontend/
   src/app/auth/logout/     # Client component: clears all kube-token*, kube-cluster, kubeadjust:* from sessionStorage → /
   src/lib/api.ts           # Typed API client (TimeRange, ContainerHistory, NamespaceHistoryResponse, AuthConfig)
   src/lib/suggestions.ts   # Suggestion computation (P95/mean weighted, no-limit warning, confidence indicator)
-  src/components/          # ResourceBar, PodRow, DeploymentCard, SuggestionPanel, Sparkline
+  src/lib/status.ts        # Shared STATUS_COLOR, STATUS_LABEL, shortPodName() (deduplicated from components)
+  src/lib/storage.ts       # sessionStorage safe helpers (safeGetItem, safeSetItem, safeRemoveItem, STORAGE_KEYS)
+  src/hooks/useSessionState.ts  # SessionStorage-backed dashboard preferences (view, autoRefresh, selectedNs, etc.)
+  src/components/          # ResourceBar, PodRow, DeploymentCard, SuggestionPanel, Sparkline, Sidebar
   src/proxy.ts             # Next.js proxy (nonce-based CSP per request)
   next.config.mjs          # Standalone output, security headers (CSP handled by proxy.ts)
 
@@ -170,20 +173,13 @@ See `.env.example` at repo root. Key variables:
 
 ### Bugs — Medium Priority
 
-- **Unsafe non-null assertion on `usage`** — `components/NodeCard.tsx:139`
-  - `usage!` can crash if `usage` is undefined. Fix: add null guard or optional chaining.
-
-- **Unsafe `pop()!` on split result** — `components/NodeCard.tsx:301`
-  - `t.key.split("/").pop()!` — if split returns empty array, `pop()` returns undefined. Fix: use nullish coalescing `?? ""`.
-
-- **`json.NewEncoder(w).Encode()` errors silently discarded** — `handlers/namespaces.go:125,132`, `handlers/auth.go:22`
-  - Response can be partially written or corrupted. Fix: check and log encode errors.
+- ~~Unsafe non-null assertion on `usage`~~ — RESOLVED (`NodeCard.tsx`: `usage!` → null guard with `"—"` fallback).
+- ~~Unsafe `pop()!` on split result~~ — RESOLVED (`NodeCard.tsx`: `pop()!` → `pop() ?? t.key`).
+- ~~`json.NewEncoder(w).Encode()` errors silently discarded~~ — RESOLVED (`jsonOK`/`jsonError` in `handlers/namespaces.go` and `handlers/auth.go` now check and log encode errors).
+- ~~Comment references non-existent `src/middleware.ts`~~ — RESOLVED (`next.config.mjs:21` updated to `src/proxy.ts`).
 
 - **`ParseCPUMillicores` silently returns 0 on invalid input** — `resources/parse.go:12`
   - `ParseCPUMillicores("xyz123n")` → 0 without error. Misconfigured K8s resources invisible. Fix: return error or log warning.
-
-- **Comment references non-existent `src/middleware.ts`** — `next.config.mjs:21`
-  - CSP is actually set by `src/proxy.ts`. Fix: update comment.
 
 ### Consistency — High Priority
 
@@ -195,8 +191,7 @@ See `.env.example` at repo root. Key variables:
 - **Base images without digest pinning** — `backend/Dockerfile`, `frontend/Dockerfile`
   - `golang:1.26-alpine` and `node:25-alpine` use floating tags. Supply chain risk. Fix: pin with `@sha256:...`.
 
-- **K8s API path parameters not URL-encoded** — `k8s/client.go:332+`
-  - Namespace/pod/node names interpolated with `fmt.Sprintf` without `url.PathEscape()`. Path traversal risk (mitigated by K8s API server, but fragile). Fix: URL-encode all path segments.
+- ~~K8s API path parameters not URL-encoded~~ — RESOLVED (`k8s/client.go`: `p()` helper using `url.PathEscape` applied to all 12 path-interpolated methods).
 
 - **Missing `seccompProfile: RuntimeDefault`** — `helm/kubeadjust/templates/deployment.yaml`
   - Neither backend nor frontend pod specs set seccomp profile. Fix: add `seccompProfile.type: RuntimeDefault` to both.
@@ -207,8 +202,7 @@ See `.env.example` at repo root. Key variables:
 - **Frontend `/tmp` emptyDir has no size limit** — `helm/kubeadjust/templates/deployment.yaml:133`
   - Can grow unbounded and evict pod. Fix: add `sizeLimit: 100Mi`.
 
-- **Missing timezone data in scratch image** — `backend/Dockerfile`
-  - `FROM scratch` has no `/usr/share/zoneinfo`. Time parsing may fail. Fix: copy zoneinfo from builder.
+- ~~Missing timezone data in scratch image~~ — RESOLVED (`backend/Dockerfile`: `/usr/share/zoneinfo` copied from builder stage).
 
 ### Performance — Medium Priority
 
@@ -221,8 +215,7 @@ See `.env.example` at repo root. Key variables:
 - **No virtualisation/pagination for large clusters** — `dashboard/page.tsx`
   - 100+ workloads render in a single list. Fix: react-window or "load more" pagination.
 
-- **No retry on transient K8s API failures** — `k8s/client.go`
-  - Single network hiccup = request failure. Fix: exponential backoff (max 3 attempts, 5xx only).
+- ~~No retry on transient K8s API failures~~ — RESOLVED (v0.21.0, `k8s/client.go`: up to 3 attempts with exponential backoff; 4xx errors fail immediately).
 
 ### Performance — Low Priority
 
@@ -242,8 +235,7 @@ See `.env.example` at repo root. Key variables:
 
 - ~~ESLint disabled in CI~~ — RESOLVED (v0.21.0, ESLint 9 + `eslint-config-next` flat config; `npm run lint` runs `eslint src/`; CI step re-enabled).
 
-- **`docker-compose.yml` passes unused `BACKEND_URL` build arg** — `docker-compose.yml:23`
-  - Build arg is unused; runtime env var (line 27) is the correct one. Fix: remove from `args`.
+- ~~`docker-compose.yml` passes unused `BACKEND_URL` build arg~~ — RESOLVED (v0.21.0, build `args` block removed; runtime env var is sufficient).
 
 ### Robustness — Low Priority
 
@@ -258,13 +250,19 @@ See `.env.example` at repo root. Key variables:
 
 ### Maintainability — Medium Priority
 
-- ~~`dashboard/page.tsx` is 570 lines~~ — RESOLVED (session state extracted to `src/hooks/useSessionState.ts`; types `View`/`AutoRefresh`/`AUTO_REFRESH_MS` moved there; `src/lib/storage.ts` added with `STORAGE_KEYS` + safe helpers; page reduced to ~490 lines).
+- ~~`dashboard/page.tsx` is 570 lines~~ — RESOLVED (v0.17.0: session state → `useSessionState.ts`; v0.21.0: sidebar → `Sidebar.tsx`; page reduced to ~545 lines).
 
-- **`STATUS_COLOR` duplicated in 4 files** — `PodRow.tsx`, `ResourceBar.tsx`, `VolumeSection.tsx`, `NodeCard.tsx`
-  - Fix: extract to shared constant in `lib/colors.ts` or similar.
+- ~~`STATUS_COLOR` duplicated in 4 files~~ — RESOLVED (v0.21.0, extracted to `src/lib/status.ts`; `PodRow.tsx`, `ResourceBar.tsx`, `VolumeSection.tsx` now import from shared module).
 
-- **`shortPodName()` duplicated in 3 files** — `PodRow.tsx`, `NodeCard.tsx`, `SuggestionPanel.tsx`
-  - Fix: extract to shared utility.
+- ~~`shortPodName()` duplicated in 3 files~~ — RESOLVED (v0.21.0, extracted to `src/lib/status.ts`; `PodRow.tsx`, `NodeCard.tsx` now import from shared module).
+
+### Testing — Medium Priority
+
+- **No tests for backend handlers or K8s client** — `handlers/auth.go`, `handlers/nodes.go`, `handlers/resources.go`, `handlers/namespaces.go`, `k8s/client.go`, `prometheus/client.go`
+  - K8s API orchestration and retry logic untested. Fix: add unit tests with mock HTTP server.
+
+- **No tests for frontend components** — `PodRow.tsx`, `DeploymentCard.tsx`, `NodeCard.tsx`, `SuggestionPanel.tsx`, `ResourceBar.tsx`, `Sidebar.tsx`
+  - All components untested; visual regressions and type errors only caught at runtime. Fix: add vitest + @testing-library/react tests.
 
 ### Maintainability — Low Priority
 
@@ -397,7 +395,8 @@ See `.env.example` at repo root. Key variables:
 - **Error handling**: never return raw K8s API errors to HTTP clients. Log server-side with `log.Printf`, return generic messages.
 - **Token safety**: never log, store, or cache the bearer token.
 - **Parallelism**: use `golang.org/x/sync/errgroup` for concurrent K8s API calls. Use `SetLimit()` to bound kubelet/node calls.
-- **State persistence**: dashboard state (view, namespace, timeRange, openCards, excludedNs) persisted in `sessionStorage`. Always restore in `useEffect` (not `useState` initializer) to avoid SSG errors.
+- **State persistence**: dashboard state (view, namespace, timeRange, openCards, excludedNs) persisted in `sessionStorage`. Always restore in `useEffect` (not `useState` initializer) to avoid SSG errors. Navigation state (`cluster`, `view`, `ns`) is also reflected in URL query params for shareability; priority on load: URL param > sessionStorage > default.
+- **K8s API retry**: `k8s/client.go` retries up to 3 times with exponential backoff on 5xx/network errors. 4xx errors (auth, not-found) fail immediately.
 
 ---
 

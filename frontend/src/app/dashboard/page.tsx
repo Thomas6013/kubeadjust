@@ -10,6 +10,7 @@ import { useSessionState, AUTO_REFRESH_MS, type View, type AutoRefresh } from "@
 import { STORAGE_KEYS, MANAGED_TOKEN, safeGetItem, safeSetItem, safeRemoveItem, tokenKey } from "@/lib/storage";
 import DeploymentCard from "@/components/DeploymentCard";
 import SuggestionPanel from "@/components/SuggestionPanel";
+import Sidebar from "@/components/Sidebar";
 import NodeCard from "@/components/NodeCard";
 import styles from "./dashboard.module.css";
 
@@ -255,6 +256,15 @@ export default function DashboardPage() {
     }
   }
 
+  function restoreNamespace(name: string) {
+    setExcludedNs((prev) => {
+      const next = new Set(prev);
+      next.delete(name);
+      safeSetItem(STORAGE_KEYS.excludedNs, JSON.stringify([...next]));
+      return next;
+    });
+  }
+
   // Keep URL in sync with navigation state so links are shareable.
   // Guarded on cluster being known to avoid overwriting initial URL params before mount effects run.
   useEffect(() => {
@@ -294,17 +304,6 @@ export default function DashboardPage() {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }, [openCards, workloadSearch]);
-
-  const [nsSearch, setNsSearch] = useState("");
-
-  const visibleNamespaces = namespaces
-    .filter((ns) => !excludedNs.has(ns.name))
-    .filter((ns) => ns.name.toLowerCase().includes(nsSearch.toLowerCase()))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  const hiddenNamespaces = namespaces
-    .filter((ns) => excludedNs.has(ns.name))
-    .sort((a, b) => a.name.localeCompare(b.name));
 
   const visibleDeployments = deployments.filter((dep) =>
     workloadSearch === "" ||
@@ -419,88 +418,18 @@ export default function DashboardPage() {
       </header>
 
       <div className={styles.body}>
-        {/* Sidebar */}
-        <aside className={styles.sidebar}>
-          {/* Cluster section */}
-          <p className={styles.sidebarTitle}>Cluster</p>
-          <ul className={styles.nsList}>
-            <li>
-              <button
-                className={`${styles.nsBtn} ${styles.nodeBtn} ${view === "nodes" ? styles.active : ""}`}
-                onClick={() => setView("nodes")}
-              >
-                ⬡ Nodes
-                {nodes.length > 0 && (
-                  <span className={styles.nodeBadge}>
-                    {nodes.filter((n) => n.status === "Ready").length}/{nodes.length}
-                  </span>
-                )}
-              </button>
-            </li>
-          </ul>
-
-          {/* Namespaces section */}
-          <p className={styles.sidebarTitle} style={{ marginTop: 20 }}>Namespaces</p>
-          {loadingNs ? (
-            <p className={styles.muted}>Loading…</p>
-          ) : (
-            <>
-              <input
-                className={styles.nsSearch}
-                type="text"
-                placeholder="Search namespaces…"
-                value={nsSearch}
-                onChange={(e) => setNsSearch(e.target.value)}
-              />
-              <ul className={styles.nsList}>
-                {visibleNamespaces.map((ns) => {
-                  const st = nsStats.get(ns.name);
-                  return (
-                  <li key={ns.name} className={styles.nsRow}>
-                    <button
-                      className={`${styles.nsBtn} ${view === "namespaces" && selectedNs === ns.name ? styles.active : ""}`}
-                      onClick={() => { setView("namespaces"); setSelectedNs(ns.name); }}
-                    >
-                      <span className={styles.nsBtnName}>{ns.name}</span>
-                    </button>
-                    <button
-                      className={styles.nsHide}
-                      onClick={(e) => { e.stopPropagation(); hideNamespace(ns.name); }}
-                      title={`Hide ${ns.name}`}
-                    >✕</button>
-                  </li>
-                  );
-                })}
-              </ul>
-              {hiddenNamespaces.length > 0 && (
-                <details className={styles.hiddenSection}>
-                  <summary className={styles.hiddenSummary}>
-                    {hiddenNamespaces.length} hidden
-                  </summary>
-                  <ul className={styles.nsList}>
-                    {hiddenNamespaces.map((ns) => (
-                      <li key={ns.name} className={styles.nsRow}>
-                        <span className={styles.hiddenName}>{ns.name}</span>
-                        <button
-                          className={styles.nsRestore}
-                          onClick={() => {
-                            setExcludedNs((prev) => {
-                              const next = new Set(prev);
-                              next.delete(ns.name);
-                              safeSetItem(STORAGE_KEYS.excludedNs, JSON.stringify([...next]));
-                              return next;
-                            });
-                          }}
-                          title={`Restore ${ns.name}`}
-                        >+</button>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </>
-          )}
-        </aside>
+        <Sidebar
+          view={view}
+          setView={setView}
+          selectedNs={selectedNs}
+          setSelectedNs={setSelectedNs}
+          nodes={nodes}
+          namespaces={namespaces}
+          loadingNs={loadingNs}
+          excludedNs={excludedNs}
+          onHideNamespace={hideNamespace}
+          onRestoreNamespace={restoreNamespace}
+        />
 
         {/* Main content */}
         <main className={styles.main}>

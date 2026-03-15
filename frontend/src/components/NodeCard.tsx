@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { NodeOverview, ResourceValue, PodDetail } from "@/lib/api";
 import { api, fmtCPU, fmtMemory } from "@/lib/api";
+import { shortPodName } from "@/lib/status";
 import styles from "./NodeCard.module.css";
 
 // --- helpers ---
@@ -136,7 +137,7 @@ function CircleGauge({ label, allocatable, requested, limited, usage, isCPU }: G
         {usePct !== null ? (
           <div className={styles.gaugeLine}>
             <span className={styles.gaugeDot} style={{ background: useColor }} />
-            <span>use <strong>{usePct}%</strong> · {fmt(usage!)}</span>
+            <span>use <strong>{usePct}%</strong> · {usage ? fmt(usage) : "—"}</span>
           </div>
         ) : (
           <span className={styles.gaugeNoData}>no metrics</span>
@@ -150,7 +151,7 @@ function CircleGauge({ label, allocatable, requested, limited, usage, isCPU }: G
         </div>
         <span className={styles.gaugeAllocatable}>{fmt(allocatable)} allocatable</span>
         {overProv && (
-          <span className={styles.gaugeGap}>▼ {allocPct - usePct!}pp gap</span>
+          <span className={styles.gaugeGap}>▼ {allocPct - (usePct ?? 0)}pp gap</span>
         )}
       </div>
     </div>
@@ -186,9 +187,7 @@ function PodBar({ pod, allocCPU, allocMem }: PodBarProps) {
   const cpuColor = barColor(cpuUsePct, cpuReqPct);
   const memColor = barColor(memUsePct, memReqPct);
 
-  // Shorten pod name: strip last two random suffixes
-  const parts = pod.name.split("-");
-  const shortName = parts.length > 3 ? parts.slice(0, -2).join("-") : pod.name;
+  const shortName = shortPodName(pod.name);
 
   const cpuTooltip = cpuUsePct !== null
     ? `req: ${fmtCPU({ raw: "", millicores: cpuReq })} (${cpuReqPct.toFixed(0)}%) · use: ${fmtCPU({ raw: "", millicores: cpuUse })} (${cpuUsePct.toFixed(0)}%)`
@@ -299,7 +298,7 @@ export default function NodeCard({ node, token }: NodeCardProps) {
           {node.memoryPressure && <span className={styles.pressureBadge} title="MemoryPressure condition is True">memory pressure</span>}
           {node.pidPressure && <span className={styles.pressureBadge} title="PIDPressure condition is True">pid pressure</span>}
           {node.taints?.map((t, i) => {
-            const shortKey = t.key.includes("/") ? t.key.split("/").pop()! : t.key;
+            const shortKey = t.key.includes("/") ? (t.key.split("/").pop() ?? t.key) : t.key;
             return (
               <span
                 key={i}

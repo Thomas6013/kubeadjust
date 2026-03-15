@@ -4,24 +4,12 @@ import { useState, useEffect, useRef } from "react";
 import type { PodDetail, HistoryResponse, EphemeralStorageInfo, ResourceValue, TimeRange, DataPoint } from "@/lib/api";
 import { api, fmtStorage, storagePct } from "@/lib/api";
 import { resourceStatus, storageStatus } from "@/lib/suggestions";
+import { STATUS_COLOR, shortPodName } from "@/lib/status";
 import ResourceBar from "./ResourceBar";
 import VolumeSection from "./VolumeSection";
 import Sparkline from "./Sparkline";
 import SparklineModal from "./SparklineModal";
 import styles from "./PodRow.module.css";
-
-function shortPodName(name: string): string {
-  const parts = name.split("-");
-  return parts.length > 3 ? parts.slice(0, -2).join("-") : name;
-}
-
-const STATUS_COLOR: Record<string, string> = {
-  danger:   "var(--red)",
-  warning:  "var(--orange)",
-  overkill: "var(--blue-over)",
-  healthy:  "var(--green)",
-  none:     "var(--muted)",
-};
 
 interface ZoomedChart {
   dataPoints: DataPoint[];

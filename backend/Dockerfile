@@ -7,6 +7,7 @@ RUN go mod download && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build 
 
 FROM scratch
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=builder /app/kubeadjust-backend /kubeadjust-backend
 EXPOSE 8080
 ENTRYPOINT ["/kubeadjust-backend"]
