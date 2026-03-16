@@ -124,12 +124,16 @@ func GetNamespaceStats(w http.ResponseWriter, r *http.Request) {
 // jsonOK writes v as JSON with 200 OK.
 func jsonOK(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("failed to encode JSON response: %v", err)
+	}
 }
 
 // jsonError writes a JSON {"error": msg} response with the given HTTP status code.
 func jsonError(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	if err := json.NewEncoder(w).Encode(map[string]string{"error": msg}); err != nil {
+		log.Printf("failed to encode error response: %v", err)
+	}
 }

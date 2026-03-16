@@ -4,6 +4,34 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.21.0] - 2026-03-15
+
+### Added
+
+- **Shareable URL navigation** — `cluster`, `view`, and `ns` are now reflected in the URL as query parameters (e.g. `/dashboard?cluster=prod&view=namespaces&ns=payments`). Sharing a link brings the recipient directly to the right cluster, view, and namespace (they still need to authenticate). URL params take precedence over sessionStorage on load; the URL is kept in sync via `router.replace` on every navigation change.
+
+- **ESLint for frontend** — ESLint 9 + `eslint-config-next` (flat config) configured for the frontend (`src/`). `npm run lint` now runs `eslint src/` instead of a no-op echo. The CI step previously disabled with a TODO comment is now active.
+
+### Fixed
+
+- **K8s API retry on transient failures** — `k8s/client.go` now retries up to 3 times with exponential backoff (100ms, 400ms) on 5xx or network errors. 4xx errors (auth, not-found) fail immediately without retry.
+
+### Changed
+
+- **Dependency updates** — vitest 4.0.18 → 4.1.0, `@types/node` 25.4.0 → 25.5.0 (lockfile updates).
+- **`STATUS_COLOR` and `shortPodName` deduplicated** — extracted to `src/lib/status.ts`. Previously duplicated across `PodRow.tsx`, `ResourceBar.tsx`, `VolumeSection.tsx`, and `NodeCard.tsx`.
+- **Sidebar extracted to own component** — `src/components/Sidebar.tsx` (namespace list, node button, namespace search/hide). `dashboard/page.tsx` reduced from ~610 to ~545 lines.
+- **Topbar extracted to own component** — `src/components/Topbar.tsx` (brand, cluster badge/switcher, time range, auto-refresh, refresh/logout). `dashboard/page.tsx` reduced further to ~460 lines.
+- **CircleGauge and PodBar extracted from NodeCard** — `src/components/CircleGauge.tsx` and `src/components/PodBar.tsx`. `NodeCard.tsx` reduced from 387 to ~200 lines.
+- **K8s API path parameters URL-encoded** — all path-interpolated segments (namespace, node, pod names) now use `url.PathEscape()` to prevent path traversal.
+- **Unsafe non-null assertions removed** — `NodeCard.tsx`: `usage!` → null guard, `usePct!` → `?? 0`, `pop()!` → `?? fallback`.
+- **`json.NewEncoder` errors now logged** — `handlers/namespaces.go` (`jsonOK`/`jsonError`) and `handlers/auth.go` no longer silently discard encode errors.
+- **`next.config.mjs` comment fixed** — referenced `src/middleware.ts` (old name), now correctly points to `src/proxy.ts`.
+- **Unused `BACKEND_URL` build arg removed from `docker-compose.yml`** — the arg was unused; the runtime env var (line 27) is the correct one.
+- **Timezone data added to backend Docker image** — `FROM scratch` was missing `/usr/share/zoneinfo`; copied from the builder stage.
+
+---
+
 ## [0.20.0] - 2026-03-12
 
 ### Fixed

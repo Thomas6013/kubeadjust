@@ -18,7 +18,7 @@ const nextConfig = {
             key: "Referrer-Policy",
             value: "strict-origin-when-cross-origin",
           },
-          // Content-Security-Policy is set per-request by src/middleware.ts
+          // Content-Security-Policy is set per-request by src/proxy.ts
           // (nonce-based, replaces the static unsafe-inline/unsafe-eval policy)
         ],
       },

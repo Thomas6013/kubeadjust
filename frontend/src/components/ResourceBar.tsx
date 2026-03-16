@@ -3,6 +3,7 @@
 import type { ResourceValue } from "@/lib/api";
 import { fmtCPU, fmtMemory } from "@/lib/api";
 import { resourceStatus } from "@/lib/suggestions";
+import { STATUS_COLOR, STATUS_LABEL } from "@/lib/status";
 import styles from "./ResourceBar.module.css";
 
 interface Props {
@@ -12,22 +13,6 @@ interface Props {
   usage?: ResourceValue;
   isCPU: boolean;
 }
-
-const STATUS_COLOR: Record<string, string> = {
-  danger:  "var(--red)",
-  warning: "var(--orange)",
-  overkill:"var(--blue-over)",
-  healthy: "var(--green)",
-  none:    "var(--border)",
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  danger:  "CRITICAL",
-  warning: "WARNING",
-  overkill:"OVER-PROV",
-  healthy: "",
-  none:    "NO DATA",
-};
 
 export default function ResourceBar({ label, request, limit, usage, isCPU }: Props) {
   const fmt = isCPU ? fmtCPU : fmtMemory;

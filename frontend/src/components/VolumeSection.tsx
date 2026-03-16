@@ -3,14 +3,8 @@
 import type { VolumeDetail } from "@/lib/api";
 import { fmtStorage, storagePct } from "@/lib/api";
 import { storageStatus } from "@/lib/suggestions";
+import { STATUS_COLOR } from "@/lib/status";
 import styles from "./VolumeSection.module.css";
-
-const STATUS_COLOR: Record<string, string> = {
-  danger:  "var(--red)",
-  warning: "var(--orange)",
-  healthy: "var(--green)",
-  none:    "var(--border)",
-};
 
 function VolumeBar({ vol }: { vol: VolumeDetail }) {
   const isPVC = vol.type === "pvc";

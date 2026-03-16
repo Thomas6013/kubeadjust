@@ -1,20 +1,25 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
-import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type ContainerHistory, type TimeRange } from "@/lib/api";
-import { APP_VERSION } from "@/lib/version";
-import { buildClusterColors, clusterColor } from "@/lib/clusterColor";
-import { KubeLogo } from "@/components/KubeLogo";
-import { useSessionState, AUTO_REFRESH_MS, type View, type AutoRefresh } from "@/hooks/useSessionState";
+import { useRouter, useSearchParams } from "next/navigation";
+import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type ContainerHistory } from "@/lib/api";
+import { useSessionState, AUTO_REFRESH_MS, type View } from "@/hooks/useSessionState";
 import { STORAGE_KEYS, MANAGED_TOKEN, safeGetItem, safeSetItem, safeRemoveItem, tokenKey } from "@/lib/storage";
 import DeploymentCard from "@/components/DeploymentCard";
 import SuggestionPanel from "@/components/SuggestionPanel";
+import Sidebar from "@/components/Sidebar";
+import Topbar from "@/components/Topbar";
 import NodeCard from "@/components/NodeCard";
 import styles from "./dashboard.module.css";
 
 export default function DashboardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Capture URL params at mount time as non-reactive refs so mount effects
+  // can read the original URL even after router.replace starts rewriting it.
+  const initialUrlCluster = useRef(searchParams.get("cluster"));
+  const initialUrlView = useRef(searchParams.get("view") as View | null);
+  const initialUrlNs = useRef(searchParams.get("ns"));
   const [token, setToken] = useState<string>("");
   const {
     view, setView,
@@ -61,16 +66,27 @@ export default function DashboardPage() {
   const loadNodesRef = useRef<(silent?: boolean) => Promise<void>>(() => Promise.resolve());
   const loadDeploymentsRef = useRef<(ns: string, silent?: boolean) => Promise<void>>(() => Promise.resolve());
 
-  // Restore cluster and token on mount (session preferences are restored by useSessionState)
+  // Restore cluster and token on mount — URL param takes precedence over sessionStorage.
   useEffect(() => {
-    const savedCluster = safeGetItem(STORAGE_KEYS.cluster) ?? "";
-    if (savedCluster) setCluster(savedCluster);
+    const urlCluster = initialUrlCluster.current;
+    const savedCluster = urlCluster ?? safeGetItem(STORAGE_KEYS.cluster) ?? "";
+    if (savedCluster) {
+      setCluster(savedCluster);
+      if (urlCluster) safeSetItem(STORAGE_KEYS.cluster, urlCluster); // sync URL param to storage
+    }
     // fall back to legacy "kube-token" for sessions created before per-cluster storage
     const t = safeGetItem(tokenKey(savedCluster)) ?? safeGetItem("kube-token");
     // null = no token at all (redirect to login); empty string or MANAGED_TOKEN = managed cluster (ok)
     if (t === null) { router.replace("/"); return; }
     setToken(t);
   }, [router]);
+
+  // Apply URL-specified view once on mount (runs after useSessionState restores from sessionStorage,
+  // since that hook's effects are registered first).
+  useEffect(() => {
+    const urlView = initialUrlView.current;
+    if (urlView === "namespaces" || urlView === "nodes") setView(urlView);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- setView is a stable useState setter
 
   // Fetch available clusters (for switcher)
   useEffect(() => {
@@ -87,10 +103,11 @@ export default function DashboardPage() {
     api.namespaces(token)
       .then((ns) => {
         setNamespaces(ns);
-        // Keep persisted namespace if it still exists, otherwise pick first
-        const saved = safeGetItem(STORAGE_KEYS.selectedNs);
-        if (saved && ns.some((n) => n.name === saved)) {
-          setSelectedNs(saved);
+        // Priority: URL param (first load only) > sessionStorage > first namespace
+        const candidateNs = initialUrlNs.current ?? safeGetItem(STORAGE_KEYS.selectedNs);
+        initialUrlNs.current = null; // consume once — cluster switches fall back to sessionStorage
+        if (candidateNs && ns.some((n) => n.name === candidateNs)) {
+          setSelectedNs(candidateNs);
         } else if (ns.length > 0) {
           setSelectedNs(ns[0].name);
         }
@@ -237,6 +254,26 @@ export default function DashboardPage() {
     }
   }
 
+  function restoreNamespace(name: string) {
+    setExcludedNs((prev) => {
+      const next = new Set(prev);
+      next.delete(name);
+      safeSetItem(STORAGE_KEYS.excludedNs, JSON.stringify([...next]));
+      return next;
+    });
+  }
+
+  // Keep URL in sync with navigation state so links are shareable.
+  // Guarded on cluster being known to avoid overwriting initial URL params before mount effects run.
+  useEffect(() => {
+    if (!cluster) return;
+    const params = new URLSearchParams();
+    params.set("cluster", cluster);
+    params.set("view", view);
+    if (view === "namespaces" && selectedNs) params.set("ns", selectedNs);
+    router.replace(`/dashboard?${params.toString()}`);
+  }, [cluster, view, selectedNs, router]);
+
   const scrollTargetRef = useRef<string | null>(null);
 
   function handleOpenCards(ids: string[], scrollTarget: string) {
@@ -266,17 +303,6 @@ export default function DashboardPage() {
     }
   }, [openCards, workloadSearch]);
 
-  const [nsSearch, setNsSearch] = useState("");
-
-  const visibleNamespaces = namespaces
-    .filter((ns) => !excludedNs.has(ns.name))
-    .filter((ns) => ns.name.toLowerCase().includes(nsSearch.toLowerCase()))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  const hiddenNamespaces = namespaces
-    .filter((ns) => excludedNs.has(ns.name))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
   const visibleDeployments = deployments.filter((dep) =>
     workloadSearch === "" ||
     dep.name.toLowerCase().includes(workloadSearch.toLowerCase()) ||
@@ -285,193 +311,38 @@ export default function DashboardPage() {
 
   const loading = view === "nodes" ? loadingNodes : loadingDeps;
 
-  // Index-based color map for the dropdown menu (no two clusters share a color).
-  // Only used when the full list is available; the badge uses hash-based color to avoid flicker.
-  const clusterColorMap = buildClusterColors(clusters.map((c) => c.name));
-  const getMenuColor = (name: string) => clusterColorMap.get(name) ?? clusterColor(name);
-
   return (
     <div className={styles.layout}>
-      <header className={styles.topbar}>
-        <div className={styles.brand}>
-          <KubeLogo size={22} />
-          KubeAdjust
-          <span className={styles.version}>v{APP_VERSION}</span>
-          {cluster && (
-            clusters.length > 1 ? (
-              <div className={styles.clusterSwitcher}>
-                <button
-                  className={styles.clusterSwitchBtn}
-                  onClick={() => setShowClusterMenu((o) => !o)}
-                  title="Switch cluster"
-                >
-                  <span
-                    className={styles.clusterBadge}
-                    style={{
-                      borderColor: getMenuColor(cluster).border,
-                      color: getMenuColor(cluster).accent,
-                      background: getMenuColor(cluster).bg,
-                    }}
-                  >
-                    <span className={styles.clusterDot} style={{ background: getMenuColor(cluster).accent }} />
-                    {cluster}
-                  </span>
-                  <span className={styles.clusterChevron}>{showClusterMenu ? "▴" : "▾"}</span>
-                </button>
-                {showClusterMenu && (
-                  <div className={styles.clusterMenu}>
-                    {clusters.map((c) => {
-                      const color = getMenuColor(c.name);
-                      const isActive = c.name === cluster;
-                      return (
-                        <button
-                          key={c.name}
-                          className={`${styles.clusterMenuItem} ${isActive ? styles.clusterMenuItemActive : ""}`}
-                          onClick={() => handleClusterSwitch(c.name)}
-                          style={isActive ? { color: color.accent, background: color.bg } : undefined}
-                        >
-                          <span className={styles.clusterDot} style={{ background: color.accent }} />
-                          {c.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <span
-                className={styles.clusterBadge}
-                style={{
-                  borderColor: clusterColor(cluster).border,
-                  color: clusterColor(cluster).accent,
-                  background: clusterColor(cluster).bg,
-                }}
-              >
-                <span className={styles.clusterDot} style={{ background: clusterColor(cluster).accent }} />
-                {cluster}
-              </span>
-            )
-          )}
-        </div>
-        <div className={styles.actions}>
-          {lastRefresh && <span className={styles.refreshed}>Refreshed {lastRefresh.toLocaleTimeString()}</span>}
-          {prometheusAvailable && (
-            <div className={styles.rangeSelector}>
-              {(["1h", "6h", "24h", "7d"] as TimeRange[]).map((r) => (
-                <button
-                  key={r}
-                  className={`${styles.rangeBtn} ${timeRange === r ? styles.rangeBtnActive : ""}`}
-                  onClick={() => setTimeRange(r)}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className={styles.autoRefresh}>
-            {autoRefresh !== "off" && <span className={styles.liveDot} title="Auto-refresh active" />}
-            <select
-              className={styles.autoRefreshSelect}
-              value={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.value as AutoRefresh)}
-              aria-label="Auto-refresh interval"
-            >
-              <option value="off">Auto</option>
-              <option value="30s">30s</option>
-              <option value="60s">60s</option>
-              <option value="5m">5min</option>
-            </select>
-          </div>
-          <button className="ghost" onClick={handleRefresh} disabled={loading}>
-            {loading ? "Loading…" : "↺ Refresh"}
-          </button>
-          <button className="ghost" onClick={handleLogout}>Sign out</button>
-        </div>
-      </header>
+      <Topbar
+        cluster={cluster}
+        clusters={clusters}
+        showClusterMenu={showClusterMenu}
+        setShowClusterMenu={setShowClusterMenu}
+        onClusterSwitch={handleClusterSwitch}
+        lastRefresh={lastRefresh}
+        prometheusAvailable={prometheusAvailable}
+        timeRange={timeRange}
+        setTimeRange={setTimeRange}
+        autoRefresh={autoRefresh}
+        setAutoRefresh={setAutoRefresh}
+        loading={loading}
+        onRefresh={handleRefresh}
+        onLogout={handleLogout}
+      />
 
       <div className={styles.body}>
-        {/* Sidebar */}
-        <aside className={styles.sidebar}>
-          {/* Cluster section */}
-          <p className={styles.sidebarTitle}>Cluster</p>
-          <ul className={styles.nsList}>
-            <li>
-              <button
-                className={`${styles.nsBtn} ${styles.nodeBtn} ${view === "nodes" ? styles.active : ""}`}
-                onClick={() => setView("nodes")}
-              >
-                ⬡ Nodes
-                {nodes.length > 0 && (
-                  <span className={styles.nodeBadge}>
-                    {nodes.filter((n) => n.status === "Ready").length}/{nodes.length}
-                  </span>
-                )}
-              </button>
-            </li>
-          </ul>
-
-          {/* Namespaces section */}
-          <p className={styles.sidebarTitle} style={{ marginTop: 20 }}>Namespaces</p>
-          {loadingNs ? (
-            <p className={styles.muted}>Loading…</p>
-          ) : (
-            <>
-              <input
-                className={styles.nsSearch}
-                type="text"
-                placeholder="Search namespaces…"
-                value={nsSearch}
-                onChange={(e) => setNsSearch(e.target.value)}
-              />
-              <ul className={styles.nsList}>
-                {visibleNamespaces.map((ns) => {
-                  const st = nsStats.get(ns.name);
-                  return (
-                  <li key={ns.name} className={styles.nsRow}>
-                    <button
-                      className={`${styles.nsBtn} ${view === "namespaces" && selectedNs === ns.name ? styles.active : ""}`}
-                      onClick={() => { setView("namespaces"); setSelectedNs(ns.name); }}
-                    >
-                      <span className={styles.nsBtnName}>{ns.name}</span>
-                    </button>
-                    <button
-                      className={styles.nsHide}
-                      onClick={(e) => { e.stopPropagation(); hideNamespace(ns.name); }}
-                      title={`Hide ${ns.name}`}
-                    >✕</button>
-                  </li>
-                  );
-                })}
-              </ul>
-              {hiddenNamespaces.length > 0 && (
-                <details className={styles.hiddenSection}>
-                  <summary className={styles.hiddenSummary}>
-                    {hiddenNamespaces.length} hidden
-                  </summary>
-                  <ul className={styles.nsList}>
-                    {hiddenNamespaces.map((ns) => (
-                      <li key={ns.name} className={styles.nsRow}>
-                        <span className={styles.hiddenName}>{ns.name}</span>
-                        <button
-                          className={styles.nsRestore}
-                          onClick={() => {
-                            setExcludedNs((prev) => {
-                              const next = new Set(prev);
-                              next.delete(ns.name);
-                              safeSetItem(STORAGE_KEYS.excludedNs, JSON.stringify([...next]));
-                              return next;
-                            });
-                          }}
-                          title={`Restore ${ns.name}`}
-                        >+</button>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </>
-          )}
-        </aside>
+        <Sidebar
+          view={view}
+          setView={setView}
+          selectedNs={selectedNs}
+          setSelectedNs={setSelectedNs}
+          nodes={nodes}
+          namespaces={namespaces}
+          loadingNs={loadingNs}
+          excludedNs={excludedNs}
+          onHideNamespace={hideNamespace}
+          onRestoreNamespace={restoreNamespace}
+        />
 
         {/* Main content */}
         <main className={styles.main}>
