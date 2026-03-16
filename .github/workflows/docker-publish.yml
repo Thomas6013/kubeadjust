@@ -65,7 +65,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Generate SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@v0.23.1
         with:
           image: ghcr.io/${{ steps.version.outputs.owner }}/kubeadjust/${{ matrix.image }}:${{ github.sha }}
           artifact-name: sbom-${{ matrix.image }}.spdx.json
