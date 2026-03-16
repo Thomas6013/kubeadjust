@@ -21,6 +21,8 @@ All notable changes to KubeAdjust are documented here.
 - **Dependency updates** — vitest 4.0.18 → 4.1.0, `@types/node` 25.4.0 → 25.5.0 (lockfile updates).
 - **`STATUS_COLOR` and `shortPodName` deduplicated** — extracted to `src/lib/status.ts`. Previously duplicated across `PodRow.tsx`, `ResourceBar.tsx`, `VolumeSection.tsx`, and `NodeCard.tsx`.
 - **Sidebar extracted to own component** — `src/components/Sidebar.tsx` (namespace list, node button, namespace search/hide). `dashboard/page.tsx` reduced from ~610 to ~545 lines.
+- **Topbar extracted to own component** — `src/components/Topbar.tsx` (brand, cluster badge/switcher, time range, auto-refresh, refresh/logout). `dashboard/page.tsx` reduced further to ~460 lines.
+- **CircleGauge and PodBar extracted from NodeCard** — `src/components/CircleGauge.tsx` and `src/components/PodBar.tsx`. `NodeCard.tsx` reduced from 387 to ~200 lines.
 - **K8s API path parameters URL-encoded** — all path-interpolated segments (namespace, node, pod names) now use `url.PathEscape()` to prevent path traversal.
 - **Unsafe non-null assertions removed** — `NodeCard.tsx`: `usage!` → null guard, `usePct!` → `?? 0`, `pop()!` → `?? fallback`.
 - **`json.NewEncoder` errors now logged** — `handlers/namespaces.go` (`jsonOK`/`jsonError`) and `handlers/auth.go` no longer silently discard encode errors.

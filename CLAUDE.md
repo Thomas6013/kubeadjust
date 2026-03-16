@@ -1,3 +1,5 @@
+claude --resume 42325e8d-f7fa-4ab5-a46a-d77898b7ddea
+
 # KubeAdjust — CLAUDE.md
 
 Context file for Claude Code. Covers architecture, commands, conventions, and known issues.
@@ -61,7 +63,7 @@ frontend/
   src/lib/status.ts        # Shared STATUS_COLOR, STATUS_LABEL, shortPodName() (deduplicated from components)
   src/lib/storage.ts       # sessionStorage safe helpers (safeGetItem, safeSetItem, safeRemoveItem, STORAGE_KEYS)
   src/hooks/useSessionState.ts  # SessionStorage-backed dashboard preferences (view, autoRefresh, selectedNs, etc.)
-  src/components/          # ResourceBar, PodRow, DeploymentCard, SuggestionPanel, Sparkline, Sidebar
+  src/components/          # ResourceBar, PodRow, DeploymentCard, SuggestionPanel, Sparkline, Sidebar, Topbar, CircleGauge, PodBar
   src/proxy.ts             # Next.js proxy (nonce-based CSP per request)
   eslint.config.mjs        # ESLint 9 flat config (eslint-config-next + typescript)
   next.config.mjs          # Standalone output, security headers (CSP handled by proxy.ts)
