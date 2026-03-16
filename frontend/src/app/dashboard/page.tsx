@@ -446,7 +446,7 @@ export default function DashboardPage() {
         {/* Suggestions — only in namespace view */}
         {view === "namespaces" && (
           <SuggestionPanel
-            deployments={deployments}
+            deployments={visibleDeployments}
             history={nsHistory}
             onOpenCards={handleOpenCards}
             searchQuery={workloadSearch}

@@ -1,5 +1,3 @@
-claude --resume 42325e8d-f7fa-4ab5-a46a-d77898b7ddea
-
 # KubeAdjust — CLAUDE.md
 
 Context file for Claude Code. Covers architecture, commands, conventions, and known issues.
