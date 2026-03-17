@@ -64,28 +64,29 @@ frontend/src/
 - **Backend**: No client-go. All Kubernetes API calls go through `k8s/client.go` (raw HTTP). Keep the backend stateless — no caching, no database.
 - **Frontend**: No UI library. CSS Modules only. No charting libraries — sparklines use pure SVG.
 - **Suggestions**: Thresholds live in `frontend/src/lib/suggestions.ts`. Keep them configurable.
-- **RBAC**: Any new Kubernetes resource access must be added to `helm/kubeadjust/templates/rbac.yaml`.
+- **RBAC**: Any new Kubernetes resource access must be added to `rbac.yaml` in the [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm) chart repository.
 
 ## Versioning
 
-The single source of truth for the version is `helm/kubeadjust/Chart.yaml`.
-When bumping a release, update **both** fields:
+When bumping a release, update **both**:
 
-```yaml
-version: 0.x.0       # Helm chart version
-appVersion: "0.x.0"  # Application version — used to tag Docker images in CI
+1. `frontend/src/lib/version.ts` — `APP_VERSION` constant (displayed in the topbar)
+2. `appVersion` in `Chart.yaml` in the [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm) repository
+
+Docker images are published via `docker-publish.yml` when a `*.*.*` git tag is pushed:
+```bash
+git tag 0.22.0 && git push origin 0.22.0
 ```
-
-The `docker-publish.yml` workflow reads `appVersion` automatically on every push to `main`.
-Forgetting to bump it means the `vX.Y.Z` Docker tag won't move.
 
 ## Pull request checklist
 
 - [ ] `go vet ./...` passes in `backend/`
+- [ ] `go test ./...` passes in `backend/`
 - [ ] `npm run build` passes in `frontend/`
-- [ ] New env vars are documented in README.md
-- [ ] Helm values are documented in `values.yaml`
-- [ ] `version` and `appVersion` bumped in `helm/kubeadjust/Chart.yaml` (if releasing)
+- [ ] `npm run lint` passes in `frontend/`
+- [ ] New env vars are documented in `README.md` and `CLAUDE.md`
+- [ ] `APP_VERSION` bumped in `frontend/src/lib/version.ts` (if releasing)
+- [ ] `CHANGELOG.md` updated (if releasing)
 
 ## Code of Conduct
 

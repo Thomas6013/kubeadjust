@@ -181,6 +181,7 @@ See `.env.example` at repo root. Key variables:
 
 - **`ParseCPUMillicores` silently returns 0 on invalid input** — `resources/parse.go:12`
   - `ParseCPUMillicores("xyz123n")` → 0 without error. Misconfigured K8s resources invisible. Fix: return error or log warning.
+- ~~Silent `.catch(() => {})` on background fetches~~ — RESOLVED (v0.22.0, `dashboard/page.tsx`: three silent catches replaced with `console.warn(...)`).
 
 ### Consistency — High Priority
 
@@ -208,7 +209,7 @@ See `.env.example` at repo root. Key variables:
 ### Performance — Medium Priority
 
 - **`ListAllPods` fetches all cluster pods per `/api/nodes` request** — `handlers/nodes.go`
-  - Fix: short TTL in-memory cache (30s), or field-selector to exclude terminated pods.
+  - Partially resolved (v0.22.0): `fieldSelector=status.phase!=Succeeded,status.phase!=Failed` added. Short TTL in-memory cache still pending.
 
 - **N+1 kubelet calls per node** — `handlers/resources.go:115-161`
   - `GetNodeSummary()` called per node. Fix: batch or cache with short TTL.
@@ -220,14 +221,9 @@ See `.env.example` at repo root. Key variables:
 
 ### Performance — Low Priority
 
-- **Sparkline min/max recalculated every render** — `Sparkline.tsx:12-14`, `SparklineModal.tsx:54-56`
-  - Fix: wrap in `useMemo`.
-
-- **No connection pooling on Prometheus client** — `prometheus/client.go`
-  - Fix: custom Transport with `MaxIdleConnsPerHost: 10`.
-
-- **`buildHistoryMap()` called every render in suggestions** — `suggestions.ts:206`
-  - Fix: memoize or cache when history hasn't changed.
+- ~~Sparkline min/max recalculated every render~~ — RESOLVED (v0.22.0, `Sparkline.tsx` + `SparklineModal.tsx`: `useMemo` wraps all SVG coordinate derivations; constants moved to module scope).
+- ~~No connection pooling on Prometheus client~~ — RESOLVED (v0.22.0, `prometheus/client.go`: custom `http.Transport` with `MaxIdleConnsPerHost: 10`).
+- ~~`buildHistoryMap()` called every render in suggestions~~ — RESOLVED (v0.22.0, `SuggestionPanel.tsx`: `computeSuggestions` wrapped in `useMemo([deployments, history])`).
 
 ### Robustness — Medium Priority
 
@@ -279,11 +275,9 @@ See `.env.example` at repo root. Key variables:
 - **Inconsistent errgroup initialisation** — `handlers/resources.go` vs `handlers/namespaces.go`
   - Some use `errgroup.WithContext()`, others `new(errgroup.Group)`. Fix: standardise.
 
-- **`KUBE_MIN_VERSION` exported but never used** — `frontend/src/lib/version.ts:2`
-  - Fix: remove dead export.
+- ~~`KUBE_MIN_VERSION` exported but never used~~ — RESOLVED (v0.22.0, removed from `frontend/src/lib/version.ts`).
 
-- **Inconsistent error handling patterns in frontend** — multiple files
-  - Mix of `.catch(() => {})`, `.catch(e => setError(...))`, and silent swallows. Fix: standardise approach.
+- ~~Inconsistent error handling patterns in frontend~~ — RESOLVED (v0.22.0, three silent catches in `dashboard/page.tsx` replaced with `console.warn`; fatal errors use `setError`; non-fatal background fetches use `console.warn`).
 
 ### Accessibility — Low Priority
 

@@ -4,6 +4,32 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.22.0] - 2026-03-17
+
+### Performance
+
+- **`ListAllPods` excludes terminated pods at the K8s API level** — `k8s/client.go` now passes `?fieldSelector=status.phase!=Succeeded,status.phase!=Failed` to the K8s API. Previously all pods were returned and filtered in Go; clusters with many completed Jobs or CronJobs will see significantly reduced response sizes on every `/api/nodes` request.
+- **Prometheus connection pooling** — `prometheus/client.go` now uses a custom `http.Transport` with `MaxIdleConnsPerHost: 10` (was `http.DefaultTransport`, which defaults to 2). Reduces TCP reconnect overhead on concurrent namespace-batch history queries.
+- **`computeSuggestions` memoized in `SuggestionPanel`** — `useMemo([deployments, history])` prevents the full suggestion recomputation (including `buildHistoryMap`) from running on every chip toggle or group collapse.
+- **`visibleDeployments` memoized in dashboard** — workload search filter is now `useMemo([deployments, workloadSearch])`, avoiding re-execution on unrelated state changes such as auto-refresh ticks.
+- **`Sparkline.tsx`** — min/max and all SVG coordinate derivations wrapped in `useMemo`; `"use client"` directive added.
+- **`SparklineModal.tsx`** — chart constants (`W`, `H`, `PAD`, `INNER_W`, `INNER_H`) moved to module scope; all data-derived geometry wrapped in `useMemo([dataPoints])`.
+
+### Changed
+
+- **Dead code removed** — `KUBE_MIN_VERSION` export removed from `frontend/src/lib/version.ts` (was exported but never imported anywhere in the codebase).
+- **Silent error suppression replaced with `console.warn`** — three background fetch failures in `dashboard/page.tsx` that were silently swallowed (`/* best-effort */`, `/* non-fatal */`) now emit a `console.warn` with a descriptive message: `cluster list unavailable`, `namespace stats unavailable`, `namespace history unavailable`.
+
+### Dependencies
+
+- `next` 16.1.6 → 16.1.7
+- `eslint-config-next` 16.1.6 → 16.1.7
+- `vitest` lockfile → 4.1.0
+- `@types/node` lockfile → 25.5.0
+- ESLint 10 blocked: `eslint-plugin-react` bundled in `eslint-config-next` uses `context.getFilename()` removed in ESLint 10. Staying on `^9` until upstream fix.
+
+---
+
 ## [0.21.0] - 2026-03-15
 
 ### Added
