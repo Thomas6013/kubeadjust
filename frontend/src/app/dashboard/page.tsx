@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type ContainerHistory } from "@/lib/api";
 import { useSessionState, AUTO_REFRESH_MS, type View } from "@/hooks/useSessionState";
@@ -303,10 +303,13 @@ export default function DashboardPage() {
     }
   }, [openCards, workloadSearch]);
 
-  const visibleDeployments = deployments.filter((dep) =>
-    workloadSearch === "" ||
-    dep.name.toLowerCase().includes(workloadSearch.toLowerCase()) ||
-    dep.pods?.some((p) => p.name.toLowerCase().includes(workloadSearch.toLowerCase()))
+  const visibleDeployments = useMemo(() =>
+    deployments.filter((dep) =>
+      workloadSearch === "" ||
+      dep.name.toLowerCase().includes(workloadSearch.toLowerCase()) ||
+      dep.pods?.some((p) => p.name.toLowerCase().includes(workloadSearch.toLowerCase()))
+    ),
+    [deployments, workloadSearch]
   );
 
   const loading = view === "nodes" ? loadingNodes : loadingDeps;

@@ -80,8 +80,15 @@ func New() *Client {
 	}
 	u = strings.TrimRight(u, "/")
 	return &Client{
-		baseURL:    u,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		baseURL: u,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 10,
+				IdleConnTimeout:     90 * time.Second,
+			},
+		},
 	}
 }
 

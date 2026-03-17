@@ -407,9 +407,10 @@ func (c *Client) ListNodeMetrics() (*NodeMetricsList, error) {
 }
 
 // ListAllPods lists pods across all namespaces (needed for node aggregation).
+// Excludes Succeeded and Failed pods at the API level to reduce response size.
 func (c *Client) ListAllPods() (*PodList, error) {
 	var out PodList
-	return &out, c.get("/api/v1/pods", &out)
+	return &out, c.get("/api/v1/pods?fieldSelector=status.phase!=Succeeded,status.phase!=Failed", &out)
 }
 
 func (c *Client) ListPVCs(namespace string) (*PVCList, error) {
