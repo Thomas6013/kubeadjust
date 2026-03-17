@@ -90,7 +90,7 @@ export default function DashboardPage() {
 
   // Fetch available clusters (for switcher)
   useEffect(() => {
-    api.clusters().then(setClusters).catch(() => { /* best-effort */ });
+    api.clusters().then(setClusters).catch((e) => console.warn("cluster list unavailable:", e));
   }, []);
 
   // Keep refs in sync
@@ -117,7 +117,7 @@ export default function DashboardPage() {
     // Fetch namespace stats in background (best-effort)
     api.namespaceStats(token)
       .then((stats) => setNsStats(new Map(stats.map((s) => [s.name, s]))))
-      .catch(() => { /* non-fatal */ });
+      .catch((e) => console.warn("namespace stats unavailable:", e));
   }, [token, cluster]);
 
   const loadDeployments = useCallback(async (ns: string, silent = false) => {
@@ -172,7 +172,7 @@ export default function DashboardPage() {
     if (!token || !selectedNs || !prometheusAvailable || view !== "namespaces") return;
     api.namespaceHistory(token, selectedNs, timeRange)
       .then((h) => setNsHistory(h.containers))
-      .catch(() => { /* best-effort */ });
+      .catch((e) => console.warn("namespace history unavailable:", e));
   }, [timeRange, token, selectedNs, prometheusAvailable, view]);
 
   // Auto-refresh interval — paused when tab is hidden or a fetch is already running
