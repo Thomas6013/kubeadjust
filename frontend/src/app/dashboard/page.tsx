@@ -277,9 +277,10 @@ export default function DashboardPage() {
   const scrollTargetRef = useRef<string | null>(null);
 
   function handleOpenCards(ids: string[], scrollTarget: string) {
-    // If workload search would hide the deployment, clear it so the card is rendered
+    // If workload search would hide the deployment, clear it so the card is rendered.
+    // Check visibleDeployments (not just dep name) because a deployment may be visible via pod name match.
     const depName = ids.find((id) => id.startsWith("dep:"))?.slice(4);
-    if (depName && workloadSearch && !depName.toLowerCase().includes(workloadSearch.toLowerCase())) {
+    if (depName && workloadSearch && !visibleDeployments.some((d) => d.name === depName)) {
       setWorkloadSearch("");
     }
     scrollTargetRef.current = scrollTarget;
