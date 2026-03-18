@@ -182,6 +182,7 @@ See `.env.example` at repo root. Key variables:
 - **`ParseCPUMillicores` silently returns 0 on invalid input** — `resources/parse.go:12`
   - `ParseCPUMillicores("xyz123n")` → 0 without error. Misconfigured K8s resources invisible. Fix: return error or log warning.
 - ~~Silent `.catch(() => {})` on background fetches~~ — RESOLVED (v0.22.0, `dashboard/page.tsx`: three silent catches replaced with `console.warn(...)`).
+- ~~Suggestion panel search clears unexpectedly when clicking a suggestion~~ — RESOLVED (v0.22.0, `dashboard/page.tsx`: `handleOpenCards` now checks `visibleDeployments.some(d => d.name === depName)` instead of `depName.includes(workloadSearch)`; was breaking pod-name-based searches and causing severity groups to reset to default-open).
 
 ### Consistency — High Priority
 

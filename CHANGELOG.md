@@ -6,6 +6,10 @@ All notable changes to KubeAdjust are documented here.
 
 ## [0.22.0] - 2026-03-17
 
+### Fixed
+
+- **Suggestion panel search clears unexpectedly when clicking a suggestion** — `handleOpenCards` in `dashboard/page.tsx` checked `depName.includes(workloadSearch)` to decide whether to clear the workload search. This only matched the deployment *name*, not pod names. When a deployment was visible because a pod name matched the search (not the deployment name itself), clicking any suggestion for that deployment incorrectly cleared `workloadSearch`, causing all suggestions to reappear and previously-collapsed severity groups to reset to their default-open state. Fixed: the condition now checks `visibleDeployments.some(d => d.name === depName)`, which correctly reflects actual visibility (deployment name OR pod name match).
+
 ### Performance
 
 - **`ListAllPods` excludes terminated pods at the K8s API level** — `k8s/client.go` now passes `?fieldSelector=status.phase!=Succeeded,status.phase!=Failed` to the K8s API. Previously all pods were returned and filtered in Go; clusters with many completed Jobs or CronJobs will see significantly reduced response sizes on every `/api/nodes` request.
