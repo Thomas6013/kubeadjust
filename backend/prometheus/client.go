@@ -61,6 +61,9 @@ func ParseTimeRange(r string) TimeRange {
 	}
 }
 
+// maxResponseBytes caps the size of Prometheus HTTP responses.
+const maxResponseBytes = 10 << 20 // 10 MB
+
 // Client is a minimal Prometheus HTTP client.
 type Client struct {
 	baseURL    string
@@ -109,12 +112,12 @@ func (c *Client) QueryRange(query string, tr TimeRange) ([]DataPoint, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB cap
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("reading prometheus response: %w", err)
 	}
-	if len(body) == 10<<20 {
-		return nil, fmt.Errorf("prometheus response exceeded 10 MB limit")
+	if int64(len(body)) == maxResponseBytes {
+		return nil, fmt.Errorf("prometheus response exceeded %d MB limit", maxResponseBytes>>20)
 	}
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("prometheus: %d %s", resp.StatusCode, string(body))
@@ -128,26 +131,7 @@ func (c *Client) QueryRange(query string, tr TimeRange) ([]DataPoint, error) {
 		return []DataPoint{}, nil
 	}
 
-	var points []DataPoint
-	for _, raw := range result.Data.Result[0].Values {
-		if len(raw) != 2 {
-			continue
-		}
-		tsFloat, ok := raw[0].(float64)
-		if !ok {
-			continue
-		}
-		valStr, ok := raw[1].(string)
-		if !ok {
-			continue
-		}
-		v, err := strconv.ParseFloat(valStr, 64)
-		if err != nil {
-			continue
-		}
-		points = append(points, DataPoint{T: int64(tsFloat), V: v})
-	}
-	return points, nil
+	return parseValues(result.Data.Result[0].Values), nil
 }
 
 // QueryRangeMulti fetches a PromQL range query and returns results grouped by label values.
@@ -167,12 +151,12 @@ func (c *Client) QueryRangeMulti(query string, tr TimeRange) ([]promSeriesResult
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB cap
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("reading prometheus response: %w", err)
 	}
-	if len(body) == 10<<20 {
-		return nil, fmt.Errorf("prometheus response exceeded 10 MB limit")
+	if int64(len(body)) == maxResponseBytes {
+		return nil, fmt.Errorf("prometheus response exceeded %d MB limit", maxResponseBytes>>20)
 	}
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("prometheus: %d %s", resp.StatusCode, string(body))

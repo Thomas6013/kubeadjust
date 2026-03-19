@@ -14,6 +14,9 @@ import (
 
 const defaultAPIServer = "https://kubernetes.default.svc"
 
+// maxResponseBytes caps the size of K8s API responses.
+const maxResponseBytes = 10 << 20 // 10 MB
+
 // sharedTransport is created once at package init and reused across all requests.
 var sharedTransport = &http.Transport{
 	TLSClientConfig: &tls.Config{
@@ -79,12 +82,12 @@ func (c *Client) doGet(path string, out interface{}) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB cap
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return fmt.Errorf("reading response for %s: %w", path, err)
 	}
-	if len(body) == 10<<20 {
-		return fmt.Errorf("kubernetes api %s: response exceeded 10 MB limit", path)
+	if int64(len(body)) == maxResponseBytes {
+		return fmt.Errorf("kubernetes api %s: response exceeded %d MB limit", path, maxResponseBytes>>20)
 	}
 	if resp.StatusCode >= 400 {
 		return &apiError{statusCode: resp.StatusCode, message: fmt.Sprintf("kubernetes api %s: %d %s", path, resp.StatusCode, string(body))}

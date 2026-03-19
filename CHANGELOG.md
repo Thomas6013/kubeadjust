@@ -4,11 +4,16 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
-## [0.22.0] - 2026-03-17
+## [0.22.0] - 2026-03-19
 
 ### Fixed
 
+- **`GetPodMetrics` always queries default cluster in multi-cluster mode** — `handlers/resources.go` passed `""` as the API server URL to `k8s.New()`, ignoring the `X-Cluster` header entirely. In multi-cluster setups, this meant the `/api/namespaces/{ns}/metrics` endpoint always returned metrics from the default cluster regardless of which cluster was selected. Fixed: now passes `middleware.ClusterURLFromContext(r.Context())`.
 - **Suggestion panel search clears unexpectedly when clicking a suggestion** — `handleOpenCards` in `dashboard/page.tsx` checked `depName.includes(workloadSearch)` to decide whether to clear the workload search. This only matched the deployment *name*, not pod names. When a deployment was visible because a pod name matched the search (not the deployment name itself), clicking any suggestion for that deployment incorrectly cleared `workloadSearch`, causing all suggestions to reappear and previously-collapsed severity groups to reset to their default-open state. Fixed: the condition now checks `visibleDeployments.some(d => d.name === depName)`, which correctly reflects actual visibility (deployment name OR pod name match).
+- **Best-effort goroutine errors silently swallowed** — six parallel fetches in `handlers/resources.go` (StatefulSets, CronJobs, ReplicaSets, Jobs, PodMetrics, PVCs) used `return nil` without logging when an error occurred. Partial data was served without any server-side trace of what was missing. Fixed: all six goroutines now `log.Printf` before returning nil.
+- **Redundant pod phase filter in `GetNodePods`** — `handlers/nodes.go` checked `pod.Status.Phase == "Succeeded" || "Failed"` in Go, but `ListAllPods()` already excludes those phases via `fieldSelector` at the K8s API level. Removed the dead check.
+- **`apiFetch` uses raw `sessionStorage` instead of `safeGetItem`** — `lib/api.ts` called `sessionStorage.getItem("kube-cluster")` directly, bypassing the `safeGetItem` wrapper that handles private browsing and storage errors. Fixed: now uses `safeGetItem(STORAGE_KEYS.cluster)`.
+- **`frontend/package.json` version stuck at `0.2.0`** — the npm `version` field was never updated alongside `Chart.yaml` and `version.ts`. Fixed: now `0.22.0`.
 
 ### Performance
 
@@ -21,8 +26,10 @@ All notable changes to KubeAdjust are documented here.
 
 ### Changed
 
-- **Dead code removed** — `KUBE_MIN_VERSION` export removed from `frontend/src/lib/version.ts` (was exported but never imported anywhere in the codebase).
+- **Dead code removed** — `KUBE_MIN_VERSION` export removed from `frontend/src/lib/version.ts` (was exported but never imported anywhere in the codebase). Redundant `Succeeded`/`Failed` pod phase check removed from `GetNodePods` (already handled by `fieldSelector`). Inline `parseValues` copy in `QueryRange` replaced with call to existing `parseValues()` function.
 - **Silent error suppression replaced with `console.warn`** — three background fetch failures in `dashboard/page.tsx` that were silently swallowed (`/* best-effort */`, `/* non-fatal */`) now emit a `console.warn` with a descriptive message: `cluster list unavailable`, `namespace stats unavailable`, `namespace history unavailable`.
+- **Response size cap extracted to named constant** — `10 << 20` (10 MB) was hardcoded in three places across `k8s/client.go` and `prometheus/client.go`. Extracted to `maxResponseBytes` constant in each package.
+- **Technical audit** — full codebase audit added at `docs/AUDIT.md` covering security, performance, code quality, maintainability, and architecture trade-offs.
 
 ### Dependencies
 

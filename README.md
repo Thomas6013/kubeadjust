@@ -114,7 +114,9 @@ cd frontend && npm install && npm run dev
 | `OIDC_REDIRECT_URL` | _(empty)_ | `https://<host>/auth/callback` |
 | `SESSION_SECRET` | _(empty)_ | ≥32-char random string for signing session tokens |
 | `SA_TOKEN_<CLUSTER>` | _(empty)_ | SA token for a named cluster, e.g. `SA_TOKEN_PROD` (OIDC multi-cluster) |
+| `SA_TOKENS` | _(empty)_ | Multi-cluster SA tokens: `prod=token1,staging=token2` |
 | `SA_TOKEN` | _(empty)_ | SA token override for the default cluster (normally not needed — uses in-cluster token) |
+| `OIDC_GROUPS` | _(empty)_ | Comma-separated OIDC group names for access control |
 
 **Prometheus:** set `PROMETHEUS_URL` to enable sparklines and P95-based suggestions. Works with or without `http://` prefix.
 
@@ -152,6 +154,12 @@ Browser → Next.js (port 3000) → /api/* proxy → Go backend (port 8080)
 - **URL-encoded path parameters** — all K8s API path segments escaped to prevent path traversal
 
 ---
+
+## Docs
+
+- [OIDC / SSO setup](docs/oidc.md) — Keycloak, Dex, Azure AD, Okta, Google Workspace
+- [Multi-cluster](docs/multi-cluster.md) — configuring multiple K8s clusters
+- [Technical audit](docs/AUDIT.md) — security, performance, code quality analysis (v0.22.0)
 
 ## Contributing
 

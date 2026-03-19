@@ -49,44 +49,56 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 	})
 	g.Go(func() error {
 		ss, err := client.ListStatefulSets(ns)
-		if err == nil {
-			statefulSets = ss
+		if err != nil {
+			log.Printf("failed to list statefulsets in %s: %v", ns, err)
+			return nil
 		}
-		return nil // best-effort
+		statefulSets = ss
+		return nil
 	})
 	g.Go(func() error {
 		cj, err := client.ListCronJobs(ns)
-		if err == nil {
-			cronJobs = cj
+		if err != nil {
+			log.Printf("failed to list cronjobs in %s: %v", ns, err)
+			return nil
 		}
+		cronJobs = cj
 		return nil
 	})
 	g.Go(func() error {
 		rs, err := client.ListReplicaSets(ns)
-		if err == nil {
-			rsList = rs
+		if err != nil {
+			log.Printf("failed to list replicasets in %s: %v", ns, err)
+			return nil
 		}
+		rsList = rs
 		return nil
 	})
 	g.Go(func() error {
 		jl, err := client.ListJobs(ns)
-		if err == nil {
-			jobs = jl
+		if err != nil {
+			log.Printf("failed to list jobs in %s: %v", ns, err)
+			return nil
 		}
+		jobs = jl
 		return nil
 	})
 	g.Go(func() error {
 		pm, err := client.ListPodMetrics(ns)
-		if err == nil {
-			podMetrics = pm
+		if err != nil {
+			log.Printf("metrics-server unavailable for %s: %v", ns, err)
+			return nil
 		}
-		return nil // best-effort
+		podMetrics = pm
+		return nil
 	})
 	g.Go(func() error {
 		pvcs, err := client.ListPVCs(ns)
-		if err == nil {
-			pvcList = pvcs
+		if err != nil {
+			log.Printf("failed to list PVCs in %s: %v", ns, err)
+			return nil
 		}
+		pvcList = pvcs
 		return nil
 	})
 
@@ -245,7 +257,7 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 // GetPodMetrics proxies raw pod metrics from metrics-server. Useful for debugging.
 func GetPodMetrics(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
-	client := k8s.New(middleware.TokenFromContext(r.Context()), "")
+	client := k8s.New(middleware.TokenFromContext(r.Context()), middleware.ClusterURLFromContext(r.Context()))
 	metrics, err := client.ListPodMetrics(ns)
 	if err != nil {
 		log.Printf("metrics-server error for %s: %v", ns, err)
