@@ -395,25 +395,54 @@ func (c *Client) ListPodMetrics(namespace string) (*PodMetricsList, error) {
 
 // ListAllPodMetrics returns pod metrics for all pods across all namespaces.
 func (c *Client) ListAllPodMetrics() (*PodMetricsList, error) {
+	if v, ok := allPodMetricsCache.get(c.apiServer); ok {
+		return v, nil
+	}
 	var out PodMetricsList
-	return &out, c.get("/apis/metrics.k8s.io/v1beta1/pods", &out)
+	if err := c.get("/apis/metrics.k8s.io/v1beta1/pods", &out); err != nil {
+		return nil, err
+	}
+	allPodMetricsCache.set(c.apiServer, &out, ttlShort)
+	return &out, nil
 }
 
 func (c *Client) ListNodes() (*NodeList, error) {
+	if v, ok := nodesCache.get(c.apiServer); ok {
+		return v, nil
+	}
 	var out NodeList
-	return &out, c.get("/api/v1/nodes", &out)
+	if err := c.get("/api/v1/nodes", &out); err != nil {
+		return nil, err
+	}
+	nodesCache.set(c.apiServer, &out, ttlShort)
+	return &out, nil
 }
 
 func (c *Client) ListNodeMetrics() (*NodeMetricsList, error) {
+	if v, ok := nodeMetricsCache.get(c.apiServer); ok {
+		return v, nil
+	}
 	var out NodeMetricsList
-	return &out, c.get("/apis/metrics.k8s.io/v1beta1/nodes", &out)
+	if err := c.get("/apis/metrics.k8s.io/v1beta1/nodes", &out); err != nil {
+		return nil, err
+	}
+	nodeMetricsCache.set(c.apiServer, &out, ttlShort)
+	return &out, nil
 }
 
 // ListAllPods lists pods across all namespaces (needed for node aggregation).
 // Excludes Succeeded and Failed pods at the API level to reduce response size.
+// Results are cached per cluster URL for ttlShort to avoid redundant cluster-wide fetches.
 func (c *Client) ListAllPods() (*PodList, error) {
+	if v, ok := allPodsCache.get(c.apiServer); ok {
+		return v, nil
+	}
 	var out PodList
-	return &out, c.get("/api/v1/pods?fieldSelector=status.phase!=Succeeded,status.phase!=Failed", &out)
+	if err := c.get("/api/v1/pods?fieldSelector=status.phase!=Succeeded,status.phase!=Failed", &out); err != nil {
+		return nil, err
+	}
+	allPodsCache.set(c.apiServer, &out, ttlShort)
+	return &out, nil
 }
 
 func (c *Client) ListPVCs(namespace string) (*PVCList, error) {
@@ -443,9 +472,18 @@ func (c *Client) ListCronJobs(namespace string) (*CronJobList, error) {
 
 // GetNodeSummary calls the kubelet stats/summary via the API server proxy.
 // Requires nodes/proxy get permission. Best-effort: caller should handle errors.
+// Results are cached per (cluster, node) for ttlLong to reduce kubelet proxy load.
 func (c *Client) GetNodeSummary(nodeName string) (*NodeSummary, error) {
+	key := c.apiServer + ":" + nodeName
+	if v, ok := nodeSummaryCache.get(key); ok {
+		return v, nil
+	}
 	var out NodeSummary
-	return &out, c.get(fmt.Sprintf("/api/v1/nodes/%s/proxy/stats/summary", p(nodeName)), &out)
+	if err := c.get(fmt.Sprintf("/api/v1/nodes/%s/proxy/stats/summary", p(nodeName)), &out); err != nil {
+		return nil, err
+	}
+	nodeSummaryCache.set(key, &out, ttlLong)
+	return &out, nil
 }
 
 func envOr(key, def string) string {

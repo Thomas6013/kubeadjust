@@ -230,19 +230,15 @@ See `.env.example` at repo root. Key variables:
 
 ### Performance — High Priority
 
-- **No backend caching** — all handlers
-  - Every request makes direct K8s API calls. Auto-refresh every 30s × 10 users = 200+ K8s API calls/min. Fix: in-memory TTL cache (30s for `ListAllPods`/`ListNodes`, 60s for `GetNodeSummary`). A simple `sync.Map` + `time.Time` is sufficient.
+- ~~No backend caching~~ — RESOLVED (v0.22.0, `k8s/cache.go`: generic TTL cache (`clusterCache[T]`) keyed by cluster URL. `ListAllPods`, `ListNodes`, `ListNodeMetrics`, `ListAllPodMetrics` cached 30s; `GetNodeSummary` cached 60s per node. Zero handler changes — fully transparent. Resolves the `GetNodePods` and `GetNamespaceStats` redundant cluster-wide fetch issues below.)
 
-- **`GetNodePods` fetches all cluster pods + all metrics** — `handlers/nodes.go:174-193`
-  - Each "Pods" click on a node calls `ListAllPods()` + `ListAllPodMetrics()` (cluster-wide), then filters in Go. On large clusters, this is several MB per click. Fix: use node-scoped `fieldSelector` or share the in-memory cache above.
+- ~~`GetNodePods` fetches all cluster pods + all metrics~~ — RESOLVED (v0.22.0, now served from `allPodsCache` and `allPodMetricsCache` on repeated calls within 30s).
 
-- **`GetNamespaceStats` fetches all cluster pods** — `handlers/namespaces.go:72-122`
-  - Iterates every pod in every namespace. On a 5000-pod cluster, several MB parsed per call. Fix: share the cached `ListAllPods()` result.
+- ~~`GetNamespaceStats` fetches all cluster pods~~ — RESOLVED (v0.22.0, `ListAllPods()` now hits `allPodsCache` — the cluster-wide fetch is shared with `/api/nodes` if called within the same 30s window).
 
 ### Performance — Medium Priority
 
-- **`ListAllPods` fetches all cluster pods per `/api/nodes` request** — `handlers/nodes.go`
-  - Partially resolved (v0.22.0): `fieldSelector=status.phase!=Succeeded,status.phase!=Failed` added. Short TTL in-memory cache still pending.
+- ~~`ListAllPods` fetches all cluster pods per `/api/nodes` request~~ — RESOLVED (v0.22.0: `fieldSelector` added to exclude terminated pods; v0.22.0: 30s TTL cache in `k8s/cache.go`).
 
 - **N+1 kubelet calls per node** — `handlers/resources.go:115-161`
   - `GetNodeSummary()` called per node. Fix: batch or cache with short TTL.
