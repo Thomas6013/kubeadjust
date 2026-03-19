@@ -62,9 +62,9 @@ Backend has it, frontend doesn't.
 
 **File:** `backend/handlers/nodes.go:46`
 
-No caching — full cluster pod list loaded per request. O(cluster size).
+~~No caching — full cluster pod list loaded per request. O(cluster size).~~
 
-**Fix:** Short TTL in-memory cache (30s), or field-selector to exclude terminated pods.
+**Partially resolved (v0.22.0):** `fieldSelector=status.phase!=Succeeded,status.phase!=Failed` added — terminated pods no longer transferred. Short TTL cache still pending.
 
 ### P-2 — No virtualisation/pagination for large clusters (Medium)
 
@@ -74,25 +74,17 @@ No caching — full cluster pod list loaded per request. O(cluster size).
 
 **Fix:** `react-window` or "load more" pagination.
 
-### P-3 — No retry on transient K8s API failures (Medium)
+### ~~P-3~~ — ~~No retry on transient K8s API failures~~ ✓ resolved v0.21.0
 
-**File:** `backend/k8s/client.go:45`
+`k8s/client.go` retries up to 3 times with exponential backoff (100ms, 400ms) on 5xx/network errors.
 
-Single network hiccup = full request failure.
+### ~~P-4~~ — ~~Sparkline min/max recalculated every render~~ ✓ resolved v0.22.0
 
-**Fix:** Exponential backoff (max 3 attempts, 5xx only).
+`useMemo` added to `Sparkline.tsx` and `SparklineModal.tsx`.
 
-### P-4 — Sparkline min/max recalculated every render (Low)
+### ~~P-5~~ — ~~No connection pooling on Prometheus client~~ ✓ resolved v0.22.0
 
-**File:** `frontend/src/components/Sparkline.tsx:11`
-
-**Fix:** Wrap in `useMemo`.
-
-### P-5 — No connection pooling on Prometheus client (Low)
-
-**File:** `backend/prometheus/client.go:84`
-
-**Fix:** Custom Transport with `MaxIdleConnsPerHost: 10`.
+Custom `http.Transport` with `MaxIdleConnsPerHost: 10` added to `prometheus/client.go`.
 
 ---
 
@@ -106,13 +98,9 @@ YAML errors or missing values could reach production undetected.
 
 **Fix:** Add `helm lint helm/kubeadjust` and optionally `ct lint`.
 
-### R-2 — ESLint disabled in CI (Medium)
+### ~~R-2~~ — ~~ESLint disabled in CI~~ ✓ resolved v0.21.0
 
-**File:** `.github/workflows/ci.yml:46`
-
-`next lint` removed in Next.js 16, linting step skipped.
-
-**Fix:** Configure `eslint .` directly with `eslint-config-next`.
+ESLint 9 flat config + `eslint-config-next`; `npm run lint` runs `eslint src/`; CI step re-enabled.
 
 ### R-3 — `openCards` sessionStorage can grow unbounded (Low)
 
@@ -120,29 +108,21 @@ YAML errors or missing values could reach production undetected.
 
 **Fix:** Cap at ~100 entries, or clear on namespace switch.
 
-### R-4 — sessionStorage writes not wrapped in try-catch (Low)
+### ~~R-4~~ — ~~sessionStorage writes not wrapped in try-catch~~ ✓ resolved v0.21.0
 
-**File:** `frontend/src/app/dashboard/page.tsx`
+`safeGetItem`/`safeSetItem`/`safeRemoveItem` extracted to `src/lib/storage.ts`; all sessionStorage calls replaced.
 
-**Fix:** Wrap `sessionStorage.setItem` for `QuotaExceededError`.
+### ~~R-5~~ — ~~Silent `.catch(() => {})` on background fetches~~ ✓ resolved v0.22.0
 
-### R-5 — Silent `.catch(() => {})` on background fetches (Low)
-
-**File:** `frontend/src/app/dashboard/page.tsx:106,143`
-
-**Fix:** `console.warn` in dev, optional UI indicator when Prometheus fails.
+Three silent catches in `dashboard/page.tsx` replaced with `console.warn(...)` with descriptive messages.
 
 ---
 
 ## Maintainability
 
-### M-1 — Magic strings for sessionStorage keys (Low)
+### ~~M-1~~ — ~~Magic strings for sessionStorage keys~~ ✓ resolved v0.21.0
 
-**File:** `frontend/src/app/dashboard/page.tsx:47-70`
-
-Storage keys repeated as strings throughout.
-
-**Fix:** Extract to `const STORAGE_KEYS = { TOKEN: "kube-token", ... }`.
+`STORAGE_KEYS` constant object extracted to `src/lib/storage.ts`.
 
 ### M-2 — `parseMemoryBytes` reused to parse pod count (Low)
 

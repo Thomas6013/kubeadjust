@@ -1,3 +1,7 @@
+"use client";
+
+import { useMemo } from "react";
+
 interface SparklineProps {
   points: number[];
   color: string;
@@ -7,17 +11,18 @@ interface SparklineProps {
 }
 
 export default function Sparkline({ points, color, width = 120, height = 32, onClick }: SparklineProps) {
-  if (points.length < 2) return null;
+  const d = useMemo(() => {
+    if (points.length < 2) return null;
+    const min = Math.min(...points);
+    const max = Math.max(...points);
+    const range = max - min || 1;
+    const pad = 1;
+    const xs = points.map((_, i) => pad + (i / (points.length - 1)) * (width - pad * 2));
+    const ys = points.map((v) => pad + (1 - (v - min) / range) * (height - pad * 2));
+    return xs.map((x, i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${ys[i].toFixed(1)}`).join(" ");
+  }, [points, width, height]);
 
-  const min = Math.min(...points);
-  const max = Math.max(...points);
-  const range = max - min || 1;
-
-  const pad = 1;
-  const xs = points.map((_, i) => pad + (i / (points.length - 1)) * (width - pad * 2));
-  const ys = points.map((v) => pad + (1 - (v - min) / range) * (height - pad * 2));
-
-  const d = xs.map((x, i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${ys[i].toFixed(1)}`).join(" ");
+  if (!d) return null;
 
   return (
     <svg

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type ContainerHistory } from "@/lib/api";
 import { useSessionState, AUTO_REFRESH_MS, type View } from "@/hooks/useSessionState";
@@ -90,7 +90,7 @@ export default function DashboardPage() {
 
   // Fetch available clusters (for switcher)
   useEffect(() => {
-    api.clusters().then(setClusters).catch(() => { /* best-effort */ });
+    api.clusters().then(setClusters).catch((e) => console.warn("cluster list unavailable:", e));
   }, []);
 
   // Keep refs in sync
@@ -117,8 +117,8 @@ export default function DashboardPage() {
     // Fetch namespace stats in background (best-effort)
     api.namespaceStats(token)
       .then((stats) => setNsStats(new Map(stats.map((s) => [s.name, s]))))
-      .catch(() => { /* non-fatal */ });
-  }, [token, cluster]);
+      .catch((e) => console.warn("namespace stats unavailable:", e));
+  }, [token, cluster, setSelectedNs]);
 
   const loadDeployments = useCallback(async (ns: string, silent = false) => {
     if (!token || !ns) return;
@@ -136,7 +136,7 @@ export default function DashboardPage() {
       if (!silent) setLoadingDeps(false);
       loadingRef.current = false;
     }
-  }, [token, timeRange, cluster]);
+  }, [token]);
 
   const loadNodes = useCallback(async (silent = false) => {
     if (!token) return;
@@ -153,7 +153,7 @@ export default function DashboardPage() {
       if (!silent) setLoadingNodes(false);
       loadingRef.current = false;
     }
-  }, [token, cluster]);
+  }, [token]);
 
   // Keep callback refs up to date so the interval always calls the latest version
   useEffect(() => { loadNodesRef.current = loadNodes; }, [loadNodes]);
@@ -172,7 +172,7 @@ export default function DashboardPage() {
     if (!token || !selectedNs || !prometheusAvailable || view !== "namespaces") return;
     api.namespaceHistory(token, selectedNs, timeRange)
       .then((h) => setNsHistory(h.containers))
-      .catch(() => { /* best-effort */ });
+      .catch((e) => console.warn("namespace history unavailable:", e));
   }, [timeRange, token, selectedNs, prometheusAvailable, view]);
 
   // Auto-refresh interval — paused when tab is hidden or a fetch is already running
@@ -277,9 +277,10 @@ export default function DashboardPage() {
   const scrollTargetRef = useRef<string | null>(null);
 
   function handleOpenCards(ids: string[], scrollTarget: string) {
-    // If workload search would hide the deployment, clear it so the card is rendered
+    // If workload search would hide the deployment, clear it so the card is rendered.
+    // Check visibleDeployments (not just dep name) because a deployment may be visible via pod name match.
     const depName = ids.find((id) => id.startsWith("dep:"))?.slice(4);
-    if (depName && workloadSearch && !depName.toLowerCase().includes(workloadSearch.toLowerCase())) {
+    if (depName && workloadSearch && !visibleDeployments.some((d) => d.name === depName)) {
       setWorkloadSearch("");
     }
     scrollTargetRef.current = scrollTarget;
@@ -303,10 +304,13 @@ export default function DashboardPage() {
     }
   }, [openCards, workloadSearch]);
 
-  const visibleDeployments = deployments.filter((dep) =>
-    workloadSearch === "" ||
-    dep.name.toLowerCase().includes(workloadSearch.toLowerCase()) ||
-    dep.pods?.some((p) => p.name.toLowerCase().includes(workloadSearch.toLowerCase()))
+  const visibleDeployments = useMemo(() =>
+    deployments.filter((dep) =>
+      workloadSearch === "" ||
+      dep.name.toLowerCase().includes(workloadSearch.toLowerCase()) ||
+      dep.pods?.some((p) => p.name.toLowerCase().includes(workloadSearch.toLowerCase()))
+    ),
+    [deployments, workloadSearch]
   );
 
   const loading = view === "nodes" ? loadingNodes : loadingDeps;
@@ -446,7 +450,7 @@ export default function DashboardPage() {
         {/* Suggestions — only in namespace view */}
         {view === "namespaces" && (
           <SuggestionPanel
-            deployments={deployments}
+            deployments={visibleDeployments}
             history={nsHistory}
             onOpenCards={handleOpenCards}
             searchQuery={workloadSearch}

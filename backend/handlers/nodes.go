@@ -197,9 +197,6 @@ func GetNodePods(w http.ResponseWriter, r *http.Request) {
 		if pod.Spec.NodeName != nodeName {
 			continue
 		}
-		if pod.Status.Phase == "Succeeded" || pod.Status.Phase == "Failed" {
-			continue
-		}
 
 		containerMetrics := metricsMap[pod.Metadata.Name]
 		containers := make([]resources.ContainerResources, 0, len(pod.Spec.Containers))

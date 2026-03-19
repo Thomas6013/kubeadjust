@@ -1,5 +1,3 @@
-claude --resume 42325e8d-f7fa-4ab5-a46a-d77898b7ddea
-
 # KubeAdjust — CLAUDE.md
 
 Context file for Claude Code. Covers architecture, commands, conventions, and known issues.
@@ -67,6 +65,11 @@ frontend/
   src/proxy.ts             # Next.js proxy (nonce-based CSP per request)
   eslint.config.mjs        # ESLint 9 flat config (eslint-config-next + typescript)
   next.config.mjs          # Standalone output, security headers (CSP handled by proxy.ts)
+
+docs/
+  AUDIT.md                 # Technical audit: security, performance, code quality (v0.22.0)
+  oidc.md                  # OIDC/SSO setup guide (Keycloak, Dex, Azure AD, Okta, Google)
+  multi-cluster.md         # Multi-cluster configuration guide
 
 deploy/
   viewer-serviceaccount.yaml  # Standalone SA + ClusterRole for remote clusters (still used in SA token setup docs)
@@ -173,6 +176,7 @@ See `.env.example` at repo root. Key variables:
 - ~~`sessionStorage.setItem()` not wrapped in try-catch~~ — RESOLVED (extracted `safeGetItem`/`safeSetItem`/`safeRemoveItem` in `src/lib/storage.ts`; all dashboard sessionStorage calls replaced).
 - ~~Race condition in PodRow history fetch~~ — RESOLVED (`components/PodRow.tsx`: generation counter via `generationRef`; stale fetch results discarded on `timeRange` change).
 - ~~NetworkPolicy missing Prometheus egress rule~~ — RESOLVED (`networkpolicy.yaml`: conditional egress rule added when `prometheus.enabled=true`; `prometheus.port` (default 9090) added to `values.yaml`).
+- ~~`GetPodMetrics` ignores cluster URL in multi-cluster mode~~ — RESOLVED (v0.22.0, `handlers/resources.go`: `k8s.New(token, "")` → `k8s.New(token, middleware.ClusterURLFromContext(r.Context()))`; previously always queried the default cluster).
 
 ### Bugs — Medium Priority
 
@@ -183,6 +187,14 @@ See `.env.example` at repo root. Key variables:
 
 - **`ParseCPUMillicores` silently returns 0 on invalid input** — `resources/parse.go:12`
   - `ParseCPUMillicores("xyz123n")` → 0 without error. Misconfigured K8s resources invisible. Fix: return error or log warning.
+- ~~Silent `.catch(() => {})` on background fetches~~ — RESOLVED (v0.22.0, `dashboard/page.tsx`: three silent catches replaced with `console.warn(...)`).
+- ~~Suggestion panel search clears unexpectedly when clicking a suggestion~~ — RESOLVED (v0.22.0, `dashboard/page.tsx`: `handleOpenCards` now checks `visibleDeployments.some(d => d.name === depName)` instead of `depName.includes(workloadSearch)`; was breaking pod-name-based searches and causing severity groups to reset to default-open).
+- ~~Best-effort goroutine errors silently swallowed~~ — RESOLVED (v0.22.0, `handlers/resources.go`: six best-effort goroutines now `log.Printf` before returning nil — StatefulSets, CronJobs, ReplicaSets, Jobs, PodMetrics, PVCs).
+- ~~`apiFetch` uses raw `sessionStorage` instead of `safeGetItem`~~ — RESOLVED (v0.22.0, `lib/api.ts`: `sessionStorage.getItem("kube-cluster")` replaced with `safeGetItem(STORAGE_KEYS.cluster)`).
+- ~~Redundant `Succeeded`/`Failed` check in `GetNodePods`~~ — RESOLVED (v0.22.0, `handlers/nodes.go`: removed Go-side phase filter since `ListAllPods()` already excludes terminated pods via `fieldSelector`).
+- ~~`QueryRange` duplicates `parseValues()` logic inline~~ — RESOLVED (v0.22.0, `prometheus/client.go`: inline parsing replaced with call to existing `parseValues()` function).
+- ~~10 MB response cap hardcoded in 3 places~~ — RESOLVED (v0.22.0, `k8s/client.go` and `prometheus/client.go`: extracted `maxResponseBytes` constant).
+- ~~`frontend/package.json` version stuck at `0.2.0`~~ — RESOLVED (v0.22.0, updated to `0.22.0`).
 
 ### Consistency — High Priority
 
@@ -196,6 +208,15 @@ See `.env.example` at repo root. Key variables:
 
 - ~~K8s API path parameters not URL-encoded~~ — RESOLVED (`k8s/client.go`: `p()` helper using `url.PathEscape` applied to all 12 path-interpolated methods).
 
+- **`KUBE_INSECURE_TLS` is global, not per-cluster** — `k8s/client.go:19`
+  - `sharedTransport` reads the flag once at package init. If one cluster needs insecure TLS, all clusters get it. Fix: per-cluster TLS config or per-client transport.
+
+- **No HTTPS validation on OIDC redirect URL** — `handlers/oidc.go:36-42`
+  - `redirectURL` from env var not validated as HTTPS. HTTP redirect could leak authorization codes. Fix: validate scheme at startup when `OIDC_ENABLED=true`.
+
+- **`.env.example` incomplete for OIDC mode** — `.env.example`
+  - Only 6 vars shown; OIDC adds 8 more. Developers may miss required vars. Fix: expand with all OIDC vars (commented out).
+
 - **Missing `seccompProfile: RuntimeDefault`** — `helm/kubeadjust/templates/deployment.yaml`
   - Neither backend nor frontend pod specs set seccomp profile. Fix: add `seccompProfile.type: RuntimeDefault` to both.
 
@@ -207,10 +228,17 @@ See `.env.example` at repo root. Key variables:
 
 - ~~Missing timezone data in scratch image~~ — RESOLVED (`backend/Dockerfile`: `/usr/share/zoneinfo` copied from builder stage).
 
+### Performance — High Priority
+
+- ~~No backend caching~~ — RESOLVED (v0.22.0, `k8s/cache.go`: generic TTL cache (`clusterCache[T]`) keyed by cluster URL. `ListAllPods`, `ListNodes`, `ListNodeMetrics`, `ListAllPodMetrics` cached 30s; `GetNodeSummary` cached 60s per node. Zero handler changes — fully transparent. Resolves the `GetNodePods` and `GetNamespaceStats` redundant cluster-wide fetch issues below.)
+
+- ~~`GetNodePods` fetches all cluster pods + all metrics~~ — RESOLVED (v0.22.0, now served from `allPodsCache` and `allPodMetricsCache` on repeated calls within 30s).
+
+- ~~`GetNamespaceStats` fetches all cluster pods~~ — RESOLVED (v0.22.0, `ListAllPods()` now hits `allPodsCache` — the cluster-wide fetch is shared with `/api/nodes` if called within the same 30s window).
+
 ### Performance — Medium Priority
 
-- **`ListAllPods` fetches all cluster pods per `/api/nodes` request** — `handlers/nodes.go`
-  - Fix: short TTL in-memory cache (30s), or field-selector to exclude terminated pods.
+- ~~`ListAllPods` fetches all cluster pods per `/api/nodes` request~~ — RESOLVED (v0.22.0: `fieldSelector` added to exclude terminated pods; v0.22.0: 30s TTL cache in `k8s/cache.go`).
 
 - **N+1 kubelet calls per node** — `handlers/resources.go:115-161`
   - `GetNodeSummary()` called per node. Fix: batch or cache with short TTL.
@@ -222,14 +250,9 @@ See `.env.example` at repo root. Key variables:
 
 ### Performance — Low Priority
 
-- **Sparkline min/max recalculated every render** — `Sparkline.tsx:12-14`, `SparklineModal.tsx:54-56`
-  - Fix: wrap in `useMemo`.
-
-- **No connection pooling on Prometheus client** — `prometheus/client.go`
-  - Fix: custom Transport with `MaxIdleConnsPerHost: 10`.
-
-- **`buildHistoryMap()` called every render in suggestions** — `suggestions.ts:206`
-  - Fix: memoize or cache when history hasn't changed.
+- ~~Sparkline min/max recalculated every render~~ — RESOLVED (v0.22.0, `Sparkline.tsx` + `SparklineModal.tsx`: `useMemo` wraps all SVG coordinate derivations; constants moved to module scope).
+- ~~No connection pooling on Prometheus client~~ — RESOLVED (v0.22.0, `prometheus/client.go`: custom `http.Transport` with `MaxIdleConnsPerHost: 10`).
+- ~~`buildHistoryMap()` called every render in suggestions~~ — RESOLVED (v0.22.0, `SuggestionPanel.tsx`: `computeSuggestions` wrapped in `useMemo([deployments, history])`).
 
 ### Robustness — Medium Priority
 
@@ -245,11 +268,16 @@ See `.env.example` at repo root. Key variables:
 - **`openCards` sessionStorage can grow unbounded** — `dashboard/page.tsx`
   - Fix: cap at ~100 entries, or clear on namespace switch.
 
-- **Silent `.catch(() => {})` on background fetches** — `dashboard/page.tsx:191-195`
-  - Fix: `console.warn` in dev, optional UI indicator when Prometheus fails.
+- ~~Silent `.catch(() => {})` on background fetches~~ — RESOLVED (v0.22.0, replaced with `console.warn` in `dashboard/page.tsx`).
 
 - **No loading indicator before first pod fetch in NodeCard** — `components/NodeCard.tsx:360`
   - `pods === null && loadingPods === false` shows nothing. Fix: show "Loading pods…" when `podsOpen && pods === null`.
+
+- **No React error boundaries** — `dashboard/page.tsx`
+  - A component crash (e.g., unexpected API response shape) takes down the entire page. Fix: wrap main content areas in error boundaries.
+
+- **Session JWT 8h with no refresh** — `oidc/session.go`
+  - User loses session after 8h with no warning or extend-on-activity. Fix: refresh token or session extension mechanism.
 
 ### Maintainability — Medium Priority
 
@@ -269,8 +297,7 @@ See `.env.example` at repo root. Key variables:
 
 ### Maintainability — Low Priority
 
-- **Magic strings for sessionStorage keys** — `dashboard/page.tsx`
-  - Fix: extract to `const STORAGE_KEYS = { ... }`.
+- ~~Magic strings for sessionStorage keys~~ — RESOLVED (v0.21.0, `STORAGE_KEYS` in `lib/storage.ts`; v0.22.0: `apiFetch` also migrated to use `safeGetItem(STORAGE_KEYS.cluster)`).
 
 - **`parseMemoryBytes` reused to parse pod count** — `handlers/nodes.go`
   - Semantically fragile. Fix: dedicated `parsePodCount()`.
@@ -281,11 +308,15 @@ See `.env.example` at repo root. Key variables:
 - **Inconsistent errgroup initialisation** — `handlers/resources.go` vs `handlers/namespaces.go`
   - Some use `errgroup.WithContext()`, others `new(errgroup.Group)`. Fix: standardise.
 
-- **`KUBE_MIN_VERSION` exported but never used** — `frontend/src/lib/version.ts:2`
-  - Fix: remove dead export.
+- ~~`KUBE_MIN_VERSION` exported but never used~~ — RESOLVED (v0.22.0, removed from `frontend/src/lib/version.ts`).
 
-- **Inconsistent error handling patterns in frontend** — multiple files
-  - Mix of `.catch(() => {})`, `.catch(e => setError(...))`, and silent swallows. Fix: standardise approach.
+- ~~Inconsistent error handling patterns in frontend~~ — RESOLVED (v0.22.0, three silent catches in `dashboard/page.tsx` replaced with `console.warn`; fatal errors use `setError`; non-fatal background fetches use `console.warn`).
+
+- **`SparklineModal.fmtVal()` duplicates `suggestions.ts:fmtSuggested()`** — `components/SparklineModal.tsx:17-27`
+  - Nearly identical formatting logic. Fix: extract shared formatter to `lib/api.ts`.
+
+- **K8s types inlined in `k8s/client.go`** — `k8s/client.go`
+  - ~250 lines of type definitions mixed with client methods (454 total). Fix: extract to `k8s/types.go`.
 
 ### Accessibility — Low Priority
 

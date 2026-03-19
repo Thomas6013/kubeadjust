@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { DeploymentDetail, ContainerHistory } from "@/lib/api";
 import { computeSuggestions, type Suggestion, type SuggestionKind } from "@/lib/suggestions";
 import styles from "./SuggestionPanel.module.css";
@@ -171,7 +171,7 @@ export default function SuggestionPanel({ deployments, history, onOpenCards, sea
   }
 
   // --- Compute ---
-  const allSuggestions = computeSuggestions(deployments, history);
+  const allSuggestions = useMemo(() => computeSuggestions(deployments, history), [deployments, history]);
   const q = searchQuery?.toLowerCase() ?? "";
   const searchFiltered = q
     ? allSuggestions.filter((s) =>
