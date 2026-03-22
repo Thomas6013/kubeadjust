@@ -4,6 +4,44 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.22.0] - 2026-03-19
+
+### Fixed
+
+- **`GetPodMetrics` always queries default cluster in multi-cluster mode** — `handlers/resources.go` passed `""` as the API server URL to `k8s.New()`, ignoring the `X-Cluster` header entirely. In multi-cluster setups, this meant the `/api/namespaces/{ns}/metrics` endpoint always returned metrics from the default cluster regardless of which cluster was selected. Fixed: now passes `middleware.ClusterURLFromContext(r.Context())`.
+- **Suggestion panel search clears unexpectedly when clicking a suggestion** — `handleOpenCards` in `dashboard/page.tsx` checked `depName.includes(workloadSearch)` to decide whether to clear the workload search. This only matched the deployment *name*, not pod names. When a deployment was visible because a pod name matched the search (not the deployment name itself), clicking any suggestion for that deployment incorrectly cleared `workloadSearch`, causing all suggestions to reappear and previously-collapsed severity groups to reset to their default-open state. Fixed: the condition now checks `visibleDeployments.some(d => d.name === depName)`, which correctly reflects actual visibility (deployment name OR pod name match).
+- **Best-effort goroutine errors silently swallowed** — six parallel fetches in `handlers/resources.go` (StatefulSets, CronJobs, ReplicaSets, Jobs, PodMetrics, PVCs) used `return nil` without logging when an error occurred. Partial data was served without any server-side trace of what was missing. Fixed: all six goroutines now `log.Printf` before returning nil.
+- **Redundant pod phase filter in `GetNodePods`** — `handlers/nodes.go` checked `pod.Status.Phase == "Succeeded" || "Failed"` in Go, but `ListAllPods()` already excludes those phases via `fieldSelector` at the K8s API level. Removed the dead check.
+- **`apiFetch` uses raw `sessionStorage` instead of `safeGetItem`** — `lib/api.ts` called `sessionStorage.getItem("kube-cluster")` directly, bypassing the `safeGetItem` wrapper that handles private browsing and storage errors. Fixed: now uses `safeGetItem(STORAGE_KEYS.cluster)`.
+- **`frontend/package.json` version stuck at `0.2.0`** — the npm `version` field was never updated alongside `Chart.yaml` and `version.ts`. Fixed: now `0.22.0`.
+
+### Performance
+
+- **In-memory TTL cache for cluster-wide K8s API calls** — new `k8s/cache.go` adds a generic `clusterCache[T]` keyed by cluster URL. Five expensive methods are now cached: `ListAllPods` (30s), `ListNodes` (30s), `ListNodeMetrics` (30s), `ListAllPodMetrics` (30s), `GetNodeSummary` per node (60s). The three handlers that independently call `ListAllPods()` (`/api/nodes`, `/api/nodes/{node}/pods`, `/api/namespaces/stats`) now share a single in-flight K8s response within each 30s window. The N+1 kubelet proxy calls in `ListDeployments` are also collapsed: each node's summary is fetched at most once per 60s regardless of how many concurrent requests arrive. Zero handler changes — the cache is entirely transparent.
+- **`ListAllPods` excludes terminated pods at the K8s API level** — `k8s/client.go` now passes `?fieldSelector=status.phase!=Succeeded,status.phase!=Failed` to the K8s API. Previously all pods were returned and filtered in Go; clusters with many completed Jobs or CronJobs will see significantly reduced response sizes on every `/api/nodes` request.
+- **Prometheus connection pooling** — `prometheus/client.go` now uses a custom `http.Transport` with `MaxIdleConnsPerHost: 10` (was `http.DefaultTransport`, which defaults to 2). Reduces TCP reconnect overhead on concurrent namespace-batch history queries.
+- **`computeSuggestions` memoized in `SuggestionPanel`** — `useMemo([deployments, history])` prevents the full suggestion recomputation (including `buildHistoryMap`) from running on every chip toggle or group collapse.
+- **`visibleDeployments` memoized in dashboard** — workload search filter is now `useMemo([deployments, workloadSearch])`, avoiding re-execution on unrelated state changes such as auto-refresh ticks.
+- **`Sparkline.tsx`** — min/max and all SVG coordinate derivations wrapped in `useMemo`; `"use client"` directive added.
+- **`SparklineModal.tsx`** — chart constants (`W`, `H`, `PAD`, `INNER_W`, `INNER_H`) moved to module scope; all data-derived geometry wrapped in `useMemo([dataPoints])`.
+
+### Changed
+
+- **Dead code removed** — `KUBE_MIN_VERSION` export removed from `frontend/src/lib/version.ts` (was exported but never imported anywhere in the codebase). Redundant `Succeeded`/`Failed` pod phase check removed from `GetNodePods` (already handled by `fieldSelector`). Inline `parseValues` copy in `QueryRange` replaced with call to existing `parseValues()` function.
+- **Silent error suppression replaced with `console.warn`** — three background fetch failures in `dashboard/page.tsx` that were silently swallowed (`/* best-effort */`, `/* non-fatal */`) now emit a `console.warn` with a descriptive message: `cluster list unavailable`, `namespace stats unavailable`, `namespace history unavailable`.
+- **Response size cap extracted to named constant** — `10 << 20` (10 MB) was hardcoded in three places across `k8s/client.go` and `prometheus/client.go`. Extracted to `maxResponseBytes` constant in each package.
+- **Technical audit** — full codebase audit added at `docs/AUDIT.md` covering security, performance, code quality, maintainability, and architecture trade-offs.
+
+### Dependencies
+
+- `next` 16.1.6 → 16.1.7
+- `eslint-config-next` 16.1.6 → 16.1.7
+- `vitest` lockfile → 4.1.0
+- `@types/node` lockfile → 25.5.0
+- ESLint 10 blocked: `eslint-plugin-react` bundled in `eslint-config-next` uses `context.getFilename()` removed in ESLint 10. Staying on `^9` until upstream fix.
+
+---
+
 ## [0.21.0] - 2026-03-15
 
 ### Added

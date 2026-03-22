@@ -1,4 +1,4 @@
-import { MANAGED_TOKEN } from "@/lib/storage";
+import { MANAGED_TOKEN, safeGetItem, STORAGE_KEYS } from "@/lib/storage";
 
 export interface ResourceValue {
   raw: string;
@@ -115,10 +115,8 @@ async function apiFetch<T>(path: string, token: string): Promise<T> {
   if (token && token !== MANAGED_TOKEN) {
     reqHeaders["Authorization"] = `Bearer ${token}`;
   }
-  if (typeof window !== "undefined") {
-    const cluster = sessionStorage.getItem("kube-cluster");
-    if (cluster) reqHeaders["X-Cluster"] = cluster;
-  }
+  const cluster = safeGetItem(STORAGE_KEYS.cluster);
+  if (cluster) reqHeaders["X-Cluster"] = cluster;
   const res = await fetch(`/api${path}`, { headers: reqHeaders });
   if (!res.ok) {
     if (res.status === 401) {

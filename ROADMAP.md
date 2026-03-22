@@ -5,7 +5,7 @@ Items are not committed to any timeline — this is a solo side project.
 
 ## Infrastructure & Distribution
 
-- [ ] **Separate the Helm chart into its own repository** — publish to Artifact Hub independently from the source code
+- [x] **Separate the Helm chart into its own repository** — chart moved to [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm), published via GitHub Pages _(v0.19.0)_
 - [ ] **Publish to Artifact Hub** — add `artifacthub.io/repository` annotation and submit the Helm repo for indexing
 - [ ] **GitHub Container Registry visibility** — ensure GHCR images are public once the repo goes public
 - [x] **Multi-arch Docker builds** — `linux/amd64` + `linux/arm64` via QEMU + native Go cross-compilation _(v0.13.0)_
