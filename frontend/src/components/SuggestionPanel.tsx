@@ -118,6 +118,7 @@ function SuggestionGroup({ kind, items, open, onToggle, onOpenCards }: Suggestio
   return (
     <div className={styles.group}>
       <button
+        type="button"
         className={styles.groupHeader}
         style={{ color: meta.color, borderBottomColor: `${meta.color}44` }}
         onClick={onToggle}

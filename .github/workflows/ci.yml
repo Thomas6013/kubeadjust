@@ -9,6 +9,7 @@ on:
 jobs:
   backend:
     name: Go build, vet, lint & test
+    if: github.actor != 'renovate[bot]'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -30,6 +31,7 @@ jobs:
 
   frontend:
     name: Next.js build & lint
+    if: github.actor != 'renovate[bot]'
     runs-on: ubuntu-latest
     defaults:
       run:
