@@ -177,6 +177,7 @@ See `.env.example` at repo root. Key variables:
 - ~~Race condition in PodRow history fetch~~ — RESOLVED (`components/PodRow.tsx`: generation counter via `generationRef`; stale fetch results discarded on `timeRange` change).
 - ~~NetworkPolicy missing Prometheus egress rule~~ — RESOLVED (`networkpolicy.yaml`: conditional egress rule added when `prometheus.enabled=true`; `prometheus.port` (default 9090) added to `values.yaml`).
 - ~~`GetPodMetrics` ignores cluster URL in multi-cluster mode~~ — RESOLVED (v0.22.0, `handlers/resources.go`: `k8s.New(token, "")` → `k8s.New(token, middleware.ClusterURLFromContext(r.Context()))`; previously always queried the default cluster).
+- ~~`abs64` missing in `resources` package~~ — RESOLVED (v0.23.0, `workloads.go` called `abs64()` for PVC capacity validation but the function was undefined; backend would not compile and all routes returned 500. Added to `resources/format.go`).
 
 ### Bugs — Medium Priority
 
@@ -184,6 +185,9 @@ See `.env.example` at repo root. Key variables:
 - ~~Unsafe `pop()!` on split result~~ — RESOLVED (`NodeCard.tsx`: `pop()!` → `pop() ?? t.key`).
 - ~~`json.NewEncoder(w).Encode()` errors silently discarded~~ — RESOLVED (`jsonOK`/`jsonError` in `handlers/namespaces.go` and `handlers/auth.go` now check and log encode errors).
 - ~~Comment references non-existent `src/middleware.ts`~~ — RESOLVED (`next.config.mjs:21` updated to `src/proxy.ts`).
+
+- ~~PVC kubelet volume stats incorrect on shared filesystems~~ — RESOLVED (v0.23.0, `workloads.go`: kubelet `statfs()` returns total share capacity on NFS/CephFS, not per-PVC slice. Usage/available now only populated when reported filesystem capacity is within 10% of PVC capacity; otherwise omitted).
+- ~~`SuggestionGroup` header button missing `type="button"`~~ — RESOLVED (v0.23.0, `SuggestionPanel.tsx`: untyped button could default to `type="submit"` in some browser contexts).
 
 - **`ParseCPUMillicores` silently returns 0 on invalid input** — `resources/parse.go:12`
   - `ParseCPUMillicores("xyz123n")` → 0 without error. Misconfigured K8s resources invisible. Fix: return error or log warning.
@@ -260,6 +264,7 @@ See `.env.example` at repo root. Key variables:
   - Fix: add `helm lint helm/kubeadjust` and optionally `ct lint`.
 
 - ~~ESLint disabled in CI~~ — RESOLVED (v0.21.0, ESLint 9 + `eslint-config-next` flat config; `npm run lint` runs `eslint src/`; CI step re-enabled).
+- ~~CI runs on Renovate dependency-update PRs (wastes GitHub Actions minutes)~~ — RESOLVED (v0.23.0, `ci.yml`: `if: github.actor != 'renovate[bot]'` added to both `backend` and `frontend` jobs).
 
 - ~~`docker-compose.yml` passes unused `BACKEND_URL` build arg~~ — RESOLVED (v0.21.0, build `args` block removed; runtime env var is sufficient).
 
@@ -298,6 +303,7 @@ See `.env.example` at repo root. Key variables:
 ### Maintainability — Low Priority
 
 - ~~Magic strings for sessionStorage keys~~ — RESOLVED (v0.21.0, `STORAGE_KEYS` in `lib/storage.ts`; v0.22.0: `apiFetch` also migrated to use `safeGetItem(STORAGE_KEYS.cluster)`).
+- ~~CPU/MEM sort toggle in node view "Top pods"~~ — RESOLVED (v0.23.0, `NodeCard.tsx`: toggle buttons removed; sort fixed to CPU. CSS classes `sortToggle`/`sortBtn`/`sortBtnActive` removed from `NodeCard.module.css`).
 
 - **`parseMemoryBytes` reused to parse pod count** — `handlers/nodes.go`
   - Semantically fragile. Fix: dedicated `parsePodCount()`.
@@ -436,7 +442,7 @@ See `.env.example` at repo root. Key variables:
 
 ## CI/CD Notes
 
-- `ci.yml` runs on every push/PR: `go build`, `go vet`, `go test`, `golangci-lint`, `npm ci`, `npm run build`, `npm run lint`.
+- `ci.yml` runs on push/PR to `main`: `go build`, `go vet`, `go test`, `golangci-lint`, `npm ci`, `npm run build`, `npm run lint`. Skipped for `renovate[bot]` PRs (`if: github.actor != 'renovate[bot]'` on both jobs).
 - `docker-publish.yml` builds and pushes to `ghcr.io/thomas6013/kubeadjust/` on `*.*.*` tag push only (not on every merge to `main`).
 - Image tags: `latest`, `<git-tag>` (authoritative version from `$GITHUB_REF_NAME`), `<commit-sha>`.
 - Multi-arch: `linux/amd64` + `linux/arm64` via QEMU + buildx. Backend uses native Go cross-compilation (`BUILDPLATFORM`/`TARGETARCH`).

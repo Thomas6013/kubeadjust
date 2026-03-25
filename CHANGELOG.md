@@ -4,6 +4,21 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.23.0] - unreleased
+
+### Fixed
+
+- **`abs64` missing in `backend/resources` package** — `workloads.go` called `abs64()` (added for PVC capacity validation) but the function was never defined anywhere in the package. The backend could not compile at all, returning 500 on every route. Fixed: `abs64(x int64) int64` added to `resources/format.go`.
+- **PVC kubelet volume stats incorrect on shared filesystems** — `workloads.go` unconditionally trusted kubelet `statfs()` data for PVC volumes. On NFS, CephFS, and other shared filesystems, `statfs()` returns the total share capacity/usage, not the per-PVC slice — resulting in wildly inflated or wrong usage indicators. Fixed: usage and available are now only populated when the kubelet-reported filesystem capacity is within 10% of the PVC capacity. Outside that range the values are omitted rather than misleading.
+- **`SuggestionPanel` group header missing `type="button"`** — the collapse/expand button for each severity group (`SuggestionGroup`) had no explicit `type` attribute. In some browser/form contexts, an untyped button defaults to `type="submit"` and may not behave as expected. Fixed: `type="button"` added.
+
+### Changed
+
+- **Node view "Top pods" sort toggle removed** — the CPU / MEM toggle buttons on the right side of the "Top pods" row are removed. The list is now always sorted by CPU usage, which is the most relevant metric for scheduling. Removes visual clutter with no loss of information — memory-heavy pods remain visible in the per-pod bars.
+- **CI skips Renovate dependency-update PRs** — `if: github.actor != 'renovate[bot]'` added to both the `backend` and `frontend` jobs in `ci.yml`. Renovate PRs that update `go.mod`, `package.json`, or lockfiles no longer trigger a full build + lint + test run, preserving GitHub Actions minutes.
+
+---
+
 ## [0.22.0] - 2026-03-19
 
 ### Fixed
