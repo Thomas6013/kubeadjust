@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { DeploymentDetail, ContainerHistory } from "@/lib/api";
 import { computeSuggestions, type Suggestion, type SuggestionKind } from "@/lib/suggestions";
 import styles from "./SuggestionPanel.module.css";
@@ -145,52 +145,72 @@ interface SuggestionPanelProps {
 }
 
 export default function SuggestionPanel({ deployments, history, onOpenCards, searchQuery }: SuggestionPanelProps) {
-  // --- Open/close per kind group ---
+  // --- Open/close per kind group (useCallback prevents stale closure on rapid re-renders) ---
   const [openGroups, setOpenGroups] = useState<Map<string, boolean>>(new Map());
 
-  function isGroupOpen(kind: string): boolean {
+  const isGroupOpen = useCallback((kind: string): boolean => {
     return openGroups.get(kind) ?? true;
-  }
+  }, [openGroups]);
 
-  function toggleGroup(kind: string) {
+  const toggleGroup = useCallback((kind: string) => {
+    // Read current open state at call time (not inside updater) so double-invocation
+    // in React StrictMode dev doesn't toggle twice and cancel itself out.
+    const nowOpen = openGroups.get(kind) ?? true;
     setOpenGroups((prev) => {
       const next = new Map(prev);
-      next.set(kind, !(prev.get(kind) ?? true));
+      next.set(kind, !nowOpen);
       return next;
     });
-  }
+  }, [openGroups]);
 
   // --- Resource category chip filter (transient) ---
   const [activeCategories, setActiveCategories] = useState<Set<ResourceCategory>>(new Set());
 
-  function toggleCategory(cat: ResourceCategory) {
+  const toggleCategory = useCallback((cat: ResourceCategory) => {
     setActiveCategories((prev) => {
       const next = new Set(prev);
       if (next.has(cat)) next.delete(cat); else next.add(cat);
       return next;
     });
-  }
+  }, []);
 
   // --- Compute ---
   const allSuggestions = useMemo(() => computeSuggestions(deployments, history), [deployments, history]);
-  const q = searchQuery?.toLowerCase() ?? "";
-  const searchFiltered = q
-    ? allSuggestions.filter((s) =>
-        s.deployment.toLowerCase().includes(q) || s.pod.toLowerCase().includes(q)
-      )
-    : allSuggestions;
-  const filtered = activeCategories.size > 0
-    ? searchFiltered.filter((s) => activeCategories.has(RESOURCE_TO_CATEGORY[s.resource] ?? "cpu"))
-    : searchFiltered;
 
-  const groups = groupByKind(filtered);
+  const searchFiltered = useMemo(() => {
+    const q = searchQuery?.toLowerCase() ?? "";
+    if (!q) return allSuggestions;
+    return allSuggestions.filter((s) =>
+      s.deployment.toLowerCase().includes(q) || s.pod.toLowerCase().includes(q)
+    );
+  }, [allSuggestions, searchQuery]);
 
-  // Category counts (before category filter, for chip display)
-  const catCounts: Record<ResourceCategory, number> = { cpu: 0, memory: 0, storage: 0 };
-  for (const s of searchFiltered) {
-    const cat = RESOURCE_TO_CATEGORY[s.resource];
-    if (cat) catCounts[cat]++;
-  }
+  // Category counts before category filter (used for chip display and ghost-filter detection).
+  const catCounts = useMemo<Record<ResourceCategory, number>>(() => {
+    const counts: Record<ResourceCategory, number> = { cpu: 0, memory: 0, storage: 0 };
+    for (const s of searchFiltered) {
+      const cat = RESOURCE_TO_CATEGORY[s.resource];
+      if (cat) counts[cat]++;
+    }
+    return counts;
+  }, [searchFiltered]);
+
+  // Ghost-filter guard: if an active category no longer has any items in the current
+  // search results (e.g. the user searched for a workload with only memory suggestions
+  // while CPU was active), auto-deactivate it so the panel doesn't show 0 results.
+  const effectiveActiveCategories = useMemo(
+    () => new Set([...activeCategories].filter((cat) => catCounts[cat] > 0)),
+    [activeCategories, catCounts]
+  );
+
+  const filtered = useMemo(
+    () => effectiveActiveCategories.size > 0
+      ? searchFiltered.filter((s) => effectiveActiveCategories.has(RESOURCE_TO_CATEGORY[s.resource] ?? "cpu"))
+      : searchFiltered,
+    [searchFiltered, effectiveActiveCategories]
+  );
+
+  const groups = useMemo(() => groupByKind(filtered), [filtered]);
 
   return (
     <aside className={styles.panel}>
@@ -202,7 +222,7 @@ export default function SuggestionPanel({ deployments, history, onOpenCards, sea
       {searchFiltered.length === 0 ? (
         <div className={styles.allGood}>
           <span className={styles.allGoodIcon}>✓</span>
-          <p>{q ? `No suggestions matching "${searchQuery}"` : "All resources look healthy"}</p>
+          <p>{searchQuery ? `No suggestions matching "${searchQuery}"` : "All resources look healthy"}</p>
         </div>
       ) : (
         <>
@@ -210,8 +230,8 @@ export default function SuggestionPanel({ deployments, history, onOpenCards, sea
           <div className={styles.summary}>
             {CATEGORY_ORDER.map((cat) => {
               if (catCounts[cat] === 0) return null;
-              const isActive = activeCategories.has(cat);
-              const isDimmed = activeCategories.size > 0 && !isActive;
+              const isActive = effectiveActiveCategories.has(cat);
+              const isDimmed = effectiveActiveCategories.size > 0 && !isActive;
               return (
                 <button
                   key={cat}

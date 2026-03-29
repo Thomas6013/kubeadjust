@@ -224,26 +224,35 @@ export const api = {
 
 // --- Formatting helpers ---
 
+/**
+ * Formats a raw resource value (millicores for CPU, bytes for memory) as a human-readable string.
+ * Used as the shared base by fmtCPU, fmtMemory, and the suggestion/sparkline formatters.
+ *   CPU  : ≥1000m → "1.50 cores",  otherwise → "500m"
+ *   Memory: ≥1 GiB → "1.50 GiB",  ≥1 MiB → "512 MiB",  otherwise → "256 KiB"
+ */
+export function fmtRawValue(v: number, isCPU: boolean): string {
+  if (isCPU) {
+    if (v >= 1000) return `${(v / 1000).toFixed(2)} cores`;
+    return `${Math.round(v)}m`;
+  }
+  const gib = v / 1024 ** 3;
+  if (gib >= 1) return `${gib.toFixed(2)} GiB`;
+  const mib = v / 1024 ** 2;
+  if (mib >= 1) return `${mib.toFixed(0)} MiB`;
+  return `${(v / 1024).toFixed(0)} KiB`;
+}
+
 /** Formats a CPU ResourceValue as millicores ("500m") or cores ("1.50 cores"). */
 export function fmtCPU(rv: ResourceValue): string {
   if (!rv?.raw) return "—";
-  if (rv.millicores !== undefined && rv.millicores > 0) {
-    if (rv.millicores >= 1000) return `${(rv.millicores / 1000).toFixed(2)} cores`;
-    return `${rv.millicores}m`;
-  }
+  if (rv.millicores !== undefined && rv.millicores > 0) return fmtRawValue(rv.millicores, true);
   return rv.raw;
 }
 
 /** Formats a memory ResourceValue as KiB/MiB/GiB. */
 export function fmtMemory(rv: ResourceValue): string {
   if (!rv?.raw) return "—";
-  if (rv.bytes !== undefined && rv.bytes > 0) {
-    const gib = rv.bytes / 1024 ** 3;
-    if (gib >= 1) return `${gib.toFixed(2)} GiB`;
-    const mib = rv.bytes / 1024 ** 2;
-    if (mib >= 1) return `${mib.toFixed(0)} MiB`;
-    return `${(rv.bytes / 1024).toFixed(0)} KiB`;
-  }
+  if (rv.bytes !== undefined && rv.bytes > 0) return fmtRawValue(rv.bytes, false);
   return rv.raw;
 }
 

@@ -11,11 +11,29 @@ All notable changes to KubeAdjust are documented here.
 - **`abs64` missing in `backend/resources` package** — `workloads.go` called `abs64()` (added for PVC capacity validation) but the function was never defined anywhere in the package. The backend could not compile at all, returning 500 on every route. Fixed: `abs64(x int64) int64` added to `resources/format.go`.
 - **PVC kubelet volume stats incorrect on shared filesystems** — `workloads.go` unconditionally trusted kubelet `statfs()` data for PVC volumes. On NFS, CephFS, and other shared filesystems, `statfs()` returns the total share capacity/usage, not the per-PVC slice — resulting in wildly inflated or wrong usage indicators. Fixed: usage and available are now only populated when the kubelet-reported filesystem capacity is within 10% of the PVC capacity. Outside that range the values are omitted rather than misleading.
 - **`SuggestionPanel` group header missing `type="button"`** — the collapse/expand button for each severity group (`SuggestionGroup`) had no explicit `type` attribute. In some browser/form contexts, an untyped button defaults to `type="submit"` and may not behave as expected. Fixed: `type="button"` added.
+- **`SuggestionPanel` ghost category filter** — if a resource category chip (CPU / Memory / Storage) was active and the workload search changed to a set of workloads that had no suggestions in that category, the chip would disappear but the active filter remained, causing 0 suggestions to be shown even when other categories had items. Fixed: active categories are now intersected with the set of categories that actually have matching items (`effectiveActiveCategories`), so stale filters auto-deactivate.
+- **`SuggestionPanel` group toggle uses stale closure** — `toggleGroup` and `toggleCategory` were plain functions that captured `openGroups`/`activeCategories` at render time. Under rapid re-renders (e.g. typing in the workload search bar), the captured value could be stale, causing toggles to appear to do nothing. Fixed: both are now `useCallback` with stable dependencies; `toggleGroup` reads the current open state outside the state updater to prevent React StrictMode double-invocation from cancelling the toggle.
+- **`ParseCPUMillicores` silently returns 0 for invalid input** — malformed CPU quantities from misconfigured K8s resources were silently discarded, making them invisible in server logs. Fixed: a `log.Printf` warning is now emitted when a non-empty value fails to parse.
 
 ### Changed
 
 - **Node view "Top pods" sort toggle removed** — the CPU / MEM toggle buttons on the right side of the "Top pods" row are removed. The list is now always sorted by CPU usage, which is the most relevant metric for scheduling. Removes visual clutter with no loss of information — memory-heavy pods remain visible in the per-pod bars.
 - **CI skips Renovate dependency-update PRs** — `if: github.actor != 'renovate[bot]'` added to both the `backend` and `frontend` jobs in `ci.yml`. Renovate PRs that update `go.mod`, `package.json`, or lockfiles no longer trigger a full build + lint + test run, preserving GitHub Actions minutes.
+- **`tsc --noEmit` added to CI** — explicit TypeScript type-check step added before `next build` in the `frontend` CI job. Catches type errors that `next build` might skip in isolated pages.
+- **OIDC redirect URL validated at startup** — `OIDC_REDIRECT_URL` must now start with `https://` when `OIDC_ENABLED=true`. The backend fails fast at startup rather than silently accepting an HTTP redirect URL that could leak authorization codes.
+- **`.env.example` expanded** — all OIDC-related environment variables (8 vars) are now documented with comments, making it clear what is required for SSO mode.
+
+### Refactored
+
+- **Shared `fmtRawValue` formatter** — `fmtVal()` in `SparklineModal.tsx` and `fmtSuggested()` in `suggestions.ts` were near-identical implementations of the same CPU/memory number-to-string logic. Both are removed; all callers now use the new exported `fmtRawValue(v, isCPU)` in `lib/api.ts`. `fmtCPU` and `fmtMemory` also delegate to it internally.
+- **K8s types extracted to `k8s/types.go`** — ~250 lines of Go struct definitions were inline in `k8s/client.go`, making the file hard to navigate. All K8s API response types moved to a dedicated `k8s/types.go` (same package, zero functional change).
+- **`parsePodCount()` in `handlers/nodes.go`** — `MaxPods` was parsed by reusing `resources.ParseMemoryBytes()`, which works by coincidence (both return `int64`) but is semantically incorrect. Replaced with a dedicated `parsePodCount(s string) int` that calls `strconv.ParseInt` directly.
+- **Errgroup usage standardised** — the storage-stats errgroup in `handlers/resources.go` used `var storageG errgroup.Group` (plain declaration) while the workload errgroup used `errgroup.WithContext`. Standardised to `errgroup.WithContext(r.Context())` throughout.
+- **Loop variable copy removed** — `node := node` inside `for node := range nodeNames` in `handlers/resources.go` was needed before Go 1.22; removed (project uses Go 1.26).
+- **`strings.CutSuffix` in `resources/parse.go`** — `HasSuffix + TrimSuffix` pairs replaced with the more expressive `CutSuffix` (Go 1.20+).
+- **`strings.SplitSeq` in `main.go`** — range-over-`Split` loops replaced with `SplitSeq` (Go 1.24+) for `CLUSTERS`, `SA_TOKENS`, and `OIDC_GROUPS` parsing.
+- **`SuggestionPanel` memoization** — `searchFiltered`, `catCounts`, `effectiveActiveCategories`, `filtered`, and `groups` are all now `useMemo`-wrapped, avoiding recomputation on unrelated state changes (e.g. group toggle updates).
+- **`useCallback` on SuggestionPanel callbacks** — `isGroupOpen`, `toggleGroup`, `toggleCategory` wrapped in `useCallback` with proper dependency arrays.
 
 ---
 

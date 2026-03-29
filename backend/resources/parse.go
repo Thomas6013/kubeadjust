@@ -1,22 +1,40 @@
 package resources
 
 import (
+	"log"
 	"strconv"
 	"strings"
 )
 
 // ParseCPUMillicores converts a k8s CPU string to millicores.
 // Handles nanocores ("18447n"), millicores ("500m"), and whole cores ("2").
+// Logs a warning and returns 0 for non-empty strings that cannot be parsed,
+// so misconfigured resources are visible in server logs instead of silently zeroed.
 func ParseCPUMillicores(s string) int64 {
-	if strings.HasSuffix(s, "n") {
-		v, _ := strconv.ParseInt(strings.TrimSuffix(s, "n"), 10, 64)
+	if s == "" {
+		return 0
+	}
+	if body, ok := strings.CutSuffix(s, "n"); ok {
+		v, err := strconv.ParseInt(body, 10, 64)
+		if err != nil {
+			log.Printf("ParseCPUMillicores: invalid nanocores value %q", s)
+			return 0
+		}
 		return v / 1_000_000
 	}
-	if strings.HasSuffix(s, "m") {
-		v, _ := strconv.ParseInt(strings.TrimSuffix(s, "m"), 10, 64)
+	if body, ok := strings.CutSuffix(s, "m"); ok {
+		v, err := strconv.ParseInt(body, 10, 64)
+		if err != nil {
+			log.Printf("ParseCPUMillicores: invalid millicores value %q", s)
+			return 0
+		}
 		return v
 	}
-	v, _ := strconv.ParseFloat(s, 64)
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		log.Printf("ParseCPUMillicores: invalid CPU value %q", s)
+		return 0
+	}
 	return int64(v * 1000)
 }
 
@@ -37,13 +55,13 @@ func ParseMemoryBytes(s string) int64 {
 		{"T", 1000 * 1000 * 1000 * 1000},
 	}
 	for _, sf := range suffixes {
-		if strings.HasSuffix(s, sf.suffix) {
-			v, _ := strconv.ParseInt(strings.TrimSuffix(s, sf.suffix), 10, 64)
+		if body, ok := strings.CutSuffix(s, sf.suffix); ok {
+			v, _ := strconv.ParseInt(body, 10, 64)
 			return v * sf.factor
 		}
 	}
-	if strings.HasSuffix(s, "n") {
-		v, _ := strconv.ParseInt(strings.TrimSuffix(s, "n"), 10, 64)
+	if body, ok := strings.CutSuffix(s, "n"); ok {
+		v, _ := strconv.ParseInt(body, 10, 64)
 		return v / 1_000_000_000
 	}
 	v, _ := strconv.ParseInt(s, 10, 64)

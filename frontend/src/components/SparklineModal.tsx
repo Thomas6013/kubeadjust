@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useCallback, useMemo } from "react";
+import { fmtRawValue } from "@/lib/api";
 import type { DataPoint } from "@/lib/api";
 import styles from "./SparklineModal.module.css";
 
@@ -12,18 +13,6 @@ interface SparklineModalProps {
   color: string;
   isCPU: boolean;
   title: string;
-}
-
-function fmtVal(v: number, isCPU: boolean): string {
-  if (isCPU) {
-    if (v >= 1000) return `${(v / 1000).toFixed(2)}c`;
-    return `${Math.round(v)}m`;
-  }
-  const gib = v / 1024 ** 3;
-  if (gib >= 1) return `${gib.toFixed(2)} GiB`;
-  const mib = v / 1024 ** 2;
-  if (mib >= 1) return `${mib.toFixed(0)} MiB`;
-  return `${(v / 1024).toFixed(0)} KiB`;
 }
 
 function fmtTime(ts: number): string {
@@ -113,25 +102,25 @@ export default function SparklineModal({ isOpen, onClose, dataPoints, label, col
 
           {/* Min / Max labels */}
           <text x={PAD.left + 2} y={PAD.top + 9} fontSize={9} fill="var(--muted)" fontFamily="monospace">
-            max {fmtVal(maxV, isCPU)}
+            max {fmtRawValue(maxV, isCPU)}
           </text>
           <text x={PAD.left + 2} y={PAD.top + INNER_H - 3} fontSize={9} fill="var(--muted)" fontFamily="monospace">
-            min {fmtVal(minV, isCPU)}
+            min {fmtRawValue(minV, isCPU)}
           </text>
         </svg>
 
         <div className={styles.stats}>
           <span className={styles.stat}>
             <span className={styles.statLabel}>min</span>
-            <strong>{fmtVal(minV, isCPU)}</strong>
+            <strong>{fmtRawValue(minV, isCPU)}</strong>
           </span>
           <span className={styles.stat}>
             <span className={styles.statLabel}>max</span>
-            <strong>{fmtVal(maxV, isCPU)}</strong>
+            <strong>{fmtRawValue(maxV, isCPU)}</strong>
           </span>
           <span className={styles.stat} style={{ color }}>
             <span className={styles.statLabel}>now</span>
-            <strong>{fmtVal(current, isCPU)}</strong>
+            <strong>{fmtRawValue(current, isCPU)}</strong>
           </span>
           <span className={styles.stat}>
             <span className={styles.statLabel}>pts</span>

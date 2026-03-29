@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -15,6 +16,13 @@ import (
 	"github.com/devops-kubeadjust/backend/middleware"
 	"github.com/devops-kubeadjust/backend/resources"
 )
+
+// parsePodCount parses the "pods" capacity field from a Node's status.
+// The value is a plain integer (e.g. "110"), not a byte quantity like memory.
+func parsePodCount(s string) int {
+	v, _ := strconv.ParseInt(s, 10, 64)
+	return int(v)
+}
 
 func nodeAge(creationTimestamp string) string {
 	t, err := time.Parse(time.RFC3339, creationTimestamp)
@@ -115,7 +123,7 @@ func ListNodes(w http.ResponseWriter, r *http.Request) {
 				CPU:    resources.ParseResource(node.Status.Allocatable["cpu"], true),
 				Memory: resources.ParseResource(node.Status.Allocatable["memory"], false),
 			},
-			MaxPods: int(resources.ParseMemoryBytes(node.Status.Capacity["pods"])), // reuse int parser
+			MaxPods: parsePodCount(node.Status.Capacity["pods"]),
 		}
 
 		// Node status + pressure conditions
