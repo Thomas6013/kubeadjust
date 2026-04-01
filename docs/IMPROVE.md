@@ -58,13 +58,9 @@ Backend has it, frontend doesn't.
 
 ## Performance
 
-### P-1 — `ListAllPods` fetches all cluster pods per `/api/nodes` request (Medium)
+### ~~P-1~~ — ~~`ListAllPods` fetches all cluster pods per `/api/nodes` request~~ ✓ resolved v0.22.0
 
-**File:** `backend/handlers/nodes.go:46`
-
-~~No caching — full cluster pod list loaded per request. O(cluster size).~~
-
-**Partially resolved (v0.22.0):** `fieldSelector=status.phase!=Succeeded,status.phase!=Failed` added — terminated pods no longer transferred. Short TTL cache still pending.
+`fieldSelector=status.phase!=Succeeded,status.phase!=Failed` added to exclude terminated pods. `allPodsCache` with 30s TTL per clusterURL added in `k8s/cache.go` — shared across all callers (`ListNodes`, `GetNodePods`, `GetNamespaceStats`).
 
 ### P-2 — No virtualisation/pagination for large clusters (Medium)
 

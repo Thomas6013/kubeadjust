@@ -1,3 +1,4 @@
+import { fmtRawValue } from "./api";
 import type { DeploymentDetail, ContainerResources, ResourceValue, VolumeDetail, ContainerHistory } from "./api";
 
 export type SuggestionKind = "danger" | "warning" | "overkill";
@@ -43,18 +44,6 @@ function val(rv: ResourceValue | undefined, isCPU: boolean): number {
   return isCPU ? (rv.millicores ?? 0) : (rv.bytes ?? 0);
 }
 
-/** Formats a suggested resource value for display in the suggestion panel. */
-function fmtSuggested(v: number, isCPU: boolean): string {
-  if (isCPU) {
-    if (v >= 1000) return `${(v / 1000).toFixed(2)} cores`;
-    return `${v}m`;
-  }
-  const gib = v / 1024 ** 3;
-  if (gib >= 1) return `${gib.toFixed(2)} GiB`;
-  const mib = v / 1024 ** 2;
-  if (mib >= 1) return `${Math.ceil(mib)} MiB`;
-  return `${Math.ceil(v / 1024)} KiB`;
-}
 
 /** Generates CPU and memory suggestions for a container: danger/warning when near limit, overkill when far below request.
  *  When Prometheus history is available, uses P95 for danger/warning thresholds and mean for overkill detection. */
@@ -82,7 +71,7 @@ function analyzeCpuMem(c: ContainerResources, depName: string, podName: string, 
       results.push({ deployment: depName, pod: podName, container: c.name, resource: `${label} — no request`, kind: "warning",
         action: "Set request",
         message: `No ${label} request set — scheduler cannot guarantee resources`,
-        current: "none", suggested: fmtSuggested(suggested, isCPU) });
+        current: "none", suggested: fmtRawValue(suggested, isCPU) });
     }
     // No limit defined — flag it
     if (lim === 0) {
@@ -90,7 +79,7 @@ function analyzeCpuMem(c: ContainerResources, depName: string, podName: string, 
       results.push({ deployment: depName, pod: podName, container: c.name, resource: `${label} — no limit`, kind: "warning",
         action: "Set limit",
         message: `No ${label} limit set — container can consume unbounded ${label.toLowerCase()}`,
-        current: "unlimited", suggested: fmtSuggested(suggested, isCPU) });
+        current: "unlimited", suggested: fmtRawValue(suggested, isCPU) });
     }
     if (lim > 0) {
       const pct = p95Use / lim;
@@ -98,12 +87,12 @@ function analyzeCpuMem(c: ContainerResources, depName: string, podName: string, 
         results.push({ deployment: depName, pod: podName, container: c.name, resource: label, kind: "danger",
           action: "Increase limit",
           message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${confidence}`,
-          current: fmtSuggested(lim, isCPU), suggested: fmtSuggested(Math.ceil(p95Use * 1.4), isCPU) });
+          current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(Math.ceil(p95Use * 1.4), isCPU) });
       } else if (pct >= 0.70) {
         results.push({ deployment: depName, pod: podName, container: c.name, resource: label, kind: "warning",
           action: "Increase limit",
           message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${confidence}`,
-          current: fmtSuggested(lim, isCPU), suggested: fmtSuggested(Math.ceil(p95Use * 1.4), isCPU) });
+          current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(Math.ceil(p95Use * 1.4), isCPU) });
       }
     }
     const requestOverkill = req > 0 && meanUse / req <= 0.35;
@@ -111,14 +100,14 @@ function analyzeCpuMem(c: ContainerResources, depName: string, podName: string, 
       results.push({ deployment: depName, pod: podName, container: c.name, resource: label, kind: "overkill",
         action: "Reduce request",
         message: `${label} ${source} request is ${(req / meanUse).toFixed(1)}× actual usage${confidence}`,
-        current: fmtSuggested(req, isCPU), suggested: fmtSuggested(Math.ceil(meanUse * 1.3), isCPU) });
+        current: fmtRawValue(req, isCPU), suggested: fmtRawValue(Math.ceil(meanUse * 1.3), isCPU) });
     }
     // Limit over-provisioned: limit is more than 3× P95 usage
     if (lim > 0 && p95Use > 0 && lim / p95Use >= 3) {
       results.push({ deployment: depName, pod: podName, container: c.name, resource: label, kind: "overkill",
         action: "Reduce limit",
         message: `${label} limit is ${(lim / p95Use).toFixed(1)}× P95 usage${confidence}`,
-        current: fmtSuggested(lim, isCPU), suggested: fmtSuggested(Math.ceil(p95Use * 1.5), isCPU) });
+        current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(Math.ceil(p95Use * 1.5), isCPU) });
     }
     // Request too low: P95 usage consistently exceeds request (only when not already flagged as overkill)
     if (req > 0 && !requestOverkill && p95Use > req * 1.1) {
@@ -127,7 +116,7 @@ function analyzeCpuMem(c: ContainerResources, depName: string, podName: string, 
       results.push({ deployment: depName, pod: podName, container: c.name, resource: label, kind,
         action: "Increase request",
         message: `${label} ${source} usage is ${ratio.toFixed(1)}× the request — pod may be throttled or evicted${confidence}`,
-        current: fmtSuggested(req, isCPU), suggested: fmtSuggested(Math.ceil(p95Use * 1.3), isCPU) });
+        current: fmtRawValue(req, isCPU), suggested: fmtRawValue(Math.ceil(p95Use * 1.3), isCPU) });
     }
   }
   return results;
@@ -147,19 +136,19 @@ function analyzeEphemeral(c: ContainerResources, depName: string, podName: strin
     results.push({ deployment: depName, pod: podName, container: c.name, resource: "Ephemeral — no limit", kind: "warning",
       action: "Set limit",
       message: "No ephemeral-storage limit set",
-      current: "unlimited", suggested: fmtSuggested(Math.ceil(use * 2), false) });
+      current: "unlimited", suggested: fmtRawValue(Math.ceil(use * 2), false) });
   } else {
     const pct = use / lim;
     if (pct >= 0.90) {
       results.push({ deployment: depName, pod: podName, container: c.name, resource: "Ephemeral", kind: "danger",
         action: "Increase limit",
         message: `Ephemeral usage at ${Math.round(pct * 100)}% of limit`,
-        current: fmtSuggested(lim, false), suggested: fmtSuggested(Math.ceil(use * 1.5), false) });
+        current: fmtRawValue(lim, false), suggested: fmtRawValue(Math.ceil(use * 1.5), false) });
     } else if (pct >= 0.70) {
       results.push({ deployment: depName, pod: podName, container: c.name, resource: "Ephemeral", kind: "warning",
         action: "Increase limit",
         message: `Ephemeral usage at ${Math.round(pct * 100)}% of limit`,
-        current: fmtSuggested(lim, false), suggested: fmtSuggested(Math.ceil(use * 1.5), false) });
+        current: fmtRawValue(lim, false), suggested: fmtRawValue(Math.ceil(use * 1.5), false) });
     }
   }
   return results;
@@ -180,12 +169,12 @@ function analyzeVolumes(volumes: VolumeDetail[], depName: string, podName: strin
           results.push({ deployment: depName, pod: podName, container: vol.pvcName ?? vol.name, resource: "PVC",
             kind: "danger", action: "Expand PVC",
             message: `PVC "${vol.pvcName}" at ${Math.round(pct * 100)}% capacity`,
-            current: fmtSuggested(cap, false), suggested: fmtSuggested(Math.ceil(cap * 1.5), false) });
+            current: fmtRawValue(cap, false), suggested: fmtRawValue(Math.ceil(cap * 1.5), false) });
         } else if (pct >= 0.75) {
           results.push({ deployment: depName, pod: podName, container: vol.pvcName ?? vol.name, resource: "PVC",
             kind: "warning", action: "Expand PVC",
             message: `PVC "${vol.pvcName}" at ${Math.round(pct * 100)}% capacity`,
-            current: fmtSuggested(cap, false), suggested: fmtSuggested(Math.ceil(cap * 1.5), false) });
+            current: fmtRawValue(cap, false), suggested: fmtRawValue(Math.ceil(cap * 1.5), false) });
         }
       }
     }
@@ -194,7 +183,7 @@ function analyzeVolumes(volumes: VolumeDetail[], depName: string, podName: strin
       results.push({ deployment: depName, pod: podName, container: vol.name, resource: "EmptyDir",
         kind: "warning", action: "Set sizeLimit",
         message: `EmptyDir "${vol.name}" has no sizeLimit`,
-        current: "unlimited", suggested: fmtSuggested(Math.ceil(use * 2), false) });
+        current: "unlimited", suggested: fmtRawValue(Math.ceil(use * 2), false) });
     }
   }
   return results;

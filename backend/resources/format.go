@@ -2,6 +2,13 @@ package resources
 
 import "fmt"
 
+func abs64(x int64) int64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
 // FmtBytes formats a byte count as a human-readable string (Gi/Mi/Ki/B).
 func FmtBytes(b int64) string {
 	const gib = 1024 * 1024 * 1024

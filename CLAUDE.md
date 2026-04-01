@@ -20,6 +20,7 @@ KubeAdjust is a **read-only Kubernetes dashboard** (Go backend + Next.js fronten
 backend/
   main.go                  # Chi router, CORS (configurable via ALLOWED_ORIGINS), routes
   k8s/client.go            # Raw HTTP K8s API client (shared transport, token forwarding, LimitReader)
+  k8s/types.go             # K8s API response types (extracted from client.go in v0.23.0)
   prometheus/client.go     # Optional Prometheus client (LimitReader, TimeRange, namespace batch)
   middleware/auth.go       # Bearer token extraction from Authorization header (token mode)
   middleware/cluster.go    # ClusterURL middleware — routes X-Cluster header to API server URL
@@ -56,7 +57,7 @@ frontend/
   src/app/auth/callback/   # Server-side route: validates state, exchanges code, passes token to client
   src/app/auth/done/       # Client component: moves token from cookie → sessionStorage → /dashboard
   src/app/auth/logout/     # Client component: clears all kube-token*, kube-cluster, kubeadjust:* from sessionStorage → /
-  src/lib/api.ts           # Typed API client (TimeRange, ContainerHistory, NamespaceHistoryResponse, AuthConfig)
+  src/lib/api.ts           # Typed API client (TimeRange, ContainerHistory, NamespaceHistoryResponse, AuthConfig, fmtRawValue)
   src/lib/suggestions.ts   # Suggestion computation (P95/mean weighted, no-limit warning, confidence indicator)
   src/lib/status.ts        # Shared STATUS_COLOR, STATUS_LABEL, shortPodName() (deduplicated from components)
   src/lib/storage.ts       # sessionStorage safe helpers (safeGetItem, safeSetItem, safeRemoveItem, STORAGE_KEYS)
@@ -75,7 +76,7 @@ deploy/
   viewer-serviceaccount.yaml  # Standalone SA + ClusterRole for remote clusters (still used in SA token setup docs)
 
 .github/workflows/
-  ci.yml                   # go build/vet/test + golangci-lint + npm build/lint
+  ci.yml                   # go build/vet/test + golangci-lint + npm typecheck/build/lint
   docker-publish.yml       # Push to GHCR (amd64+arm64) + SBOM + cosign signing
 
 # Helm chart — separate repository
@@ -177,6 +178,7 @@ See `.env.example` at repo root. Key variables:
 - ~~Race condition in PodRow history fetch~~ — RESOLVED (`components/PodRow.tsx`: generation counter via `generationRef`; stale fetch results discarded on `timeRange` change).
 - ~~NetworkPolicy missing Prometheus egress rule~~ — RESOLVED (`networkpolicy.yaml`: conditional egress rule added when `prometheus.enabled=true`; `prometheus.port` (default 9090) added to `values.yaml`).
 - ~~`GetPodMetrics` ignores cluster URL in multi-cluster mode~~ — RESOLVED (v0.22.0, `handlers/resources.go`: `k8s.New(token, "")` → `k8s.New(token, middleware.ClusterURLFromContext(r.Context()))`; previously always queried the default cluster).
+- ~~`abs64` missing in `resources` package~~ — RESOLVED (v0.23.0, `workloads.go` called `abs64()` for PVC capacity validation but the function was undefined; backend would not compile and all routes returned 500. Added to `resources/format.go`).
 
 ### Bugs — Medium Priority
 
@@ -185,8 +187,10 @@ See `.env.example` at repo root. Key variables:
 - ~~`json.NewEncoder(w).Encode()` errors silently discarded~~ — RESOLVED (`jsonOK`/`jsonError` in `handlers/namespaces.go` and `handlers/auth.go` now check and log encode errors).
 - ~~Comment references non-existent `src/middleware.ts`~~ — RESOLVED (`next.config.mjs:21` updated to `src/proxy.ts`).
 
-- **`ParseCPUMillicores` silently returns 0 on invalid input** — `resources/parse.go:12`
-  - `ParseCPUMillicores("xyz123n")` → 0 without error. Misconfigured K8s resources invisible. Fix: return error or log warning.
+- ~~PVC kubelet volume stats incorrect on shared filesystems~~ — RESOLVED (v0.23.0, `workloads.go`: kubelet `statfs()` returns total share capacity on NFS/CephFS, not per-PVC slice. Usage/available now only populated when reported filesystem capacity is within 10% of PVC capacity; otherwise omitted).
+- ~~`SuggestionGroup` header button missing `type="button"`~~ — RESOLVED (v0.23.0, `SuggestionPanel.tsx`: untyped button could default to `type="submit"` in some browser contexts).
+
+- ~~`ParseCPUMillicores` silently returns 0 on invalid input~~ — RESOLVED (v0.23.0, `resources/parse.go`: `log.Printf` warning on every invalid-input branch — nanocores, millicores, and float parsing. Uses `strings.CutSuffix` for cleaner suffix handling).
 - ~~Silent `.catch(() => {})` on background fetches~~ — RESOLVED (v0.22.0, `dashboard/page.tsx`: three silent catches replaced with `console.warn(...)`).
 - ~~Suggestion panel search clears unexpectedly when clicking a suggestion~~ — RESOLVED (v0.22.0, `dashboard/page.tsx`: `handleOpenCards` now checks `visibleDeployments.some(d => d.name === depName)` instead of `depName.includes(workloadSearch)`; was breaking pod-name-based searches and causing severity groups to reset to default-open).
 - ~~Best-effort goroutine errors silently swallowed~~ — RESOLVED (v0.22.0, `handlers/resources.go`: six best-effort goroutines now `log.Printf` before returning nil — StatefulSets, CronJobs, ReplicaSets, Jobs, PodMetrics, PVCs).
@@ -211,11 +215,9 @@ See `.env.example` at repo root. Key variables:
 - **`KUBE_INSECURE_TLS` is global, not per-cluster** — `k8s/client.go:19`
   - `sharedTransport` reads the flag once at package init. If one cluster needs insecure TLS, all clusters get it. Fix: per-cluster TLS config or per-client transport.
 
-- **No HTTPS validation on OIDC redirect URL** — `handlers/oidc.go:36-42`
-  - `redirectURL` from env var not validated as HTTPS. HTTP redirect could leak authorization codes. Fix: validate scheme at startup when `OIDC_ENABLED=true`.
+- ~~No HTTPS validation on OIDC redirect URL~~ — RESOLVED (v0.23.0, `main.go`: `log.Fatal` at startup if `OIDC_REDIRECT_URL` does not start with `https://`).
 
-- **`.env.example` incomplete for OIDC mode** — `.env.example`
-  - Only 6 vars shown; OIDC adds 8 more. Developers may miss required vars. Fix: expand with all OIDC vars (commented out).
+- ~~`.env.example` incomplete for OIDC mode~~ — RESOLVED (v0.23.0, `.env.example`: expanded with all OIDC, multi-cluster, and SA token variables — commented-out sections with descriptions).
 
 - **Missing `seccompProfile: RuntimeDefault`** — `helm/kubeadjust/templates/deployment.yaml`
   - Neither backend nor frontend pod specs set seccomp profile. Fix: add `seccompProfile.type: RuntimeDefault` to both.
@@ -260,6 +262,7 @@ See `.env.example` at repo root. Key variables:
   - Fix: add `helm lint helm/kubeadjust` and optionally `ct lint`.
 
 - ~~ESLint disabled in CI~~ — RESOLVED (v0.21.0, ESLint 9 + `eslint-config-next` flat config; `npm run lint` runs `eslint src/`; CI step re-enabled).
+- ~~CI runs on Renovate dependency-update PRs (wastes GitHub Actions minutes)~~ — RESOLVED (v0.23.0, `ci.yml`: `if: github.actor != 'renovate[bot]'` added to both `backend` and `frontend` jobs).
 
 - ~~`docker-compose.yml` passes unused `BACKEND_URL` build arg~~ — RESOLVED (v0.21.0, build `args` block removed; runtime env var is sufficient).
 
@@ -298,25 +301,22 @@ See `.env.example` at repo root. Key variables:
 ### Maintainability — Low Priority
 
 - ~~Magic strings for sessionStorage keys~~ — RESOLVED (v0.21.0, `STORAGE_KEYS` in `lib/storage.ts`; v0.22.0: `apiFetch` also migrated to use `safeGetItem(STORAGE_KEYS.cluster)`).
+- ~~CPU/MEM sort toggle in node view "Top pods"~~ — RESOLVED (v0.23.0, `NodeCard.tsx`: toggle buttons removed; sort fixed to CPU. CSS classes `sortToggle`/`sortBtn`/`sortBtnActive` removed from `NodeCard.module.css`).
 
-- **`parseMemoryBytes` reused to parse pod count** — `handlers/nodes.go`
-  - Semantically fragile. Fix: dedicated `parsePodCount()`.
+- ~~`parseMemoryBytes` reused to parse pod count~~ — RESOLVED (v0.23.0, `handlers/nodes.go`: dedicated `parsePodCount()` using `strconv.ParseInt`).
 
 - **Suggestion thresholds hardcoded** — `suggestions.ts`
   - 0.90, 0.70, 0.35, 3× not configurable. Fix: extract to config object.
 
-- **Inconsistent errgroup initialisation** — `handlers/resources.go` vs `handlers/namespaces.go`
-  - Some use `errgroup.WithContext()`, others `new(errgroup.Group)`. Fix: standardise.
+- ~~Inconsistent errgroup initialisation~~ — RESOLVED (v0.23.0, `handlers/resources.go`: `var storageG errgroup.Group` → `errgroup.WithContext(r.Context())`, consistent with all other errgroups in handlers).
 
 - ~~`KUBE_MIN_VERSION` exported but never used~~ — RESOLVED (v0.22.0, removed from `frontend/src/lib/version.ts`).
 
 - ~~Inconsistent error handling patterns in frontend~~ — RESOLVED (v0.22.0, three silent catches in `dashboard/page.tsx` replaced with `console.warn`; fatal errors use `setError`; non-fatal background fetches use `console.warn`).
 
-- **`SparklineModal.fmtVal()` duplicates `suggestions.ts:fmtSuggested()`** — `components/SparklineModal.tsx:17-27`
-  - Nearly identical formatting logic. Fix: extract shared formatter to `lib/api.ts`.
+- ~~`SparklineModal.fmtVal()` duplicates `suggestions.ts:fmtSuggested()`~~ — RESOLVED (v0.23.0, shared `fmtRawValue()` in `lib/api.ts`; `SparklineModal.tsx` and `suggestions.ts` local formatters removed).
 
-- **K8s types inlined in `k8s/client.go`** — `k8s/client.go`
-  - ~250 lines of type definitions mixed with client methods (454 total). Fix: extract to `k8s/types.go`.
+- ~~K8s types inlined in `k8s/client.go`~~ — RESOLVED (v0.23.0, extracted ~220 lines of K8s API response types to `k8s/types.go`).
 
 ### Accessibility — Low Priority
 
@@ -436,7 +436,7 @@ See `.env.example` at repo root. Key variables:
 
 ## CI/CD Notes
 
-- `ci.yml` runs on every push/PR: `go build`, `go vet`, `go test`, `golangci-lint`, `npm ci`, `npm run build`, `npm run lint`.
+- `ci.yml` runs on push/PR to `main`: `go build`, `go vet`, `go test`, `golangci-lint`, `npm ci`, `npm run typecheck` (`tsc --noEmit`), `npm run build`, `npm run lint`. Skipped for `renovate[bot]` PRs (`if: github.actor != 'renovate[bot]'` on both jobs).
 - `docker-publish.yml` builds and pushes to `ghcr.io/thomas6013/kubeadjust/` on `*.*.*` tag push only (not on every merge to `main`).
 - Image tags: `latest`, `<git-tag>` (authoritative version from `$GITHUB_REF_NAME`), `<commit-sha>`.
 - Multi-arch: `linux/amd64` + `linux/arm64` via QEMU + buildx. Backend uses native Go cross-compilation (`BUILDPLATFORM`/`TARGETARCH`).

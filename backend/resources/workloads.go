@@ -114,10 +114,22 @@ func BuildPodDetails(
 				}
 				if stoStats.Volumes != nil {
 					if vs, ok := stoStats.Volumes[vol.Name]; ok {
-						u := ResourceValue{Bytes: vs.UsedBytes, Raw: FmtBytes(vs.UsedBytes)}
-						a := ResourceValue{Bytes: vs.AvailableBytes, Raw: FmtBytes(vs.AvailableBytes)}
-						vd.Usage = &u
-						vd.Available = &a
+						// Only trust kubelet volume stats when the reported filesystem
+						// capacity is close to the PVC capacity (within 10%).
+						// For shared filesystems (NFS, CephFS, etc.) the kubelet uses
+						// statfs() which returns total share stats, not per-PVC usage.
+						pvcBytes := int64(0)
+						if vd.Capacity != nil {
+							pvcBytes = vd.Capacity.Bytes
+						}
+						fsMatchesPVC := pvcBytes > 0 && vs.CapacityBytes > 0 &&
+							abs64(vs.CapacityBytes-pvcBytes)*10 <= pvcBytes
+						if fsMatchesPVC {
+							u := ResourceValue{Bytes: vs.UsedBytes, Raw: FmtBytes(vs.UsedBytes)}
+							a := ResourceValue{Bytes: vs.AvailableBytes, Raw: FmtBytes(vs.AvailableBytes)}
+							vd.Usage = &u
+							vd.Available = &a
+						}
 					}
 				}
 				volumes = append(volumes, vd)

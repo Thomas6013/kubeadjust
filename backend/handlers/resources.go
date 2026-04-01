@@ -133,10 +133,9 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 	}
 	podStorageMap := map[string]resources.PodStorageStats{}
 	var storageMu sync.Mutex
-	var storageG errgroup.Group
-	storageG.SetLimit(5) // bound concurrent kubelet calls
+	storageG, _ := errgroup.WithContext(r.Context())
+	storageG.SetLimit(5) // bound concurrent kubelet calls to avoid kubelet overload
 	for node := range nodeNames {
-		node := node
 		storageG.Go(func() error {
 			summary, err := client.GetNodeSummary(node)
 			if err != nil {

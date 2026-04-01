@@ -85,6 +85,10 @@ func main() {
 		if len(missing) > 0 {
 			log.Fatalf("OIDC_ENABLED=true but missing required env vars: %s", strings.Join(missing, ", "))
 		}
+		// OIDC redirect URL must use HTTPS to prevent authorization code leakage over plaintext HTTP.
+		if !strings.HasPrefix(redirectURL, "https://") {
+			log.Fatal("OIDC_REDIRECT_URL must use HTTPS (starts with https://)")
+		}
 
 		if len(saTokens) == 0 {
 			log.Fatal("OIDC_ENABLED=true but no SA tokens configured (set SA_TOKEN or SA_TOKENS)")
@@ -98,7 +102,7 @@ func main() {
 
 		var requiredGroups []string
 		if groups := os.Getenv("OIDC_GROUPS"); groups != "" {
-			for _, g := range strings.Split(groups, ",") {
+			for g := range strings.SplitSeq(groups, ",") {
 				if g = strings.TrimSpace(g); g != "" {
 					requiredGroups = append(requiredGroups, g)
 				}
@@ -213,7 +217,7 @@ func parseClusters(env string) map[string]string {
 	if env == "" {
 		return clusters
 	}
-	for _, pair := range strings.Split(env, ",") {
+	for pair := range strings.SplitSeq(env, ",") {
 		pair = strings.TrimSpace(pair)
 		idx := strings.Index(pair, "=")
 		if idx <= 0 {
@@ -242,7 +246,7 @@ func parseSATokens() map[string]string {
 		tokens["default"] = t
 	}
 	if env := os.Getenv("SA_TOKENS"); env != "" {
-		for _, pair := range strings.Split(env, ",") {
+		for pair := range strings.SplitSeq(env, ",") {
 			pair = strings.TrimSpace(pair)
 			idx := strings.Index(pair, "=")
 			if idx <= 0 {

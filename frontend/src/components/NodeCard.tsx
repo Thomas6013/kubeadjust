@@ -47,7 +47,6 @@ export default function NodeCard({ node, token }: NodeCardProps) {
   const [podsOpen, setPodsOpen] = useState(false);
   const [pods, setPods] = useState<PodDetail[] | null>(null);
   const [loadingPods, setLoadingPods] = useState(false);
-  const [sortBy, setSortBy] = useState<"cpu" | "mem">("cpu");
   const fetchedRef = useRef(false);
 
   // Fetch pods on first expand
@@ -65,7 +64,7 @@ export default function NodeCard({ node, token }: NodeCardProps) {
   const allocMem = node.allocatable.memory.bytes ?? 0;
 
   const topPods = pods
-    ? [...pods].sort((a, b) => podSortKey(b, sortBy) - podSortKey(a, sortBy)).slice(0, TOP_N)
+    ? [...pods].sort((a, b) => podSortKey(b, "cpu") - podSortKey(a, "cpu")).slice(0, TOP_N)
     : [];
 
   return (
@@ -141,20 +140,6 @@ export default function NodeCard({ node, token }: NodeCardProps) {
               Top pods
               {pods && <span className={styles.podCount}>{pods.length}</span>}
             </button>
-            {podsOpen && (
-              <div className={styles.sortToggle}>
-                <button
-                  type="button"
-                  className={`${styles.sortBtn} ${sortBy === "cpu" ? styles.sortBtnActive : ""}`}
-                  onClick={() => setSortBy("cpu")}
-                >CPU</button>
-                <button
-                  type="button"
-                  className={`${styles.sortBtn} ${sortBy === "mem" ? styles.sortBtnActive : ""}`}
-                  onClick={() => setSortBy("mem")}
-                >MEM</button>
-              </div>
-            )}
           </div>
 
           {podsOpen && (
@@ -165,7 +150,7 @@ export default function NodeCard({ node, token }: NodeCardProps) {
                 <>
                   {pods.length > TOP_N && (
                     <p className={styles.topInfo}>
-                      Top {TOP_N} of {pods.length} · sorted by {sortBy === "cpu" ? "CPU" : "memory"} use
+                      Top {TOP_N} of {pods.length} · sorted by CPU use
                     </p>
                   )}
                   <div className={styles.podBarsList}>
