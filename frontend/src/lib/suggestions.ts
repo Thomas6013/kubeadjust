@@ -1,5 +1,5 @@
 import { fmtRawValue } from "./api";
-import type { DeploymentDetail, ContainerResources, ResourceValue, VolumeDetail, ContainerHistory } from "./api";
+import type { DataPoint, DeploymentDetail, ContainerResources, ResourceValue, VolumeDetail, ContainerHistory } from "./api";
 
 export type SuggestionKind = "danger" | "warning" | "overkill";
 
@@ -36,6 +36,32 @@ function percentile95(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const idx = Math.ceil(sorted.length * 0.95) - 1;
   return sorted[Math.max(0, idx)];
+}
+
+/**
+ * Linear regression on time-series points (mirrors PromQL predict_linear).
+ * Returns seconds until the value reaches `threshold` based on the observed trend,
+ * or null if the trend is flat/decreasing, data is insufficient, or threshold is already exceeded.
+ * Uses up to the last 60 points to focus on recent behaviour.
+ */
+function secondsToThreshold(points: DataPoint[], threshold: number): number | null {
+  if (points.length < 5) return null;
+  const recent = points.slice(-Math.min(points.length, 60));
+  const n = recent.length;
+  let sumT = 0, sumV = 0, sumTT = 0, sumTV = 0;
+  for (const p of recent) {
+    sumT += p.t; sumV += p.v;
+    sumTT += p.t * p.t; sumTV += p.t * p.v;
+  }
+  const denom = n * sumTT - sumT * sumT;
+  if (denom === 0) return null;
+  const slope = (n * sumTV - sumT * sumV) / denom;
+  if (slope <= 0) return null;
+  const intercept = (sumV - slope * sumT) / n;
+  const lastT = recent[recent.length - 1].t;
+  const predictedT = (threshold - intercept) / slope;
+  if (predictedT <= lastT) return null;
+  return predictedT - lastT;
 }
 
 /** Extracts the numeric value from a ResourceValue (millicores for CPU, bytes for memory). */
@@ -93,6 +119,19 @@ function analyzeCpuMem(c: ContainerResources, depName: string, podName: string, 
           action: "Increase limit",
           message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${confidence}`,
           current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(Math.ceil(p95Use * 1.4), isCPU) });
+      } else if (hasHistory) {
+        // Trend-based: predict when usage will exceed limit (only when P95 hasn't already flagged it)
+        const histSeries = isCPU ? hist!.cpu : hist!.memory;
+        const secs = secondsToThreshold(histSeries, lim);
+        if (secs !== null && secs < 24 * 3600) {
+          const hours = secs / 3600;
+          const kind: SuggestionKind = hours < 4 ? "danger" : "warning";
+          const timeStr = hours < 1 ? `${Math.round(secs / 60)}m` : `${hours.toFixed(1)}h`;
+          results.push({ deployment: depName, pod: podName, container: c.name, resource: label, kind,
+            action: "Increase limit",
+            message: `${label} trending to exceed limit in ~${timeStr} (linear trend${confidence.replace(" · ", ", ")})`,
+            current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(Math.ceil(lim * 1.5), isCPU) });
+        }
       }
     }
     const requestOverkill = req > 0 && meanUse / req <= 0.35;

@@ -144,7 +144,7 @@ export default function NodeCard({ node, token }: NodeCardProps) {
 
           {podsOpen && (
             <>
-              {loadingPods && <p className={styles.podsLoading}>Loading pods…</p>}
+              {(loadingPods || pods === null) && <p className={styles.podsLoading}>Loading pods…</p>}
 
               {pods && pods.length > 0 && (
                 <>

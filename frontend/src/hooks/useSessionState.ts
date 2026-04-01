@@ -65,7 +65,7 @@ export function useSessionState(): SessionState {
   useEffect(() => { if (restored) safeSetItem(STORAGE_KEYS.autoRefresh, autoRefresh); }, [autoRefresh, restored]);
   useEffect(() => { if (restored && selectedNs) safeSetItem(STORAGE_KEYS.selectedNs, selectedNs); }, [selectedNs, restored]);
   useEffect(() => { if (restored) safeSetItem(STORAGE_KEYS.timeRange, timeRange); }, [timeRange, restored]);
-  useEffect(() => { if (restored) safeSetItem(STORAGE_KEYS.openCards, JSON.stringify([...openCards])); }, [openCards, restored]);
+  useEffect(() => { if (restored) safeSetItem(STORAGE_KEYS.openCards, JSON.stringify([...openCards].slice(0, 100))); }, [openCards, restored]);
 
   return { view, setView, autoRefresh, setAutoRefresh, selectedNs, setSelectedNs, timeRange, setTimeRange, openCards, setOpenCards, excludedNs, setExcludedNs };
 }

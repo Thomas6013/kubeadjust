@@ -10,6 +10,7 @@ import SuggestionPanel from "@/components/SuggestionPanel";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
 import NodeCard from "@/components/NodeCard";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import styles from "./dashboard.module.css";
 
 export default function DashboardPage() {
@@ -349,6 +350,7 @@ export default function DashboardPage() {
         />
 
         {/* Main content */}
+        <ErrorBoundary fallback="Dashboard content failed to render.">
         <main className={styles.main}>
           {view === "nodes" ? (
             <>
@@ -446,15 +448,18 @@ export default function DashboardPage() {
             </>
           )}
         </main>
+        </ErrorBoundary>
 
         {/* Suggestions — only in namespace view */}
         {view === "namespaces" && (
-          <SuggestionPanel
-            deployments={visibleDeployments}
-            history={nsHistory}
-            onOpenCards={handleOpenCards}
-            searchQuery={workloadSearch}
-          />
+          <ErrorBoundary fallback="Suggestions panel failed to render.">
+            <SuggestionPanel
+              deployments={visibleDeployments}
+              history={nsHistory}
+              onOpenCards={handleOpenCards}
+              searchQuery={workloadSearch}
+            />
+          </ErrorBoundary>
         )}
       </div>
     </div>
