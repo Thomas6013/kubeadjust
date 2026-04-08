@@ -6,7 +6,6 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"sort"
 	"strconv"
 	"time"
 
@@ -237,6 +236,5 @@ func GetNodePods(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	jsonOK(w, result)
 }

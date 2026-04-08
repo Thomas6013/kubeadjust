@@ -268,16 +268,13 @@ See `.env.example` at repo root. Key variables:
 
 ### Robustness — Low Priority
 
-- **`openCards` sessionStorage can grow unbounded** — `dashboard/page.tsx`
-  - Fix: cap at ~100 entries, or clear on namespace switch.
+- ~~`openCards` sessionStorage can grow unbounded~~ — RESOLVED (v0.24.0, `useSessionState.ts`: `.slice(0, 100)` caps saved cards at 100 entries).
 
 - ~~Silent `.catch(() => {})` on background fetches~~ — RESOLVED (v0.22.0, replaced with `console.warn` in `dashboard/page.tsx`).
 
-- **No loading indicator before first pod fetch in NodeCard** — `components/NodeCard.tsx:360`
-  - `pods === null && loadingPods === false` shows nothing. Fix: show "Loading pods…" when `podsOpen && pods === null`.
+- ~~No loading indicator before first pod fetch in NodeCard~~ — RESOLVED (v0.24.0, `NodeCard.tsx`: "Loading pods…" shown whenever `podsOpen && pods === null`).
 
-- **No React error boundaries** — `dashboard/page.tsx`
-  - A component crash (e.g., unexpected API response shape) takes down the entire page. Fix: wrap main content areas in error boundaries.
+- ~~No React error boundaries~~ — RESOLVED (v0.24.0, `ErrorBoundary.tsx`: wraps main content area and suggestion panel independently; shows error message + Retry button on crash).
 
 - **Session JWT 8h with no refresh** — `oidc/session.go`
   - User loses session after 8h with no warning or extend-on-activity. Fix: refresh token or session extension mechanism.
@@ -424,7 +421,7 @@ See `.env.example` at repo root. Key variables:
 - **No client-go**: raw `net/http` calls to the K8s API only. Do not add `k8s.io/client-go`.
 - **No CSS frameworks**: CSS Modules only (`*.module.css`). No Tailwind, no MUI.
 - **No charting libraries**: SVG sparklines hand-rolled. No Chart.js, Recharts, etc.
-- **Versioning**: follow [Semantic Versioning](https://semver.org/). Bump `appVersion` in `helm/kubeadjust/Chart.yaml` — it is the single source of truth. Also update `frontend/src/lib/version.ts` (`APP_VERSION`). Keep CHANGELOG.md, CLAUDE.md, and README.md aligned. Docker images publish only when a `*.*.*` git tag is pushed (`git tag 0.19.0 && git push origin 0.19.0`).
+- **Versioning**: follow [Semantic Versioning](https://semver.org/). Three files to update on every release: `frontend/src/lib/version.ts` (`APP_VERSION`), `frontend/package.json` (`version`), and `appVersion` in the [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm) Chart.yaml (separate repo — `helm/` no longer exists here). Keep CHANGELOG.md, CLAUDE.md, and README.md aligned. Docker images publish only when a `*.*.*` git tag is pushed (`git tag 0.24.0 && git push origin 0.24.0`).
 - **RBAC**: keep the ClusterRole strictly read-only. Any new K8s resource access needs a `get`/`list`/`watch` verb only.
 - **Error handling**: never return raw K8s API errors to HTTP clients. Log server-side with `log.Printf`, return generic messages.
 - **Token safety**: never log, store, or cache the bearer token.
@@ -443,6 +440,42 @@ See `.env.example` at repo root. Key variables:
 - SBOM generated per image with `anchore/sbom-action` (SPDX format).
 - Images signed with `sigstore/cosign` (keyless, OIDC-based).
 - Renovate is configured but only applies dependency updates (no custom rules yet).
+
+---
+
+## Definition of Done (Release Checklist)
+
+Before merging a feature branch and tagging a release, every item below must be complete.
+
+### Build & tests
+- `cd backend && go build ./...` — no errors
+- `cd backend && go vet ./...` — no warnings
+- `cd backend && go test ./...` — all tests pass
+- `cd frontend && npm run typecheck` — no type errors (`tsc --noEmit`)
+- `cd frontend && npm run build` — no build errors
+- `cd frontend && npm run lint` — no lint errors
+
+### Version bump (3 files — all three, every time)
+- `frontend/src/lib/version.ts` — update `APP_VERSION` (drives topbar badge)
+- `frontend/package.json` — update `version` field (easy to forget — was stuck at `0.2.0` until v0.22.0, then missed again in 0.23.0)
+- `appVersion` in [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm) `Chart.yaml` (separate repo)
+
+### Documentation
+- `CHANGELOG.md` — all changes documented under the new version; change date from `unreleased` to `YYYY-MM-DD`
+- `CLAUDE.md` — Known Issues: mark every item resolved this version as `~~...~~ — RESOLVED (vX.Y.Z, one-line summary)`
+- `README.md` — update if user-facing features, env vars, or architecture changed
+
+### Git workflow
+1. All changes committed on the feature branch
+2. PR reviewed and merged into `main`
+3. Tag pushed from `main` to trigger Docker publish: `git tag 0.X.Y && git push origin 0.X.Y`
+4. Helm chart version bumped and tagged in [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm)
+
+### Common pitfalls
+- Helm chart is in a **separate repo** — `helm/` no longer exists in this repo; changes to chart values, RBAC, or deployment templates go there
+- Docker images publish **only on tag push** (not on merge to main) — double-check the tag matches the version bumped in step above
+- `frontend/package.json` `version` is not read at runtime but must stay in sync for `npm audit` and tooling consistency
+- HTTP transports in `k8s/client.go` and `prometheus/client.go` are custom — always include `DialContext` with `KeepAlive: 30s` if creating a new one (see v0.24.0 stale-connection fix)
 
 ---
 

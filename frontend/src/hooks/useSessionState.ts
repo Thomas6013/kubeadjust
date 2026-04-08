@@ -4,7 +4,7 @@ import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import { STORAGE_KEYS, safeGetItem, safeSetItem } from "@/lib/storage";
 import type { TimeRange } from "@/lib/api";
 
-export type View = "namespaces" | "nodes";
+export type View = "namespaces" | "nodes" | "overview";
 export type AutoRefresh = "off" | "30s" | "60s" | "5m";
 
 export const AUTO_REFRESH_MS: Record<AutoRefresh, number> = {

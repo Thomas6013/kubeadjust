@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,7 +19,14 @@ const defaultAPIServer = "https://kubernetes.default.svc"
 const maxResponseBytes = 10 << 20 // 10 MB
 
 // sharedTransport is created once at package init and reused across all requests.
+// DialContext with KeepAlive mirrors http.DefaultTransport: the OS sends TCP keepalive
+// probes every 30s so stale connections closed by the API server or a firewall are
+// detected before the next request tries to reuse them.
 var sharedTransport = &http.Transport{
+	DialContext: (&net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext,
 	TLSClientConfig: &tls.Config{
 		InsecureSkipVerify: envOr("KUBE_INSECURE_TLS", "false") == "true",
 	},
