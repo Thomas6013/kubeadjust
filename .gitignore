@@ -6,6 +6,7 @@ build
 # Claude workspace (project-specific AI instructions)
 .claude/
 CLAUDE.md
+ClaudeDone.md
 
 # Personal build scripts
 build.md
