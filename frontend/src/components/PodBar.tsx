@@ -1,5 +1,5 @@
 import type { PodDetail } from "@/lib/api";
-import { fmtCPU, fmtMemory } from "@/lib/api";
+import { fmtRawValue } from "@/lib/api";
 import { shortPodName } from "@/lib/status";
 import styles from "./NodeCard.module.css";
 
@@ -44,11 +44,11 @@ export default function PodBar({ pod, allocCPU, allocMem }: PodBarProps) {
   const shortName = shortPodName(pod.name);
 
   const cpuTooltip = cpuUsePct !== null
-    ? `req: ${fmtCPU({ raw: "", millicores: cpuReq })} (${cpuReqPct.toFixed(0)}%) · use: ${fmtCPU({ raw: "", millicores: cpuUse })} (${cpuUsePct.toFixed(0)}%)`
-    : `req: ${fmtCPU({ raw: "", millicores: cpuReq })} (${cpuReqPct.toFixed(0)}%) · no usage data`;
+    ? `req: ${fmtRawValue(cpuReq, true)} (${cpuReqPct.toFixed(0)}%) · use: ${fmtRawValue(cpuUse, true)} (${cpuUsePct.toFixed(0)}%)`
+    : `req: ${fmtRawValue(cpuReq, true)} (${cpuReqPct.toFixed(0)}%) · no usage data`;
   const memTooltip = memUsePct !== null
-    ? `req: ${fmtMemory({ raw: "", bytes: memReq })} (${memReqPct.toFixed(0)}%) · use: ${fmtMemory({ raw: "", bytes: memUse })} (${memUsePct.toFixed(0)}%)`
-    : `req: ${fmtMemory({ raw: "", bytes: memReq })} (${memReqPct.toFixed(0)}%) · no usage data`;
+    ? `req: ${fmtRawValue(memReq, false)} (${memReqPct.toFixed(0)}%) · use: ${fmtRawValue(memUse, false)} (${memUsePct.toFixed(0)}%)`
+    : `req: ${fmtRawValue(memReq, false)} (${memReqPct.toFixed(0)}%) · no usage data`;
 
   return (
     <div className={styles.podBar} title={pod.namespace ? `${pod.namespace}/${pod.name}` : pod.name}>

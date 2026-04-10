@@ -152,11 +152,9 @@ export default function NodeCard({ node, token, refreshKey }: NodeCardProps) {
 
               {pods && pods.length > 0 && (
                 <>
-                  <p className={styles.topInfo}>
-                    {pods.length > TOP_N
-                      ? `Top ${TOP_N} of ${pods.length} · sorted by CPU use`
-                      : "sorted by CPU use"}
-                  </p>
+                  {pods.length > TOP_N && (
+                    <p className={styles.topInfo}>Top {TOP_N} of {pods.length} pods</p>
+                  )}
                   <div className={styles.podBarsList}>
                     {topPods.map((pod) => (
                       <PodBar key={pod.name} pod={pod} allocCPU={allocCPU} allocMem={allocMem} />
