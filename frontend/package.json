@@ -1,6 +1,6 @@
 {
   "name": "kubeadjust-frontend",
-  "version": "0.22.0",
+  "version": "0.24.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -21,7 +21,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
-    "typescript": "^5",
+    "typescript": "^6",
     "vitest": "^4.0.18"
   }
 }

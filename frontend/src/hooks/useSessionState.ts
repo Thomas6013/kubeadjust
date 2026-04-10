@@ -4,7 +4,7 @@ import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import { STORAGE_KEYS, safeGetItem, safeSetItem } from "@/lib/storage";
 import type { TimeRange } from "@/lib/api";
 
-export type View = "namespaces" | "nodes";
+export type View = "namespaces" | "nodes" | "overview";
 export type AutoRefresh = "off" | "30s" | "60s" | "5m";
 
 export const AUTO_REFRESH_MS: Record<AutoRefresh, number> = {
@@ -65,7 +65,7 @@ export function useSessionState(): SessionState {
   useEffect(() => { if (restored) safeSetItem(STORAGE_KEYS.autoRefresh, autoRefresh); }, [autoRefresh, restored]);
   useEffect(() => { if (restored && selectedNs) safeSetItem(STORAGE_KEYS.selectedNs, selectedNs); }, [selectedNs, restored]);
   useEffect(() => { if (restored) safeSetItem(STORAGE_KEYS.timeRange, timeRange); }, [timeRange, restored]);
-  useEffect(() => { if (restored) safeSetItem(STORAGE_KEYS.openCards, JSON.stringify([...openCards])); }, [openCards, restored]);
+  useEffect(() => { if (restored) safeSetItem(STORAGE_KEYS.openCards, JSON.stringify([...openCards].slice(0, 100))); }, [openCards, restored]);
 
   return { view, setView, autoRefresh, setAutoRefresh, selectedNs, setSelectedNs, timeRange, setTimeRange, openCards, setOpenCards, excludedNs, setExcludedNs };
 }

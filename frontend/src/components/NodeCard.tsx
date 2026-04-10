@@ -9,16 +9,13 @@ import styles from "./NodeCard.module.css";
 
 const TOP_N = 10;
 
-function podSortKey(pod: PodDetail, by: "cpu" | "mem"): number {
-  let v = 0;
+function podCPUKey(pod: PodDetail): { hasUsage: boolean; value: number } {
+  let use = 0, req = 0, hasUsage = false;
   for (const c of pod.containers) {
-    if (c.usage) {
-      v += by === "cpu" ? (c.usage.cpu.millicores ?? 0) : (c.usage.memory.bytes ?? 0);
-    } else {
-      v += by === "cpu" ? (c.requests.cpu.millicores ?? 0) : (c.requests.memory.bytes ?? 0);
-    }
+    if (c.usage) { hasUsage = true; use += c.usage.cpu.millicores ?? 0; }
+    req += c.requests.cpu.millicores ?? 0;
   }
-  return v;
+  return { hasUsage, value: hasUsage ? use : req };
 }
 
 const TAINT_EFFECT_COLOR: Record<string, string> = {
@@ -37,9 +34,10 @@ const TAINT_EFFECT_BORDER: Record<string, string> = {
 interface NodeCardProps {
   node: NodeOverview;
   token?: string;
+  refreshKey?: Date | null;
 }
 
-export default function NodeCard({ node, token }: NodeCardProps) {
+export default function NodeCard({ node, token, refreshKey }: NodeCardProps) {
   const isReady = node.status === "Ready";
   const statusColor = isReady ? "var(--green)" : node.status === "NotReady" ? "var(--red)" : "var(--yellow)";
   const isControlPlane = node.roles.includes("control-plane");
@@ -47,24 +45,30 @@ export default function NodeCard({ node, token }: NodeCardProps) {
   const [podsOpen, setPodsOpen] = useState(false);
   const [pods, setPods] = useState<PodDetail[] | null>(null);
   const [loadingPods, setLoadingPods] = useState(false);
-  const fetchedRef = useRef(false);
+  // Tracks the refreshKey at the time of the last fetch; undefined = never fetched
+  const lastFetchedKey = useRef<Date | null | undefined>(undefined);
 
-  // Fetch pods on first expand
+  // Fetch pods on expand, and re-fetch when refreshKey changes (auto-refresh)
   useEffect(() => {
-    if (!podsOpen || !token || fetchedRef.current) return;
-    fetchedRef.current = true;
+    if (!podsOpen || !token) return;
+    if (lastFetchedKey.current === refreshKey) return;
+    lastFetchedKey.current = refreshKey ?? null;
     setLoadingPods(true);
     api.nodePods(token, node.name)
       .then(setPods)
       .catch(() => setPods([]))
       .finally(() => setLoadingPods(false));
-  }, [podsOpen, token, node.name]);
+  }, [podsOpen, token, node.name, refreshKey]);
 
   const allocCPU = node.allocatable.cpu.millicores ?? 0;
   const allocMem = node.allocatable.memory.bytes ?? 0;
 
   const topPods = pods
-    ? [...pods].sort((a, b) => podSortKey(b, "cpu") - podSortKey(a, "cpu")).slice(0, TOP_N)
+    ? [...pods].sort((a, b) => {
+        const ak = podCPUKey(a), bk = podCPUKey(b);
+        if (ak.hasUsage !== bk.hasUsage) return ak.hasUsage ? -1 : 1;
+        return bk.value - ak.value;
+      }).slice(0, TOP_N)
     : [];
 
   return (
@@ -144,14 +148,12 @@ export default function NodeCard({ node, token }: NodeCardProps) {
 
           {podsOpen && (
             <>
-              {loadingPods && <p className={styles.podsLoading}>Loading pods…</p>}
+              {(loadingPods || pods === null) && <p className={styles.podsLoading}>Loading pods…</p>}
 
               {pods && pods.length > 0 && (
                 <>
                   {pods.length > TOP_N && (
-                    <p className={styles.topInfo}>
-                      Top {TOP_N} of {pods.length} · sorted by CPU use
-                    </p>
+                    <p className={styles.topInfo}>Top {TOP_N} of {pods.length} pods</p>
                   )}
                   <div className={styles.podBarsList}>
                     {topPods.map((pod) => (

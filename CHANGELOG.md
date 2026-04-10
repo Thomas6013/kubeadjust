@@ -4,7 +4,27 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
-## [0.23.0] - unreleased
+## [0.24.0] - unreleased
+
+### Added
+
+- **Cluster overview view** — new "Overview" button in the sidebar shows a card grid of all non-hidden namespaces with their CPU and memory limit/request ratios (`GET /api/namespaces/stats` data, already fetched). Cards are sorted by severity (overcommit → high → ok → no data), then alphabetically. Each card shows CPU ×N and MEM ×N badges color-coded red/orange/green. Clicking a card navigates to that namespace in the workloads view.
+- **React error boundaries** — `ErrorBoundary` component (`src/components/ErrorBoundary.tsx`) wraps the main content area and the suggestion panel independently. A component crash no longer takes down the entire page — the affected zone shows a message and a Retry button.
+
+### Fixed
+
+- **Stale HTTP connections after long inactivity** — after a long idle period, the K8s API server or a network intermediary (firewall/NAT) closes TCP connections from its side. The Go HTTP transport had no keepalive configured, so it didn't know: the next request after inactivity wrote on a dead connection; all 3 retry attempts used other stale connections from the pool and also failed, resulting in a systematic "internal server error" that required a backend restart. Fixed: both `k8s/client.go` and `prometheus/client.go` now set `DialContext` with `KeepAlive: 30s`, mirroring `http.DefaultTransport`. The OS sends TCP keepalive probes every 30s on idle connections; stale connections are detected and evicted from the pool before the next request reuses them.
+- **`openCards` sessionStorage growing unbounded** — the set of open deployment card IDs was never pruned. In long-running sessions with many workloads it could grow indefinitely. Fixed: `useSessionState.ts` now persists at most the 100 most recently opened cards (`.slice(0, 100)`).
+- **No loading indicator before first pod fetch in NodeCard** — expanding the pod bars section for the first time showed a blank area until the fetch completed (`pods === null && loadingPods === false` matched no UI branch). Fixed: "Loading pods…" is now shown whenever `podsOpen && pods === null`, covering both the initial fetch and any in-progress re-fetch.
+- **Node view top pods: sort inconsistency** — `podSortKey()` used real usage when available and fell back to requests otherwise, mixing the two in the same ranking. A pod without metrics but with 200m requests could outrank a pod using 50m CPU according to metrics-server. Fixed: pods with real usage data now always rank above pods without, sorted by usage within that group; pods without metrics are sorted by requests and listed last.
+- **Node view top pods: re-fetch on auto-refresh** — the pod bars section fetched once on first expand and never updated, even when auto-refresh was active. Long-running sessions showed stale pod data. Fixed: a `refreshKey` prop (bound to `lastRefresh` in the dashboard) triggers a re-fetch whenever auto-refresh fires and the section is open.
+- **Node view top pods: sort indicator replaced** — "sorted by CPU use" label was shown unconditionally, even when all pods fit within the top 10. Replaced: now only a `Top 10 of N pods` counter is shown when the list is truncated; no label is shown otherwise.
+- **Node view pod bar tooltips showing "—"** — hovering over CPU or MEM bars showed `—` instead of actual values. Root cause: `fmtCPU`/`fmtMemory` guard against empty `raw` field, which is always empty in `PodBar` (only numeric values are available). Fixed: tooltips now use `fmtRawValue` directly with the numeric millicores/bytes values.
+- **`GetNodePods` sorted results alphabetically** — `handlers/nodes.go` sorted the pod list alphabetically before sending it. The frontend immediately re-sorted by CPU usage, making the backend sort dead code. Removed: the `sort.Slice` call and the `sort` import.
+
+---
+
+## [0.23.0] - 2026-04-01
 
 ### Fixed
 

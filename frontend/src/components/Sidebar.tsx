@@ -41,6 +41,14 @@ export default function Sidebar({
       <ul className={styles.nsList}>
         <li>
           <button
+            className={`${styles.nsBtn} ${styles.nodeBtn} ${view === "overview" ? styles.active : ""}`}
+            onClick={() => setView("overview")}
+          >
+            ⊞ Overview
+          </button>
+        </li>
+        <li>
+          <button
             className={`${styles.nsBtn} ${styles.nodeBtn} ${view === "nodes" ? styles.active : ""}`}
             onClick={() => setView("nodes")}
           >

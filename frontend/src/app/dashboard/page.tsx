@@ -10,6 +10,7 @@ import SuggestionPanel from "@/components/SuggestionPanel";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
 import NodeCard from "@/components/NodeCard";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import styles from "./dashboard.module.css";
 
 export default function DashboardPage() {
@@ -85,7 +86,7 @@ export default function DashboardPage() {
   // since that hook's effects are registered first).
   useEffect(() => {
     const urlView = initialUrlView.current;
-    if (urlView === "namespaces" || urlView === "nodes") setView(urlView);
+    if (urlView === "namespaces" || urlView === "nodes" || urlView === "overview") setView(urlView);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- setView is a stable useState setter
 
   // Fetch available clusters (for switcher)
@@ -349,8 +350,69 @@ export default function DashboardPage() {
         />
 
         {/* Main content */}
+        <ErrorBoundary fallback="Dashboard content failed to render.">
         <main className={styles.main}>
-          {view === "nodes" ? (
+          {view === "overview" ? (
+            <>
+              <div className={styles.mainHeader}>
+                <h2>Cluster overview</h2>
+                <span className={styles.count}>
+                  {namespaces.filter((ns) => !excludedNs.has(ns.name)).length} namespace{namespaces.filter((ns) => !excludedNs.has(ns.name)).length !== 1 ? "s" : ""}
+                </span>
+                {nsStats.size === 0 && !loadingNs && (
+                  <span className={styles.count}>— ratio data unavailable</span>
+                )}
+              </div>
+              {loadingNs ? (
+                <p className={styles.muted}>Loading namespaces…</p>
+              ) : (
+                <div className={styles.overviewGrid}>
+                  {namespaces
+                    .filter((ns) => !excludedNs.has(ns.name))
+                    .sort((a, b) => {
+                      const order = (st: NamespaceStats | undefined) => {
+                        if (!st || (st.cpuRatio === 0 && st.memRatio === 0)) return 3;
+                        const m = Math.max(st.cpuRatio, st.memRatio);
+                        if (m > 5) return 0;
+                        if (m > 2) return 1;
+                        return 2;
+                      };
+                      const diff = order(nsStats.get(a.name)) - order(nsStats.get(b.name));
+                      return diff !== 0 ? diff : a.name.localeCompare(b.name);
+                    })
+                    .map((ns) => {
+                      const st = nsStats.get(ns.name);
+                      const maxRatio = st ? Math.max(st.cpuRatio, st.memRatio) : 0;
+                      const badgeColor = maxRatio > 5 ? "var(--red)" : maxRatio > 2 ? "var(--orange)" : maxRatio > 0 ? "var(--green)" : "var(--muted)";
+                      const badgeLabel = maxRatio > 5 ? "OVERCOMMIT" : maxRatio > 2 ? "HIGH" : maxRatio > 0 ? "OK" : "—";
+                      return (
+                        <button
+                          key={ns.name}
+                          className={styles.overviewCard}
+                          onClick={() => { setView("namespaces"); setSelectedNs(ns.name); }}
+                        >
+                          <span className={styles.overviewCardName}>{ns.name}</span>
+                          <div className={styles.overviewCardStats}>
+                            {st && st.cpuRatio > 0 && (
+                              <span className={styles.overviewRatio} style={{ color: st.cpuRatio > 5 ? "var(--red)" : st.cpuRatio > 2 ? "var(--orange)" : "var(--muted)" }}>
+                                CPU ×{st.cpuRatio.toFixed(1)}
+                              </span>
+                            )}
+                            {st && st.memRatio > 0 && (
+                              <span className={styles.overviewRatio} style={{ color: st.memRatio > 5 ? "var(--red)" : st.memRatio > 2 ? "var(--orange)" : "var(--muted)" }}>
+                                MEM ×{st.memRatio.toFixed(1)}
+                              </span>
+                            )}
+                          </div>
+                          <span className={styles.overviewBadge} style={{ color: badgeColor }}>{badgeLabel}</span>
+                        </button>
+                      );
+                    })
+                  }
+                </div>
+              )}
+            </>
+          ) : view === "nodes" ? (
             <>
               <div className={styles.mainHeader}>
                 <h2>Node overview</h2>
@@ -371,6 +433,7 @@ export default function DashboardPage() {
                       key={n.name}
                       node={n}
                       token={token}
+                      refreshKey={lastRefresh}
                     />
                   ))}
                 </div>
@@ -446,15 +509,18 @@ export default function DashboardPage() {
             </>
           )}
         </main>
+        </ErrorBoundary>
 
         {/* Suggestions — only in namespace view */}
         {view === "namespaces" && (
-          <SuggestionPanel
-            deployments={visibleDeployments}
-            history={nsHistory}
-            onOpenCards={handleOpenCards}
-            searchQuery={workloadSearch}
-          />
+          <ErrorBoundary fallback="Suggestions panel failed to render.">
+            <SuggestionPanel
+              deployments={visibleDeployments}
+              history={nsHistory}
+              onOpenCards={handleOpenCards}
+              searchQuery={workloadSearch}
+            />
+          </ErrorBoundary>
         )}
       </div>
     </div>
