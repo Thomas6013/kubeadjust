@@ -271,6 +271,60 @@
   gap: 12px;
 }
 
+/* Overview summary stats bar */
+.overviewStats {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 8px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  flex-shrink: 0;
+}
+
+.overviewStatGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 16px;
+}
+
+.overviewStatGroup:first-child { padding-left: 0; }
+.overviewStatGroup:last-of-type { padding-right: 0; }
+
+.overviewStatLabel {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.overviewStatValue {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.overviewStatDivider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.overviewStatSource {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--muted);
+  font-family: monospace;
+  padding-left: 12px;
+  align-self: center;
+}
+
 /* Namespace overview grid */
 .overviewGrid {
   display: grid;
