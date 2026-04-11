@@ -97,6 +97,8 @@ export interface NamespaceStats {
   cpuLimitedM: number;
   memRequestedB: number;
   memLimitedB: number;
+  cpuUsageM: number; // 0 if metrics-server unavailable
+  memUsageB: number; // 0 if metrics-server unavailable
   cpuRatio: number; // lim/req; 0 = no requests set
   memRatio: number;
 }

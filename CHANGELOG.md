@@ -4,6 +4,14 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.25.0] - unreleased
+
+### Added
+
+- **Overview — live CPU/RAM summary bar** — the cluster overview view now shows a horizontal stats bar above the namespace grid with four metrics: total CPU used, CPU avg per namespace, total RAM used, RAM avg per namespace. Values come from the metrics-server (`cpuUsageM`/`memUsageB` aggregated per namespace by `GET /api/namespaces/stats`). When metrics-server is unavailable, falls back to resource requests and labels the source accordingly (`requests`). `GetNamespaceStats` now fetches pods and pod metrics concurrently via errgroup; metrics are best-effort (0 if unavailable, no error returned). The bar is hidden until stats are loaded.
+
+---
+
 ## [0.24.0] - unreleased
 
 ### Added
