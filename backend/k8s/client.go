@@ -1,6 +1,7 @@
 package k8s
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -57,14 +58,17 @@ func New(token, apiServer string) *Client {
 
 const maxRetries = 3
 
-func (c *Client) get(path string, out interface{}) error {
+func (c *Client) get(ctx context.Context, path string, out interface{}) error {
 	var lastErr error
 	for attempt := range maxRetries {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if attempt > 0 {
 			// Exponential backoff: 100ms, 400ms
 			time.Sleep(time.Duration(100*(1<<(2*uint(attempt-1)))) * time.Millisecond)
 		}
-		lastErr = c.doGet(path, out)
+		lastErr = c.doGet(ctx, path, out)
 		if lastErr == nil {
 			return nil
 		}
@@ -76,8 +80,8 @@ func (c *Client) get(path string, out interface{}) error {
 	return lastErr
 }
 
-func (c *Client) doGet(path string, out interface{}) error {
-	req, err := http.NewRequest(http.MethodGet, c.apiServer+path, nil)
+func (c *Client) doGet(ctx context.Context, path string, out interface{}) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.apiServer+path, nil)
 	if err != nil {
 		return err
 	}
@@ -119,9 +123,9 @@ func isClientError(err error) bool {
 	return false
 }
 
-func (c *Client) VerifyToken() error {
+func (c *Client) VerifyToken(ctx context.Context) error {
 	var out json.RawMessage
-	return c.get("/api", &out)
+	return c.get(ctx, "/api", &out)
 }
 
 // --- API methods ---
@@ -129,63 +133,63 @@ func (c *Client) VerifyToken() error {
 // p escapes a path segment for safe interpolation into K8s API URLs.
 func p(segment string) string { return url.PathEscape(segment) }
 
-func (c *Client) ListNamespaces() (*NamespaceList, error) {
+func (c *Client) ListNamespaces(ctx context.Context) (*NamespaceList, error) {
 	var out NamespaceList
-	return &out, c.get("/api/v1/namespaces", &out)
+	return &out, c.get(ctx, "/api/v1/namespaces", &out)
 }
 
-func (c *Client) ListDeployments(namespace string) (*DeploymentList, error) {
+func (c *Client) ListDeployments(ctx context.Context, namespace string) (*DeploymentList, error) {
 	var out DeploymentList
-	return &out, c.get(fmt.Sprintf("/apis/apps/v1/namespaces/%s/deployments", p(namespace)), &out)
+	return &out, c.get(ctx, fmt.Sprintf("/apis/apps/v1/namespaces/%s/deployments", p(namespace)), &out)
 }
 
-func (c *Client) ListPods(namespace string) (*PodList, error) {
+func (c *Client) ListPods(ctx context.Context, namespace string) (*PodList, error) {
 	var out PodList
-	return &out, c.get(fmt.Sprintf("/api/v1/namespaces/%s/pods", p(namespace)), &out)
+	return &out, c.get(ctx, fmt.Sprintf("/api/v1/namespaces/%s/pods", p(namespace)), &out)
 }
 
 // ListPodsLimit lists up to `limit` pods in a namespace (useful for existence checks).
-func (c *Client) ListPodsLimit(namespace string, limit int) (*PodList, error) {
+func (c *Client) ListPodsLimit(ctx context.Context, namespace string, limit int) (*PodList, error) {
 	var out PodList
-	return &out, c.get(fmt.Sprintf("/api/v1/namespaces/%s/pods?limit=%d", p(namespace), limit), &out)
+	return &out, c.get(ctx, fmt.Sprintf("/api/v1/namespaces/%s/pods?limit=%d", p(namespace), limit), &out)
 }
 
-func (c *Client) ListPodMetrics(namespace string) (*PodMetricsList, error) {
+func (c *Client) ListPodMetrics(ctx context.Context, namespace string) (*PodMetricsList, error) {
 	var out PodMetricsList
-	return &out, c.get(fmt.Sprintf("/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods", p(namespace)), &out)
+	return &out, c.get(ctx, fmt.Sprintf("/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods", p(namespace)), &out)
 }
 
 // ListAllPodMetrics returns pod metrics for all pods across all namespaces.
-func (c *Client) ListAllPodMetrics() (*PodMetricsList, error) {
+func (c *Client) ListAllPodMetrics(ctx context.Context) (*PodMetricsList, error) {
 	if v, ok := allPodMetricsCache.get(c.apiServer); ok {
 		return v, nil
 	}
 	var out PodMetricsList
-	if err := c.get("/apis/metrics.k8s.io/v1beta1/pods", &out); err != nil {
+	if err := c.get(ctx, "/apis/metrics.k8s.io/v1beta1/pods", &out); err != nil {
 		return nil, err
 	}
 	allPodMetricsCache.set(c.apiServer, &out, ttlShort)
 	return &out, nil
 }
 
-func (c *Client) ListNodes() (*NodeList, error) {
+func (c *Client) ListNodes(ctx context.Context) (*NodeList, error) {
 	if v, ok := nodesCache.get(c.apiServer); ok {
 		return v, nil
 	}
 	var out NodeList
-	if err := c.get("/api/v1/nodes", &out); err != nil {
+	if err := c.get(ctx, "/api/v1/nodes", &out); err != nil {
 		return nil, err
 	}
 	nodesCache.set(c.apiServer, &out, ttlShort)
 	return &out, nil
 }
 
-func (c *Client) ListNodeMetrics() (*NodeMetricsList, error) {
+func (c *Client) ListNodeMetrics(ctx context.Context) (*NodeMetricsList, error) {
 	if v, ok := nodeMetricsCache.get(c.apiServer); ok {
 		return v, nil
 	}
 	var out NodeMetricsList
-	if err := c.get("/apis/metrics.k8s.io/v1beta1/nodes", &out); err != nil {
+	if err := c.get(ctx, "/apis/metrics.k8s.io/v1beta1/nodes", &out); err != nil {
 		return nil, err
 	}
 	nodeMetricsCache.set(c.apiServer, &out, ttlShort)
@@ -195,53 +199,53 @@ func (c *Client) ListNodeMetrics() (*NodeMetricsList, error) {
 // ListAllPods lists pods across all namespaces (needed for node aggregation).
 // Excludes Succeeded and Failed pods at the API level to reduce response size.
 // Results are cached per cluster URL for ttlShort to avoid redundant cluster-wide fetches.
-func (c *Client) ListAllPods() (*PodList, error) {
+func (c *Client) ListAllPods(ctx context.Context) (*PodList, error) {
 	if v, ok := allPodsCache.get(c.apiServer); ok {
 		return v, nil
 	}
 	var out PodList
-	if err := c.get("/api/v1/pods?fieldSelector=status.phase!=Succeeded,status.phase!=Failed", &out); err != nil {
+	if err := c.get(ctx, "/api/v1/pods?fieldSelector=status.phase!=Succeeded,status.phase!=Failed", &out); err != nil {
 		return nil, err
 	}
 	allPodsCache.set(c.apiServer, &out, ttlShort)
 	return &out, nil
 }
 
-func (c *Client) ListPVCs(namespace string) (*PVCList, error) {
+func (c *Client) ListPVCs(ctx context.Context, namespace string) (*PVCList, error) {
 	var out PVCList
-	return &out, c.get(fmt.Sprintf("/api/v1/namespaces/%s/persistentvolumeclaims", p(namespace)), &out)
+	return &out, c.get(ctx, fmt.Sprintf("/api/v1/namespaces/%s/persistentvolumeclaims", p(namespace)), &out)
 }
 
-func (c *Client) ListReplicaSets(namespace string) (*ReplicaSetList, error) {
+func (c *Client) ListReplicaSets(ctx context.Context, namespace string) (*ReplicaSetList, error) {
 	var out ReplicaSetList
-	return &out, c.get(fmt.Sprintf("/apis/apps/v1/namespaces/%s/replicasets", p(namespace)), &out)
+	return &out, c.get(ctx, fmt.Sprintf("/apis/apps/v1/namespaces/%s/replicasets", p(namespace)), &out)
 }
 
-func (c *Client) ListStatefulSets(namespace string) (*StatefulSetList, error) {
+func (c *Client) ListStatefulSets(ctx context.Context, namespace string) (*StatefulSetList, error) {
 	var out StatefulSetList
-	return &out, c.get(fmt.Sprintf("/apis/apps/v1/namespaces/%s/statefulsets", p(namespace)), &out)
+	return &out, c.get(ctx, fmt.Sprintf("/apis/apps/v1/namespaces/%s/statefulsets", p(namespace)), &out)
 }
 
-func (c *Client) ListJobs(namespace string) (*JobList, error) {
+func (c *Client) ListJobs(ctx context.Context, namespace string) (*JobList, error) {
 	var out JobList
-	return &out, c.get(fmt.Sprintf("/apis/batch/v1/namespaces/%s/jobs", p(namespace)), &out)
+	return &out, c.get(ctx, fmt.Sprintf("/apis/batch/v1/namespaces/%s/jobs", p(namespace)), &out)
 }
 
-func (c *Client) ListCronJobs(namespace string) (*CronJobList, error) {
+func (c *Client) ListCronJobs(ctx context.Context, namespace string) (*CronJobList, error) {
 	var out CronJobList
-	return &out, c.get(fmt.Sprintf("/apis/batch/v1/namespaces/%s/cronjobs", p(namespace)), &out)
+	return &out, c.get(ctx, fmt.Sprintf("/apis/batch/v1/namespaces/%s/cronjobs", p(namespace)), &out)
 }
 
 // GetNodeSummary calls the kubelet stats/summary via the API server proxy.
 // Requires nodes/proxy get permission. Best-effort: caller should handle errors.
 // Results are cached per (cluster, node) for ttlLong to reduce kubelet proxy load.
-func (c *Client) GetNodeSummary(nodeName string) (*NodeSummary, error) {
+func (c *Client) GetNodeSummary(ctx context.Context, nodeName string) (*NodeSummary, error) {
 	key := c.apiServer + ":" + nodeName
 	if v, ok := nodeSummaryCache.get(key); ok {
 		return v, nil
 	}
 	var out NodeSummary
-	if err := c.get(fmt.Sprintf("/api/v1/nodes/%s/proxy/stats/summary", p(nodeName)), &out); err != nil {
+	if err := c.get(ctx, fmt.Sprintf("/api/v1/nodes/%s/proxy/stats/summary", p(nodeName)), &out); err != nil {
 		return nil, err
 	}
 	nodeSummaryCache.set(key, &out, ttlLong)

@@ -21,7 +21,7 @@ type NamespaceItem struct {
 func ListNamespaces(w http.ResponseWriter, r *http.Request) {
 	token := middleware.TokenFromContext(r.Context())
 	client := k8s.New(token, middleware.ClusterURLFromContext(r.Context()))
-	list, err := client.ListNamespaces()
+	list, err := client.ListNamespaces(r.Context())
 	if err != nil {
 		log.Printf("failed to list namespaces: %v", err)
 		jsonError(w, "internal server error", http.StatusInternalServerError)
@@ -30,13 +30,13 @@ func ListNamespaces(w http.ResponseWriter, r *http.Request) {
 
 	var mu sync.Mutex
 	result := make([]NamespaceItem, 0, len(list.Items))
-	g, _ := errgroup.WithContext(r.Context())
+	g, ctx := errgroup.WithContext(r.Context())
 	g.SetLimit(10)
 
 	for _, ns := range list.Items {
 		name := ns.Metadata.Name
 		g.Go(func() error {
-			pods, err := client.ListPodsLimit(name, 1)
+			pods, err := client.ListPodsLimit(ctx, name, 1)
 			if err != nil {
 				log.Printf("failed to check pods in %s: %v", name, err)
 				return nil // skip namespace, don't fail the whole request
@@ -79,9 +79,9 @@ func GetNamespaceStats(w http.ResponseWriter, r *http.Request) {
 	var allPods *k8s.PodList
 	var allMetrics *k8s.PodMetricsList
 
-	g, _ := errgroup.WithContext(r.Context())
+	g, ctx := errgroup.WithContext(r.Context())
 	g.Go(func() error {
-		p, err := client.ListAllPods()
+		p, err := client.ListAllPods(ctx)
 		if err != nil {
 			return err
 		}
@@ -89,7 +89,7 @@ func GetNamespaceStats(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 	g.Go(func() error {
-		m, err := client.ListAllPodMetrics()
+		m, err := client.ListAllPodMetrics(ctx)
 		if err != nil {
 			log.Printf("pod metrics unavailable for namespace stats: %v", err)
 			return nil // best-effort

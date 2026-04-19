@@ -22,7 +22,7 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 	client := k8s.New(token, middleware.ClusterURLFromContext(r.Context()))
 
 	// 1. Fetch pods once
-	podList, err := client.ListPods(ns)
+	podList, err := client.ListPods(r.Context(), ns)
 	if err != nil {
 		log.Printf("failed to list pods in %s: %v", ns, err)
 		jsonError(w, "internal server error", http.StatusInternalServerError)
@@ -40,15 +40,15 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 		pvcList      *k8s.PVCList
 	)
 
-	g, _ := errgroup.WithContext(r.Context())
+	g, ctx := errgroup.WithContext(r.Context())
 
 	g.Go(func() error {
 		var err error
-		deployments, err = client.ListDeployments(ns)
+		deployments, err = client.ListDeployments(ctx, ns)
 		return err // required — fail if deployments can't load
 	})
 	g.Go(func() error {
-		ss, err := client.ListStatefulSets(ns)
+		ss, err := client.ListStatefulSets(ctx, ns)
 		if err != nil {
 			log.Printf("failed to list statefulsets in %s: %v", ns, err)
 			return nil
@@ -57,7 +57,7 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 	g.Go(func() error {
-		cj, err := client.ListCronJobs(ns)
+		cj, err := client.ListCronJobs(ctx, ns)
 		if err != nil {
 			log.Printf("failed to list cronjobs in %s: %v", ns, err)
 			return nil
@@ -66,7 +66,7 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 	g.Go(func() error {
-		rs, err := client.ListReplicaSets(ns)
+		rs, err := client.ListReplicaSets(ctx, ns)
 		if err != nil {
 			log.Printf("failed to list replicasets in %s: %v", ns, err)
 			return nil
@@ -75,7 +75,7 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 	g.Go(func() error {
-		jl, err := client.ListJobs(ns)
+		jl, err := client.ListJobs(ctx, ns)
 		if err != nil {
 			log.Printf("failed to list jobs in %s: %v", ns, err)
 			return nil
@@ -84,7 +84,7 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 	g.Go(func() error {
-		pm, err := client.ListPodMetrics(ns)
+		pm, err := client.ListPodMetrics(ctx, ns)
 		if err != nil {
 			log.Printf("metrics-server unavailable for %s: %v", ns, err)
 			return nil
@@ -93,7 +93,7 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 	g.Go(func() error {
-		pvcs, err := client.ListPVCs(ns)
+		pvcs, err := client.ListPVCs(ctx, ns)
 		if err != nil {
 			log.Printf("failed to list PVCs in %s: %v", ns, err)
 			return nil
@@ -133,11 +133,11 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 	}
 	podStorageMap := map[string]resources.PodStorageStats{}
 	var storageMu sync.Mutex
-	storageG, _ := errgroup.WithContext(r.Context())
+	storageG, storageCtx := errgroup.WithContext(r.Context())
 	storageG.SetLimit(5) // bound concurrent kubelet calls to avoid kubelet overload
 	for node := range nodeNames {
 		storageG.Go(func() error {
-			summary, err := client.GetNodeSummary(node)
+			summary, err := client.GetNodeSummary(storageCtx, node)
 			if err != nil {
 				return nil // best-effort
 			}
@@ -257,7 +257,7 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 func GetPodMetrics(w http.ResponseWriter, r *http.Request) {
 	ns := chi.URLParam(r, "namespace")
 	client := k8s.New(middleware.TokenFromContext(r.Context()), middleware.ClusterURLFromContext(r.Context()))
-	metrics, err := client.ListPodMetrics(ns)
+	metrics, err := client.ListPodMetrics(r.Context(), ns)
 	if err != nil {
 		log.Printf("metrics-server error for %s: %v", ns, err)
 		jsonError(w, "metrics-server unavailable", http.StatusServiceUnavailable)
