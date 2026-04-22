@@ -100,7 +100,7 @@ func main() {
 			log.Fatal("OIDC_REDIRECT_URL must use HTTPS (starts with https://)")
 		}
 
-		if len(saTokens) == 0 {
+		if len(saTokens) == 0 && !hasInClusterDefault {
 			log.Fatal("OIDC_ENABLED=true but no SA tokens configured (set SA_TOKEN or SA_TOKENS)")
 		}
 		// Warn if a configured cluster has no matching SA token (common misconfiguration).
@@ -168,7 +168,7 @@ func main() {
 
 	r.Route("/api", func(r chi.Router) {
 		// Public — no auth required
-		r.Get("/clusters", handlers.ListClusters(clusters, saTokens))
+		r.Get("/clusters", handlers.ListClusters(clusters, saTokens, hasInClusterDefault))
 		r.Get("/auth/config", handlers.AuthConfig(oidcEnabled, managedDefault))
 
 		if oidcEnabled {
