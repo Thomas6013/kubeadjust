@@ -5,6 +5,7 @@ export type SuggestionKind = "danger" | "warning" | "overkill";
 
 export interface Suggestion {
   deployment: string;
+  namespace: string;
   pod: string;
   container: string;
   resource: string;
@@ -13,6 +14,7 @@ export interface Suggestion {
   message: string;
   current: string;
   suggested: string;
+  suggestedRaw: number;
 }
 
 /** Map of "pod/container" → ContainerHistory for quick lookup. */
@@ -70,10 +72,51 @@ function val(rv: ResourceValue | undefined, isCPU: boolean): number {
   return isCPU ? (rv.millicores ?? 0) : (rv.bytes ?? 0);
 }
 
+const MIB = 1024 * 1024;
+
+// Standard binary memory steps (MiB): powers of 2 plus common thirds (192, 384, 768…).
+// Rounded suggestions always land on one of these values, giving at most ~28% overhead.
+const MEMORY_STEPS_B = [
+  64, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048,
+  3072, 4096, 6144, 8192, 12288, 16384, 24576, 32768,
+].map(m => m * MIB);
+
+/**
+ * Rounds a raw resource value up to the nearest "clean" step.
+ *   CPU  : nearest multiple of 50m (≤1000m) or 250m (>1000m).
+ *   Memory/storage: nearest standard binary step (64Mi … 32Gi).
+ */
+export function roundResource(raw: number, isCPU: boolean): number {
+  if (raw <= 0) return 0;
+  if (isCPU) {
+    return raw <= 1000
+      ? Math.ceil(raw / 50) * 50
+      : Math.ceil(raw / 250) * 250;
+  }
+  for (const step of MEMORY_STEPS_B) {
+    if (step >= raw) return step;
+  }
+  // Beyond table: round up to next 32GiB block
+  const last = MEMORY_STEPS_B[MEMORY_STEPS_B.length - 1];
+  return Math.ceil(raw / last) * last;
+}
+
+/** Formats a raw resource value as a kubectl-compatible quantity string (e.g. "500m", "512Mi", "2Gi"). */
+function fmtKubectl(raw: number, isCPU: boolean): string {
+  if (isCPU) return `${Math.round(raw)}m`;
+  const mib = Math.round(raw / MIB);
+  return mib % 1024 === 0 ? `${mib / 1024}Gi` : `${mib}Mi`;
+}
+
+/** Applies rounding and returns both the display string and the raw rounded value. */
+function suggest(raw: number, isCPU: boolean): { suggested: string; suggestedRaw: number } {
+  const rounded = roundResource(raw, isCPU);
+  return { suggested: fmtRawValue(rounded, isCPU), suggestedRaw: rounded };
+}
 
 /** Generates CPU and memory suggestions for a container: danger/warning when near limit, overkill when far below request.
  *  When Prometheus history is available, uses P95 for danger/warning thresholds and mean for overkill detection. */
-function analyzeCpuMem(c: ContainerResources, depName: string, podName: string, hist?: ContainerHistory): Suggestion[] {
+function analyzeCpuMem(c: ContainerResources, depName: string, depNamespace: string, podName: string, hist?: ContainerHistory): Suggestion[] {
   const results: Suggestion[] = [];
   for (const isCPU of [true, false]) {
     const label = isCPU ? "CPU" : "Memory";
@@ -91,34 +134,34 @@ function analyzeCpuMem(c: ContainerResources, depName: string, podName: string, 
     const source = hasHistory ? "avg" : "current";
     const confidence = !hasHistory ? "" : histPoints.length >= 400 ? " · high confidence" : histPoints.length >= 60 ? " · medium confidence" : " · low confidence";
 
+    const base = { deployment: depName, namespace: depNamespace, pod: podName, container: c.name };
+
     // No request defined — flag it
     if (req === 0) {
-      const suggested = meanUse > 0 ? Math.ceil(meanUse * 1.3) : Math.ceil(snapshotUse * 1.3);
-      results.push({ deployment: depName, pod: podName, container: c.name, resource: `${label} — no request`, kind: "warning",
+      results.push({ ...base, resource: `${label} — no request`, kind: "warning",
         action: "Set request",
         message: `No ${label} request set — scheduler cannot guarantee resources`,
-        current: "none", suggested: fmtRawValue(suggested, isCPU) });
+        current: "none", ...suggest((meanUse > 0 ? meanUse : snapshotUse) * 1.3, isCPU) });
     }
     // No limit defined — flag it
     if (lim === 0) {
-      const suggested = p95Use > 0 ? Math.ceil(p95Use * 1.5) : Math.ceil(snapshotUse * 2);
-      results.push({ deployment: depName, pod: podName, container: c.name, resource: `${label} — no limit`, kind: "warning",
+      results.push({ ...base, resource: `${label} — no limit`, kind: "warning",
         action: "Set limit",
         message: `No ${label} limit set — container can consume unbounded ${label.toLowerCase()}`,
-        current: "unlimited", suggested: fmtRawValue(suggested, isCPU) });
+        current: "unlimited", ...suggest((p95Use > 0 ? p95Use : snapshotUse * 2) * 1.5, isCPU) });
     }
     if (lim > 0) {
       const pct = p95Use / lim;
       if (pct >= 0.90) {
-        results.push({ deployment: depName, pod: podName, container: c.name, resource: label, kind: "danger",
+        results.push({ ...base, resource: label, kind: "danger",
           action: "Increase limit",
           message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${confidence}`,
-          current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(Math.ceil(p95Use * 1.4), isCPU) });
+          current: fmtRawValue(lim, isCPU), ...suggest(p95Use * 1.4, isCPU) });
       } else if (pct >= 0.70) {
-        results.push({ deployment: depName, pod: podName, container: c.name, resource: label, kind: "warning",
+        results.push({ ...base, resource: label, kind: "warning",
           action: "Increase limit",
           message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${confidence}`,
-          current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(Math.ceil(p95Use * 1.4), isCPU) });
+          current: fmtRawValue(lim, isCPU), ...suggest(p95Use * 1.4, isCPU) });
       } else if (hasHistory) {
         // Trend-based: predict when usage will exceed limit (only when P95 hasn't already flagged it)
         const histSeries = isCPU ? hist!.cpu : hist!.memory;
@@ -127,42 +170,42 @@ function analyzeCpuMem(c: ContainerResources, depName: string, podName: string, 
           const hours = secs / 3600;
           const kind: SuggestionKind = hours < 4 ? "danger" : "warning";
           const timeStr = hours < 1 ? `${Math.round(secs / 60)}m` : `${hours.toFixed(1)}h`;
-          results.push({ deployment: depName, pod: podName, container: c.name, resource: label, kind,
+          results.push({ ...base, resource: label, kind,
             action: "Increase limit",
             message: `${label} trending to exceed limit in ~${timeStr} (linear trend${confidence.replace(" · ", ", ")})`,
-            current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(Math.ceil(lim * 1.5), isCPU) });
+            current: fmtRawValue(lim, isCPU), ...suggest(lim * 1.5, isCPU) });
         }
       }
     }
     const requestOverkill = req > 0 && meanUse / req <= 0.35;
     if (requestOverkill) {
-      results.push({ deployment: depName, pod: podName, container: c.name, resource: label, kind: "overkill",
+      results.push({ ...base, resource: label, kind: "overkill",
         action: "Reduce request",
         message: `${label} ${source} request is ${(req / meanUse).toFixed(1)}× actual usage${confidence}`,
-        current: fmtRawValue(req, isCPU), suggested: fmtRawValue(Math.ceil(meanUse * 1.3), isCPU) });
+        current: fmtRawValue(req, isCPU), ...suggest(meanUse * 1.3, isCPU) });
     }
     // Limit over-provisioned: limit is more than 3× P95 usage
     if (lim > 0 && p95Use > 0 && lim / p95Use >= 3) {
-      results.push({ deployment: depName, pod: podName, container: c.name, resource: label, kind: "overkill",
+      results.push({ ...base, resource: label, kind: "overkill",
         action: "Reduce limit",
         message: `${label} limit is ${(lim / p95Use).toFixed(1)}× P95 usage${confidence}`,
-        current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(Math.ceil(p95Use * 1.5), isCPU) });
+        current: fmtRawValue(lim, isCPU), ...suggest(p95Use * 1.5, isCPU) });
     }
     // Request too low: P95 usage consistently exceeds request (only when not already flagged as overkill)
     if (req > 0 && !requestOverkill && p95Use > req * 1.1) {
       const ratio = p95Use / req;
       const kind: SuggestionKind = ratio >= 2 ? "danger" : "warning";
-      results.push({ deployment: depName, pod: podName, container: c.name, resource: label, kind,
+      results.push({ ...base, resource: label, kind,
         action: "Increase request",
         message: `${label} ${source} usage is ${ratio.toFixed(1)}× the request — pod may be throttled or evicted${confidence}`,
-        current: fmtRawValue(req, isCPU), suggested: fmtRawValue(Math.ceil(p95Use * 1.3), isCPU) });
+        current: fmtRawValue(req, isCPU), ...suggest(p95Use * 1.3, isCPU) });
     }
   }
   return results;
 }
 
 /** Generates ephemeral storage suggestions: flags missing limits, warns near capacity. */
-function analyzeEphemeral(c: ContainerResources, depName: string, podName: string): Suggestion[] {
+function analyzeEphemeral(c: ContainerResources, depName: string, depNamespace: string, podName: string): Suggestion[] {
   const eph = c.ephemeralStorage;
   if (!eph?.usage) return [];
   const use = eph.usage.bytes ?? 0;
@@ -170,31 +213,32 @@ function analyzeEphemeral(c: ContainerResources, depName: string, podName: strin
 
   const results: Suggestion[] = [];
   const lim = eph.limit?.bytes ?? 0;
+  const base = { deployment: depName, namespace: depNamespace, pod: podName, container: c.name };
 
   if (lim === 0) {
-    results.push({ deployment: depName, pod: podName, container: c.name, resource: "Ephemeral — no limit", kind: "warning",
+    results.push({ ...base, resource: "Ephemeral — no limit", kind: "warning",
       action: "Set limit",
       message: "No ephemeral-storage limit set",
-      current: "unlimited", suggested: fmtRawValue(Math.ceil(use * 2), false) });
+      current: "unlimited", ...suggest(use * 2, false) });
   } else {
     const pct = use / lim;
     if (pct >= 0.90) {
-      results.push({ deployment: depName, pod: podName, container: c.name, resource: "Ephemeral", kind: "danger",
+      results.push({ ...base, resource: "Ephemeral", kind: "danger",
         action: "Increase limit",
         message: `Ephemeral usage at ${Math.round(pct * 100)}% of limit`,
-        current: fmtRawValue(lim, false), suggested: fmtRawValue(Math.ceil(use * 1.5), false) });
+        current: fmtRawValue(lim, false), ...suggest(use * 1.5, false) });
     } else if (pct >= 0.70) {
-      results.push({ deployment: depName, pod: podName, container: c.name, resource: "Ephemeral", kind: "warning",
+      results.push({ ...base, resource: "Ephemeral", kind: "warning",
         action: "Increase limit",
         message: `Ephemeral usage at ${Math.round(pct * 100)}% of limit`,
-        current: fmtRawValue(lim, false), suggested: fmtRawValue(Math.ceil(use * 1.5), false) });
+        current: fmtRawValue(lim, false), ...suggest(use * 1.5, false) });
     }
   }
   return results;
 }
 
 /** Generates volume suggestions: PVC near capacity, emptyDir without sizeLimit. */
-function analyzeVolumes(volumes: VolumeDetail[], depName: string, podName: string): Suggestion[] {
+function analyzeVolumes(volumes: VolumeDetail[], depName: string, depNamespace: string, podName: string): Suggestion[] {
   const results: Suggestion[] = [];
   for (const vol of volumes) {
     const use = vol.usage?.bytes ?? 0;
@@ -204,25 +248,24 @@ function analyzeVolumes(volumes: VolumeDetail[], depName: string, podName: strin
       const cap = vol.capacity?.bytes ?? 0;
       if (cap > 0) {
         const pct = use / cap;
+        const base = { deployment: depName, namespace: depNamespace, pod: podName, container: vol.pvcName ?? vol.name };
         if (pct >= 0.90) {
-          results.push({ deployment: depName, pod: podName, container: vol.pvcName ?? vol.name, resource: "PVC",
-            kind: "danger", action: "Expand PVC",
+          results.push({ ...base, resource: "PVC", kind: "danger", action: "Expand PVC",
             message: `PVC "${vol.pvcName}" at ${Math.round(pct * 100)}% capacity`,
-            current: fmtRawValue(cap, false), suggested: fmtRawValue(Math.ceil(cap * 1.5), false) });
+            current: fmtRawValue(cap, false), ...suggest(cap * 1.5, false) });
         } else if (pct >= 0.75) {
-          results.push({ deployment: depName, pod: podName, container: vol.pvcName ?? vol.name, resource: "PVC",
-            kind: "warning", action: "Expand PVC",
+          results.push({ ...base, resource: "PVC", kind: "warning", action: "Expand PVC",
             message: `PVC "${vol.pvcName}" at ${Math.round(pct * 100)}% capacity`,
-            current: fmtRawValue(cap, false), suggested: fmtRawValue(Math.ceil(cap * 1.5), false) });
+            current: fmtRawValue(cap, false), ...suggest(cap * 1.5, false) });
         }
       }
     }
 
     if (vol.type === "emptyDir" && !vol.sizeLimit) {
-      results.push({ deployment: depName, pod: podName, container: vol.name, resource: "EmptyDir",
+      results.push({ deployment: depName, namespace: depNamespace, pod: podName, container: vol.name, resource: "EmptyDir",
         kind: "warning", action: "Set sizeLimit",
         message: `EmptyDir "${vol.name}" has no sizeLimit`,
-        current: "unlimited", suggested: fmtRawValue(Math.ceil(use * 2), false) });
+        current: "unlimited", ...suggest(use * 2, false) });
     }
   }
   return results;
@@ -237,14 +280,28 @@ export function computeSuggestions(deployments: DeploymentDetail[], history?: Co
     for (const pod of dep.pods ?? []) {
       for (const c of pod.containers) {
         const hist = histMap?.get(`${pod.name}/${c.name}`);
-        out.push(...analyzeCpuMem(c, dep.name, pod.name, hist));
-        out.push(...analyzeEphemeral(c, dep.name, pod.name));
+        out.push(...analyzeCpuMem(c, dep.name, dep.namespace, pod.name, hist));
+        out.push(...analyzeEphemeral(c, dep.name, dep.namespace, pod.name));
       }
-      out.push(...analyzeVolumes(pod.volumes ?? [], dep.name, pod.name));
+      out.push(...analyzeVolumes(pod.volumes ?? [], dep.name, dep.namespace, pod.name));
     }
   }
   const order: Record<SuggestionKind, number> = { danger: 0, warning: 1, overkill: 2 };
   return out.sort((a, b) => order[a.kind] - order[b.kind]);
+}
+
+/** Generates a kubectl command for a suggestion, or null for non-patchable resources (PVC, EmptyDir). */
+export function toKubectlCmd(s: Suggestion): string | null {
+  let k8sResource: string;
+  if (s.resource.startsWith("CPU")) k8sResource = "cpu";
+  else if (s.resource.startsWith("Memory")) k8sResource = "memory";
+  else if (s.resource.startsWith("Ephemeral")) k8sResource = "ephemeral-storage";
+  else return null;
+
+  const isRequest = s.action.toLowerCase().includes("request");
+  const flag = isRequest ? "--requests" : "--limits";
+  const isCPU = k8sResource === "cpu";
+  return `kubectl set resources deployment/${s.deployment} -c ${s.container} ${flag}=${k8sResource}=${fmtKubectl(s.suggestedRaw, isCPU)} -n ${s.namespace}`;
 }
 
 /** Returns the color status for a resource bar based on usage vs request/limit thresholds. */
