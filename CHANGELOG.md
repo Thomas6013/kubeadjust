@@ -6,6 +6,10 @@ All notable changes to KubeAdjust are documented here.
 
 ## [0.25.0] - 2026-04-22
 
+### Fixed
+
+- **OIDC mode crash-loop with in-cluster SA token** — when `OIDC_ENABLED=true` and no explicit `SA_TOKEN`/`SA_TOKENS` env var was set (relying on the auto-mounted in-cluster token instead), the backend fatalled at startup with `OIDC_ENABLED=true but no SA tokens configured`. Root cause: the in-cluster token is intentionally not stored in the `saTokens` map at startup (to allow kubelet rotation), so `len(saTokens) == 0` triggered the fatal even though a valid token existed. Fixed in two places: (1) `main.go` — fatal guard is now `len(saTokens) == 0 && !hasInClusterDefault`; (2) `middleware/session.go` — `SessionAuth` now falls back to reading `/var/run/secrets/kubernetes.io/serviceaccount/token` per-request for the `default` cluster, identical to the existing `ManagedAuth` behaviour. This means the token is always fresh regardless of how long the pod has been running — kubelet rotation is handled transparently with no goroutine or mutex needed. `handlers/clusters.go` — `ListClusters` now marks `default` as managed when `hasInClusterDefault` is true, so the frontend correctly shows the cluster badge.
+
 ### Added
 
 - **Overview — live CPU/RAM summary bar** — the cluster overview view now shows a horizontal stats bar above the namespace grid with four metrics: total CPU used, CPU avg per namespace, total RAM used, RAM avg per namespace. Values come from the metrics-server (`cpuUsageM`/`memUsageB` aggregated per namespace by `GET /api/namespaces/stats`). When metrics-server is unavailable, falls back to resource requests and labels the source accordingly (`requests`). `GetNamespaceStats` now fetches pods and pod metrics concurrently via errgroup; metrics are best-effort (0 if unavailable, no error returned). The bar is hidden until stats are loaded.
