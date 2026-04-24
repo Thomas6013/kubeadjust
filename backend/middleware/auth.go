@@ -4,8 +4,13 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 )
+
+// inClusterTokenFile is the path to the Kubernetes-projected SA token.
+// The kubelet rotates this file periodically; never cache its contents.
+const inClusterTokenFile = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 
 type contextKey string
 
@@ -58,7 +63,15 @@ func ManagedAuth(saTokens map[string]string) func(http.Handler) http.Handler {
 					token = t
 				} else if t, ok := saTokens["default"]; ok {
 					token = t
-				} else {
+				} else if clusterName == "default" {
+					// No env-var SA token for the default cluster: read the in-cluster projected token
+					// fresh from disk. The kubelet rotates this file every ~1h; reading at startup
+					// would leave a stale token after rotation, causing 401s after 2-3 days.
+					if b, err := os.ReadFile(inClusterTokenFile); err == nil {
+						token = strings.TrimSpace(string(b))
+					}
+				}
+				if token == "" {
 					log.Printf("ManagedAuth: no SA token for cluster %q and no default — set SA_TOKEN_%s or SA_TOKEN env var",
 						clusterName, strings.ToUpper(strings.ReplaceAll(clusterName, "-", "_")))
 				}

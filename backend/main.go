@@ -54,6 +54,16 @@ func main() {
 
 	// SA tokens: used in OIDC mode and in managed-SA mode (no OIDC, backend holds the token).
 	saTokens := parseSATokens()
+	// Detect in-cluster SA token (not stored — ManagedAuth re-reads per-request to avoid staleness).
+	hasInClusterDefault := false
+	if _, ok := saTokens["default"]; !ok {
+		if b, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token"); err == nil {
+			if strings.TrimSpace(string(b)) != "" {
+				hasInClusterDefault = true
+				log.Printf("in-cluster SA token detected for default cluster (read fresh per-request)")
+			}
+		}
+	}
 
 	// OIDC mode: OIDC_ENABLED=true + SA tokens per cluster
 	oidcEnabled := os.Getenv("OIDC_ENABLED") == "true"
@@ -90,7 +100,7 @@ func main() {
 			log.Fatal("OIDC_REDIRECT_URL must use HTTPS (starts with https://)")
 		}
 
-		if len(saTokens) == 0 {
+		if len(saTokens) == 0 && !hasInClusterDefault {
 			log.Fatal("OIDC_ENABLED=true but no SA tokens configured (set SA_TOKEN or SA_TOKENS)")
 		}
 		// Warn if a configured cluster has no matching SA token (common misconfiguration).
@@ -142,20 +152,23 @@ func main() {
 
 	// managedDefault: single-cluster mode where the backend holds the SA token (no OIDC, no CLUSTERS).
 	// Tells the frontend to skip token entry and go straight to dashboard.
-	managedDefault := !oidcEnabled && len(clusters) == 0 && saTokens["default"] != ""
-	if !oidcEnabled && len(saTokens) > 0 {
-		names := make([]string, 0, len(saTokens))
+	managedDefault := !oidcEnabled && len(clusters) == 0 && (saTokens["default"] != "" || hasInClusterDefault)
+	if !oidcEnabled && (len(saTokens) > 0 || hasInClusterDefault) {
+		names := make([]string, 0, len(saTokens)+1)
 		for n := range saTokens {
 			names = append(names, n)
 		}
-		log.Printf("Managed SA token mode: %d SA token(s) configured for clusters: %v", len(saTokens), names)
+		if hasInClusterDefault {
+			names = append(names, "default (in-cluster, refreshed per-request)")
+		}
+		log.Printf("Managed SA token mode: %d SA token(s) configured for clusters: %v", len(names), names)
 	} else if !oidcEnabled {
 		log.Printf("WARN: no SA tokens configured — users must supply their own bearer token")
 	}
 
 	r.Route("/api", func(r chi.Router) {
 		// Public — no auth required
-		r.Get("/clusters", handlers.ListClusters(clusters, saTokens))
+		r.Get("/clusters", handlers.ListClusters(clusters, saTokens, hasInClusterDefault))
 		r.Get("/auth/config", handlers.AuthConfig(oidcEnabled, managedDefault))
 
 		if oidcEnabled {
@@ -273,13 +286,7 @@ func parseSATokens() map[string]string {
 			tokens[name] = token
 		}
 	}
-	if _, ok := tokens["default"]; !ok {
-		if b, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token"); err == nil {
-			if t := strings.TrimSpace(string(b)); t != "" {
-				tokens["default"] = t
-				log.Printf("using in-cluster SA token for default cluster")
-			}
-		}
-	}
+	// Note: in-cluster SA token (/var/run/secrets/kubernetes.io/serviceaccount/token) is NOT
+	// read here — it is re-read per-request by ManagedAuth to stay current as kubelet rotates it.
 	return tokens
 }

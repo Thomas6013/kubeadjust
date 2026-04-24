@@ -4,7 +4,23 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
-## [0.24.0] - unreleased
+## [0.25.0] - 2026-04-22
+
+### Fixed
+
+- **OIDC mode crash-loop with in-cluster SA token** — when `OIDC_ENABLED=true` and no explicit `SA_TOKEN`/`SA_TOKENS` env var was set (relying on the auto-mounted in-cluster token instead), the backend fatalled at startup with `OIDC_ENABLED=true but no SA tokens configured`. Root cause: the in-cluster token is intentionally not stored in the `saTokens` map at startup (to allow kubelet rotation), so `len(saTokens) == 0` triggered the fatal even though a valid token existed. Fixed in two places: (1) `main.go` — fatal guard is now `len(saTokens) == 0 && !hasInClusterDefault`; (2) `middleware/session.go` — `SessionAuth` now falls back to reading `/var/run/secrets/kubernetes.io/serviceaccount/token` per-request for the `default` cluster, identical to the existing `ManagedAuth` behaviour. This means the token is always fresh regardless of how long the pod has been running — kubelet rotation is handled transparently with no goroutine or mutex needed. `handlers/clusters.go` — `ListClusters` now marks `default` as managed when `hasInClusterDefault` is true, so the frontend correctly shows the cluster badge.
+
+### Added
+
+- **Overview — live CPU/RAM summary bar** — the cluster overview view now shows a horizontal stats bar above the namespace grid with four metrics: total CPU used, CPU avg per namespace, total RAM used, RAM avg per namespace. Values come from the metrics-server (`cpuUsageM`/`memUsageB` aggregated per namespace by `GET /api/namespaces/stats`). When metrics-server is unavailable, falls back to resource requests and labels the source accordingly (`requests`). `GetNamespaceStats` now fetches pods and pod metrics concurrently via errgroup; metrics are best-effort (0 if unavailable, no error returned). The bar is hidden until stats are loaded.
+
+- **Rounded suggestion values** — suggested CPU and memory values are now rounded to clean, human-friendly steps instead of raw calculated figures (e.g. `486m → 500m`, `486 MiB → 512 MiB`). CPU rounds up to the nearest 50m (≤1000m) or 250m (>1000m). Memory and storage round up to the nearest standard binary step: 64, 128, 192, 256, 384, 512, 768 MiB … 32 GiB. Maximum overhead vs. the raw suggested value is ~28%. Implemented in `roundResource()` in `frontend/src/lib/suggestions.ts`.
+
+- **kubectl copy/export for suggestions** — each CPU, Memory, and Ephemeral suggestion now has a **"kubectl"** button that copies a ready-to-use `kubectl set resources deployment/<name> -c <container> --requests/--limits=<resource>=<value> -n <namespace>` command to the clipboard (flashes "✓" for 1.5s). An **"export kubectl"** button in the suggestion panel header copies all currently visible suggestions (respecting search and category filters) as a multi-line script. PVC and EmptyDir suggestions do not get a copy button (no `kubectl set resources` equivalent). Raw rounded numeric values are stored in the new `suggestedRaw` field on the `Suggestion` interface; namespace is also propagated to enable the `-n` flag.
+
+---
+
+## [0.24.0] - 2026-04-10
 
 ### Added
 

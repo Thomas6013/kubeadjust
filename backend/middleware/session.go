@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/devops-kubeadjust/backend/oidc"
@@ -38,6 +39,15 @@ func SessionAuth(saTokens map[string]string, secret []byte) func(http.Handler) h
 			saToken, ok := saTokens[clusterName]
 			if !ok {
 				saToken, ok = saTokens["default"]
+			}
+			// In-cluster token fallback: mirrors ManagedAuth — re-read per-request so kubelet
+			// rotation (default TTL ~1h) is handled transparently without a background goroutine.
+			if !ok && clusterName == "default" {
+				if b, err := os.ReadFile(inClusterTokenFile); err == nil {
+					if t := strings.TrimSpace(string(b)); t != "" {
+						saToken, ok = t, true
+					}
+				}
 			}
 			if !ok {
 				log.Printf("OIDC: SA token not configured for cluster %q — check SA_TOKEN_%s env var", clusterName, strings.ToUpper(strings.ReplaceAll(clusterName, "-", "_")))

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from "react";
 import type { DeploymentDetail, ContainerHistory } from "@/lib/api";
-import { computeSuggestions, type Suggestion, type SuggestionKind } from "@/lib/suggestions";
+import { computeSuggestions, toKubectlCmd, type Suggestion, type SuggestionKind } from "@/lib/suggestions";
 import styles from "./SuggestionPanel.module.css";
 
 const KIND_META: Record<SuggestionKind, { icon: string; color: string; label: string; bg: string }> = {
@@ -74,9 +74,23 @@ const VOLUME_RESOURCES = new Set(["PVC", "EmptyDir"]);
 
 function SuggestionItem({ s, onOpenCards }: { s: Suggestion; onOpenCards?: (ids: string[], scrollTarget: string) => void }) {
   const meta = KIND_META[s.kind];
+  const [copied, setCopied] = useState(false);
+  const cmd = toKubectlCmd(s);
+
   const scrollTarget = VOLUME_RESOURCES.has(s.resource)
     ? `pod-row-${s.deployment}-${s.pod}`
     : `container-${s.deployment}-${s.pod}-${s.container}`;
+
+  const handleCopy = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!cmd) return;
+    navigator.clipboard.writeText(cmd).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {/* clipboard unavailable */});
+  }, [cmd]);
+
   return (
     <a
       href={`#${scrollTarget}`}
@@ -99,6 +113,16 @@ function SuggestionItem({ s, onOpenCards }: { s: Suggestion; onOpenCards?: (ids:
         <span className={styles.current}>{s.current}</span>
         <span className={styles.arrow}>→</span>
         <span className={styles.suggested} style={{ color: meta.color }}>{s.suggested}</span>
+        {cmd && (
+          <button
+            type="button"
+            className={`${styles.copyBtn} ${copied ? styles.copyBtnDone : ""}`}
+            onClick={handleCopy}
+            title={cmd}
+          >
+            {copied ? "✓" : "kubectl"}
+          </button>
+        )}
       </div>
       <div className={styles.containerTag}>{s.container}</div>
     </a>
@@ -147,6 +171,7 @@ interface SuggestionPanelProps {
 export default function SuggestionPanel({ deployments, history, onOpenCards, searchQuery }: SuggestionPanelProps) {
   // --- Open/close per kind group (useCallback prevents stale closure on rapid re-renders) ---
   const [openGroups, setOpenGroups] = useState<Map<string, boolean>>(new Map());
+  const [exportCopied, setExportCopied] = useState(false);
 
   const isGroupOpen = useCallback((kind: string): boolean => {
     return openGroups.get(kind) ?? true;
@@ -212,11 +237,40 @@ export default function SuggestionPanel({ deployments, history, onOpenCards, sea
 
   const groups = useMemo(() => groupByKind(filtered), [filtered]);
 
+  // Export: all kubectl commands for currently visible suggestions (null-filtered)
+  const exportText = useMemo(
+    () => {
+      const cmds = filtered.map(s => toKubectlCmd(s)).filter((c): c is string => c !== null);
+      return cmds.length > 0 ? cmds.join("\n") : null;
+    },
+    [filtered]
+  );
+
+  const handleExport = useCallback(() => {
+    if (!exportText) return;
+    navigator.clipboard.writeText(exportText).then(() => {
+      setExportCopied(true);
+      setTimeout(() => setExportCopied(false), 1500);
+    }).catch(() => {/* clipboard unavailable */});
+  }, [exportText]);
+
   return (
     <aside className={styles.panel}>
       <div className={styles.panelHeader}>
         <span className={styles.panelTitle}>Suggestions</span>
-        <span className={styles.total}>{searchFiltered.length}</span>
+        <div className={styles.panelHeaderRight}>
+          <span className={styles.total}>{searchFiltered.length}</span>
+          {exportText && (
+            <button
+              type="button"
+              className={`${styles.exportBtn} ${exportCopied ? styles.exportBtnDone : ""}`}
+              onClick={handleExport}
+              title="Copy all visible kubectl commands to clipboard"
+            >
+              {exportCopied ? "✓ copied" : "export kubectl"}
+            </button>
+          )}
+        </div>
       </div>
 
       {searchFiltered.length === 0 ? (

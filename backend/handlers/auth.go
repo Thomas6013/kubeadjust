@@ -13,7 +13,7 @@ import (
 func VerifyToken(w http.ResponseWriter, r *http.Request) {
 	token := middleware.TokenFromContext(r.Context())
 	client := k8s.New(token, middleware.ClusterURLFromContext(r.Context()))
-	if err := client.VerifyToken(); err != nil {
+	if err := client.VerifyToken(r.Context()); err != nil {
 		log.Printf("token verification failed: %v", err)
 		jsonError(w, "authentication failed", http.StatusUnauthorized)
 		return

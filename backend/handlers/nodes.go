@@ -62,7 +62,7 @@ func ListNodes(w http.ResponseWriter, r *http.Request) {
 	token := middleware.TokenFromContext(r.Context())
 	client := k8s.New(token, middleware.ClusterURLFromContext(r.Context()))
 
-	nodes, err := client.ListNodes()
+	nodes, err := client.ListNodes(r.Context())
 	if err != nil {
 		log.Printf("failed to list nodes: %v", err)
 		jsonError(w, "internal server error", http.StatusInternalServerError)
@@ -70,7 +70,7 @@ func ListNodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// All pods across namespaces for request/limit aggregation per node
-	allPods, err := client.ListAllPods()
+	allPods, err := client.ListAllPods(r.Context())
 	if err != nil {
 		log.Printf("failed to list all pods: %v", err)
 		jsonError(w, "internal server error", http.StatusInternalServerError)
@@ -79,7 +79,7 @@ func ListNodes(w http.ResponseWriter, r *http.Request) {
 
 	// Node metrics (best-effort)
 	nodeMetrics := map[string]k8s.NodeMetrics{}
-	if nm, err := client.ListNodeMetrics(); err == nil {
+	if nm, err := client.ListNodeMetrics(r.Context()); err == nil {
 		for _, m := range nm.Items {
 			nodeMetrics[m.Metadata.Name] = m
 		}
@@ -179,7 +179,7 @@ func GetNodePods(w http.ResponseWriter, r *http.Request) {
 	token := middleware.TokenFromContext(r.Context())
 	client := k8s.New(token, middleware.ClusterURLFromContext(r.Context()))
 
-	allPods, err := client.ListAllPods()
+	allPods, err := client.ListAllPods(r.Context())
 	if err != nil {
 		log.Printf("failed to list pods for node %s: %v", nodeName, err)
 		jsonError(w, "internal server error", http.StatusInternalServerError)
@@ -189,7 +189,7 @@ func GetNodePods(w http.ResponseWriter, r *http.Request) {
 	// Pod metrics — cluster-wide, best-effort (not fatal if unavailable)
 	// metricsMap: pod name -> container name -> usage
 	metricsMap := map[string]map[string]k8s.ContainerUsage{}
-	if pm, err := client.ListAllPodMetrics(); err == nil {
+	if pm, err := client.ListAllPodMetrics(r.Context()); err == nil {
 		for _, pm := range pm.Items {
 			containers := make(map[string]k8s.ContainerUsage, len(pm.Containers))
 			for _, c := range pm.Containers {

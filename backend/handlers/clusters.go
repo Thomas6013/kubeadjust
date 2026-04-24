@@ -15,7 +15,7 @@ type ClusterItem struct {
 // In single-cluster mode (no CLUSTERS env var), always exposes "default" when a default SA
 // token is available (env SA_TOKEN or in-cluster mount), so the frontend can show the badge.
 // Does not require authentication — cluster names are not sensitive.
-func ListClusters(clusters map[string]string, saTokens map[string]string) http.HandlerFunc {
+func ListClusters(clusters map[string]string, saTokens map[string]string, hasInClusterDefault bool) http.HandlerFunc {
 	items := make([]ClusterItem, 0, len(clusters))
 	for name := range clusters {
 		_, managed := saTokens[name]
@@ -25,7 +25,7 @@ func ListClusters(clusters map[string]string, saTokens map[string]string) http.H
 	// an explicitly configured cluster. This covers both single-cluster mode and multi-cluster
 	// mode where the in-cluster SA is available alongside other named clusters.
 	if _, alreadyConfigured := clusters["default"]; !alreadyConfigured {
-		if _, ok := saTokens["default"]; ok {
+		if _, ok := saTokens["default"]; ok || hasInClusterDefault {
 			items = append(items, ClusterItem{Name: "default", Managed: true})
 		}
 	}

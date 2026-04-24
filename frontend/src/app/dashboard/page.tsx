@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { api, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type ContainerHistory } from "@/lib/api";
+import { api, fmtRawValue, type ClusterItem, type NamespaceItem, type NamespaceStats, type DeploymentDetail, type NodeOverview, type ContainerHistory } from "@/lib/api";
 import { useSessionState, AUTO_REFRESH_MS, type View } from "@/hooks/useSessionState";
 import { STORAGE_KEYS, MANAGED_TOKEN, safeGetItem, safeSetItem, safeRemoveItem, tokenKey } from "@/lib/storage";
 import DeploymentCard from "@/components/DeploymentCard";
@@ -314,6 +314,32 @@ export default function DashboardPage() {
     [deployments, workloadSearch]
   );
 
+  const overviewStats = useMemo(() => {
+    if (nsStats.size === 0) return null;
+    const visible = namespaces.filter((ns) => !excludedNs.has(ns.name));
+    let cpuUsageSum = 0, memUsageSum = 0, cpuReqSum = 0, memReqSum = 0, count = 0;
+    for (const ns of visible) {
+      const st = nsStats.get(ns.name);
+      if (!st) continue;
+      count++;
+      cpuUsageSum += st.cpuUsageM;
+      memUsageSum += st.memUsageB;
+      cpuReqSum += st.cpuRequestedM;
+      memReqSum += st.memRequestedB;
+    }
+    if (count === 0) return null;
+    const hasUsage = cpuUsageSum > 0 || memUsageSum > 0;
+    const cpuSum = hasUsage ? cpuUsageSum : cpuReqSum;
+    const memSum = hasUsage ? memUsageSum : memReqSum;
+    return {
+      cpuSum,
+      memSum,
+      cpuAvg: Math.round(cpuSum / count),
+      memAvg: Math.round(memSum / count),
+      source: hasUsage ? "live usage" : "requests",
+    };
+  }, [namespaces, excludedNs, nsStats]);
+
   const loading = view === "nodes" ? loadingNodes : loadingDeps;
 
   return (
@@ -363,6 +389,30 @@ export default function DashboardPage() {
                   <span className={styles.count}>— ratio data unavailable</span>
                 )}
               </div>
+              {overviewStats && (
+                <div className={styles.overviewStats}>
+                  <div className={styles.overviewStatGroup}>
+                    <span className={styles.overviewStatLabel}>CPU total</span>
+                    <span className={styles.overviewStatValue}>{fmtRawValue(overviewStats.cpuSum, true)}</span>
+                  </div>
+                  <div className={styles.overviewStatDivider} />
+                  <div className={styles.overviewStatGroup}>
+                    <span className={styles.overviewStatLabel}>CPU avg/ns</span>
+                    <span className={styles.overviewStatValue}>{fmtRawValue(overviewStats.cpuAvg, true)}</span>
+                  </div>
+                  <div className={styles.overviewStatDivider} />
+                  <div className={styles.overviewStatGroup}>
+                    <span className={styles.overviewStatLabel}>RAM total</span>
+                    <span className={styles.overviewStatValue}>{fmtRawValue(overviewStats.memSum, false)}</span>
+                  </div>
+                  <div className={styles.overviewStatDivider} />
+                  <div className={styles.overviewStatGroup}>
+                    <span className={styles.overviewStatLabel}>RAM avg/ns</span>
+                    <span className={styles.overviewStatValue}>{fmtRawValue(overviewStats.memAvg, false)}</span>
+                  </div>
+                  <span className={styles.overviewStatSource}>{overviewStats.source}</span>
+                </div>
+              )}
               {loadingNs ? (
                 <p className={styles.muted}>Loading namespaces…</p>
               ) : (
