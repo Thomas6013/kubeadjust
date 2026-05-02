@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import type { DeploymentDetail, ContainerHistory } from "@/lib/api";
+import type { DeploymentDetail, ContainerHistory, NodeOverview } from "@/lib/api";
 import { computeSuggestions, toKubectlCmd, type Suggestion, type SuggestionKind } from "@/lib/suggestions";
 import styles from "./SuggestionPanel.module.css";
 
@@ -164,11 +164,12 @@ function SuggestionGroup({ kind, items, open, onToggle, onOpenCards }: Suggestio
 interface SuggestionPanelProps {
   deployments: DeploymentDetail[];
   history?: ContainerHistory[];
+  nodes?: NodeOverview[];
   onOpenCards?: (ids: string[], scrollTarget: string) => void;
   searchQuery?: string;
 }
 
-export default function SuggestionPanel({ deployments, history, onOpenCards, searchQuery }: SuggestionPanelProps) {
+export default function SuggestionPanel({ deployments, history, nodes, onOpenCards, searchQuery }: SuggestionPanelProps) {
   // --- Open/close per kind group (useCallback prevents stale closure on rapid re-renders) ---
   const [openGroups, setOpenGroups] = useState<Map<string, boolean>>(new Map());
   const [exportCopied, setExportCopied] = useState(false);
@@ -200,7 +201,7 @@ export default function SuggestionPanel({ deployments, history, onOpenCards, sea
   }, []);
 
   // --- Compute ---
-  const allSuggestions = useMemo(() => computeSuggestions(deployments, history), [deployments, history]);
+  const allSuggestions = useMemo(() => computeSuggestions(deployments, history, nodes), [deployments, history, nodes]);
 
   const searchFiltered = useMemo(() => {
     const q = searchQuery?.toLowerCase() ?? "";

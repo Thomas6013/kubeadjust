@@ -567,6 +567,7 @@ export default function DashboardPage() {
             <SuggestionPanel
               deployments={visibleDeployments}
               history={nsHistory}
+              nodes={nodes}
               onOpenCards={handleOpenCards}
               searchQuery={workloadSearch}
             />

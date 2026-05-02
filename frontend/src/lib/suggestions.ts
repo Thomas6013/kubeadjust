@@ -1,5 +1,5 @@
 import { fmtRawValue } from "./api";
-import type { DataPoint, DeploymentDetail, ContainerResources, ResourceValue, VolumeDetail, ContainerHistory } from "./api";
+import type { DataPoint, DeploymentDetail, ContainerResources, ResourceValue, VolumeDetail, ContainerHistory, NodeOverview } from "./api";
 
 export type SuggestionKind = "danger" | "warning" | "overkill";
 
@@ -108,15 +108,44 @@ function fmtKubectl(raw: number, isCPU: boolean): string {
   return mib % 1024 === 0 ? `${mib / 1024}Gi` : `${mib}Mi`;
 }
 
+/** Maximum allocatable CPU and memory across all Ready nodes — used to cap suggestions. */
+export interface NodeCapacity {
+  maxCpuMillicores: number;
+  maxMemoryBytes: number;
+}
+
+/** Returns the maximum allocatable CPU and memory across all Ready nodes. */
+export function maxNodeCapacity(nodes: NodeOverview[]): NodeCapacity {
+  let maxCpu = 0;
+  let maxMem = 0;
+  for (const n of nodes) {
+    if (n.status === "Ready") {
+      maxCpu = Math.max(maxCpu, n.allocatable.cpu.millicores ?? 0);
+      maxMem = Math.max(maxMem, n.allocatable.memory.bytes ?? 0);
+    }
+  }
+  return { maxCpuMillicores: maxCpu, maxMemoryBytes: maxMem };
+}
+
 /** Applies rounding and returns both the display string and the raw rounded value. */
 function suggest(raw: number, isCPU: boolean): { suggested: string; suggestedRaw: number } {
   const rounded = roundResource(raw, isCPU);
   return { suggested: fmtRawValue(rounded, isCPU), suggestedRaw: rounded };
 }
 
+/** Like suggest(), but caps the result at nodeCap (node allocatable). Returns whether capping occurred. */
+function suggestCapped(raw: number, isCPU: boolean, nodeCap: number): { suggested: string; suggestedRaw: number; capped: boolean } {
+  const rounded = roundResource(raw, isCPU);
+  if (nodeCap > 0 && rounded > nodeCap) {
+    return { suggested: fmtRawValue(nodeCap, isCPU), suggestedRaw: nodeCap, capped: true };
+  }
+  return { suggested: fmtRawValue(rounded, isCPU), suggestedRaw: rounded, capped: false };
+}
+
 /** Generates CPU and memory suggestions for a container: danger/warning when near limit, overkill when far below request.
- *  When Prometheus history is available, uses P95 for danger/warning thresholds and mean for overkill detection. */
-function analyzeCpuMem(c: ContainerResources, depName: string, depNamespace: string, podName: string, hist?: ContainerHistory): Suggestion[] {
+ *  When Prometheus history is available, uses P95 for danger/warning thresholds and mean for overkill detection.
+ *  Suggestions that increase a resource value are capped at the node's allocatable capacity. */
+function analyzeCpuMem(c: ContainerResources, depName: string, depNamespace: string, podName: string, hist?: ContainerHistory, nodeCap?: NodeCapacity): Suggestion[] {
   const results: Suggestion[] = [];
   for (const isCPU of [true, false]) {
     const label = isCPU ? "CPU" : "Memory";
@@ -135,45 +164,60 @@ function analyzeCpuMem(c: ContainerResources, depName: string, depNamespace: str
     const confidence = !hasHistory ? "" : histPoints.length >= 400 ? " · high confidence" : histPoints.length >= 60 ? " · medium confidence" : " · low confidence";
 
     const base = { deployment: depName, namespace: depNamespace, pod: podName, container: c.name };
+    const cap = isCPU ? (nodeCap?.maxCpuMillicores ?? 0) : (nodeCap?.maxMemoryBytes ?? 0);
 
     // No request defined — flag it
     if (req === 0) {
+      const { capped, ...s } = suggestCapped((meanUse > 0 ? meanUse : snapshotUse) * 1.3, isCPU, cap);
       results.push({ ...base, resource: `${label} — no request`, kind: "warning",
         action: "Set request",
-        message: `No ${label} request set — scheduler cannot guarantee resources`,
-        current: "none", ...suggest((meanUse > 0 ? meanUse : snapshotUse) * 1.3, isCPU) });
+        message: `No ${label} request set — scheduler cannot guarantee resources${capped ? " · capped to node capacity" : ""}`,
+        current: "none", ...s });
     }
     // No limit defined — flag it
     if (lim === 0) {
+      const { capped, ...s } = suggestCapped((p95Use > 0 ? p95Use : snapshotUse * 2) * 1.5, isCPU, cap);
       results.push({ ...base, resource: `${label} — no limit`, kind: "warning",
         action: "Set limit",
-        message: `No ${label} limit set — container can consume unbounded ${label.toLowerCase()}`,
-        current: "unlimited", ...suggest((p95Use > 0 ? p95Use : snapshotUse * 2) * 1.5, isCPU) });
+        message: `No ${label} limit set — container can consume unbounded ${label.toLowerCase()}${capped ? " · capped to node capacity" : ""}`,
+        current: "unlimited", ...s });
     }
     if (lim > 0) {
       const pct = p95Use / lim;
-      if (pct >= 0.90) {
-        results.push({ ...base, resource: label, kind: "danger",
-          action: "Increase limit",
-          message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${confidence}`,
-          current: fmtRawValue(lim, isCPU), ...suggest(p95Use * 1.4, isCPU) });
-      } else if (pct >= 0.70) {
-        results.push({ ...base, resource: label, kind: "warning",
-          action: "Increase limit",
-          message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${confidence}`,
-          current: fmtRawValue(lim, isCPU), ...suggest(p95Use * 1.4, isCPU) });
+      if (pct >= 0.70) {
+        const kind: SuggestionKind = pct >= 0.90 ? "danger" : "warning";
+        const { capped, ...s } = suggestCapped(p95Use * 1.4, isCPU, cap);
+        if (capped && s.suggestedRaw <= lim) {
+          results.push({ ...base, resource: label, kind: "danger",
+            action: "Migrate to larger node",
+            message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit — node capacity too small to increase limit${confidence}`,
+            current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(lim, isCPU), suggestedRaw: lim });
+        } else {
+          results.push({ ...base, resource: label, kind,
+            action: "Increase limit",
+            message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${confidence}${capped ? " · capped to node capacity" : ""}`,
+            current: fmtRawValue(lim, isCPU), ...s });
+        }
       } else if (hasHistory) {
         // Trend-based: predict when usage will exceed limit (only when P95 hasn't already flagged it)
         const histSeries = isCPU ? hist!.cpu : hist!.memory;
         const secs = secondsToThreshold(histSeries, lim);
         if (secs !== null && secs < 24 * 3600) {
           const hours = secs / 3600;
-          const kind: SuggestionKind = hours < 4 ? "danger" : "warning";
+          const trendKind: SuggestionKind = hours < 4 ? "danger" : "warning";
           const timeStr = hours < 1 ? `${Math.round(secs / 60)}m` : `${hours.toFixed(1)}h`;
-          results.push({ ...base, resource: label, kind,
-            action: "Increase limit",
-            message: `${label} trending to exceed limit in ~${timeStr} (linear trend${confidence.replace(" · ", ", ")})`,
-            current: fmtRawValue(lim, isCPU), ...suggest(lim * 1.5, isCPU) });
+          const { capped, ...s } = suggestCapped(lim * 1.5, isCPU, cap);
+          if (capped && s.suggestedRaw <= lim) {
+            results.push({ ...base, resource: label, kind: "danger",
+              action: "Migrate to larger node",
+              message: `${label} trending to exceed limit in ~${timeStr} — node capacity too small to increase limit (linear trend${confidence.replace(" · ", ", ")})`,
+              current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(lim, isCPU), suggestedRaw: lim });
+          } else {
+            results.push({ ...base, resource: label, kind: trendKind,
+              action: "Increase limit",
+              message: `${label} trending to exceed limit in ~${timeStr} (linear trend${confidence.replace(" · ", ", ")})${capped ? " · capped to node capacity" : ""}`,
+              current: fmtRawValue(lim, isCPU), ...s });
+          }
         }
       }
     }
@@ -195,10 +239,18 @@ function analyzeCpuMem(c: ContainerResources, depName: string, depNamespace: str
     if (req > 0 && !requestOverkill && p95Use > req * 1.1) {
       const ratio = p95Use / req;
       const kind: SuggestionKind = ratio >= 2 ? "danger" : "warning";
-      results.push({ ...base, resource: label, kind,
-        action: "Increase request",
-        message: `${label} ${source} usage is ${ratio.toFixed(1)}× the request — pod may be throttled or evicted${confidence}`,
-        current: fmtRawValue(req, isCPU), ...suggest(p95Use * 1.3, isCPU) });
+      const { capped, ...s } = suggestCapped(p95Use * 1.3, isCPU, cap);
+      if (capped && s.suggestedRaw <= req) {
+        results.push({ ...base, resource: label, kind: "danger",
+          action: "Migrate to larger node",
+          message: `${label} ${source} usage is ${ratio.toFixed(1)}× the request — node capacity too small to increase request${confidence}`,
+          current: fmtRawValue(req, isCPU), suggested: fmtRawValue(req, isCPU), suggestedRaw: req });
+      } else {
+        results.push({ ...base, resource: label, kind,
+          action: "Increase request",
+          message: `${label} ${source} usage is ${ratio.toFixed(1)}× the request — pod may be throttled or evicted${confidence}${capped ? " · capped to node capacity" : ""}`,
+          current: fmtRawValue(req, isCPU), ...s });
+      }
     }
   }
   return results;
@@ -272,15 +324,17 @@ function analyzeVolumes(volumes: VolumeDetail[], depName: string, depNamespace: 
 }
 
 /** Computes all suggestions across all workloads, sorted by severity (danger → warning → overkill).
- *  When history is provided, suggestions are weighted with Prometheus P95/mean data. */
-export function computeSuggestions(deployments: DeploymentDetail[], history?: ContainerHistory[]): Suggestion[] {
+ *  When history is provided, suggestions are weighted with Prometheus P95/mean data.
+ *  When nodes is provided, "increase" suggestions are capped at the maximum node allocatable capacity. */
+export function computeSuggestions(deployments: DeploymentDetail[], history?: ContainerHistory[], nodes?: NodeOverview[]): Suggestion[] {
   const histMap = history && history.length > 0 ? buildHistoryMap(history) : undefined;
+  const nodeCap = nodes && nodes.length > 0 ? maxNodeCapacity(nodes) : undefined;
   const out: Suggestion[] = [];
   for (const dep of deployments) {
     for (const pod of dep.pods ?? []) {
       for (const c of pod.containers) {
         const hist = histMap?.get(`${pod.name}/${c.name}`);
-        out.push(...analyzeCpuMem(c, dep.name, dep.namespace, pod.name, hist));
+        out.push(...analyzeCpuMem(c, dep.name, dep.namespace, pod.name, hist, nodeCap));
         out.push(...analyzeEphemeral(c, dep.name, dep.namespace, pod.name));
       }
       out.push(...analyzeVolumes(pod.volumes ?? [], dep.name, dep.namespace, pod.name));
@@ -290,8 +344,9 @@ export function computeSuggestions(deployments: DeploymentDetail[], history?: Co
   return out.sort((a, b) => order[a.kind] - order[b.kind]);
 }
 
-/** Generates a kubectl command for a suggestion, or null for non-patchable resources (PVC, EmptyDir). */
+/** Generates a kubectl command for a suggestion, or null for non-patchable resources (PVC, EmptyDir) or node-capacity-blocked items. */
 export function toKubectlCmd(s: Suggestion): string | null {
+  if (s.action === "Migrate to larger node") return null;
   let k8sResource: string;
   if (s.resource.startsWith("CPU")) k8sResource = "cpu";
   else if (s.resource.startsWith("Memory")) k8sResource = "memory";

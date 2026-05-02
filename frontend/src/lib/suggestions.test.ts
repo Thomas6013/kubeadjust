@@ -4,8 +4,9 @@ import {
   storageStatus,
   buildHistoryMap,
   computeSuggestions,
+  maxNodeCapacity,
 } from "./suggestions";
-import type { ResourceValue, ContainerResources, DeploymentDetail, ContainerHistory } from "./api";
+import type { ResourceValue, ContainerResources, DeploymentDetail, ContainerHistory, NodeOverview, NodeResources } from "./api";
 
 // --- helpers ---
 
@@ -41,6 +42,20 @@ function deployment(name: string, containers: ContainerResources[]): DeploymentD
     kind: "Deployment", name, namespace: "default",
     replicas: 1, readyReplicas: 1, availableReplicas: 1,
     pods: [{ name: "pod-1", phase: "Running", containers }],
+  };
+}
+
+function nodeResources(cpuMillicores: number, memBytes: number): NodeResources {
+  return { cpu: cpu(cpuMillicores), memory: mem(memBytes) };
+}
+
+function node(cpuAllocMillicores: number, memAllocBytes: number, status: "Ready" | "NotReady" = "Ready"): NodeOverview {
+  const res = nodeResources(cpuAllocMillicores, memAllocBytes);
+  return {
+    name: "node-1", status, roles: [],
+    capacity: res, allocatable: res, requested: nodeResources(0, 0), limited: nodeResources(0, 0),
+    podCount: 0, maxPods: 110,
+    diskPressure: false, memoryPressure: false, pidPressure: false,
   };
 }
 
@@ -219,5 +234,71 @@ describe("computeSuggestions", () => {
     const suggestions = computeSuggestions([dep], hist);
     const danger = suggestions.find((s) => s.resource === "CPU" && s.kind === "danger");
     expect(danger).toBeDefined();
+  });
+
+  it("caps suggested CPU limit at node allocatable capacity", () => {
+    // usage at 95% of 3800m limit → would suggest 3800*1.4=5320m, but node only has 4000m
+    const dep = deployment("app", [container("c", { cpuReq: 500, cpuLim: 3800, cpuUse: 3610, memUse: 1 })]);
+    const nodes = [node(4000, 8 * 1024 * 1024 * 1024)];
+    const suggestions = computeSuggestions([dep], undefined, nodes);
+    const danger = suggestions.find((s) => s.resource === "CPU" && s.kind === "danger");
+    expect(danger).toBeDefined();
+    expect(danger!.suggestedRaw).toBeLessThanOrEqual(4000);
+    expect(danger!.message).toContain("capped to node capacity");
+  });
+
+  it("emits 'Migrate to larger node' when capped suggestion does not exceed current limit", () => {
+    // usage at 95% of 4000m limit, node max is also 4000m → can't increase
+    const dep = deployment("app", [container("c", { cpuReq: 500, cpuLim: 4000, cpuUse: 3800, memUse: 1 })]);
+    const nodes = [node(4000, 8 * 1024 * 1024 * 1024)];
+    const suggestions = computeSuggestions([dep], undefined, nodes);
+    const migrate = suggestions.find((s) => s.action === "Migrate to larger node");
+    expect(migrate).toBeDefined();
+    expect(migrate!.kind).toBe("danger");
+  });
+
+  it("does not cap overkill (reduce) suggestions", () => {
+    // limit is 3000m, usage is 100m → "Reduce limit" to ~150m, well within any node
+    const dep = deployment("app", [container("c", { cpuReq: 200, cpuLim: 3000, cpuUse: 100, memUse: 1 })]);
+    const nodes = [node(4000, 8 * 1024 * 1024 * 1024)];
+    const suggestions = computeSuggestions([dep], undefined, nodes);
+    const overkill = suggestions.find((s) => s.resource === "CPU" && s.action === "Reduce limit");
+    expect(overkill).toBeDefined();
+    expect(overkill!.suggestedRaw).toBeLessThan(3000);
+  });
+
+  it("ignores NotReady nodes when computing capacity", () => {
+    // only NotReady node — cap should be 0 (no constraint applied)
+    const dep = deployment("app", [container("c", { cpuReq: 500, cpuLim: 3800, cpuUse: 3610, memUse: 1 })]);
+    const nodes = [node(4000, 8 * 1024 * 1024 * 1024, "NotReady")];
+    const suggestions = computeSuggestions([dep], undefined, nodes);
+    const danger = suggestions.find((s) => s.resource === "CPU" && s.kind === "danger");
+    expect(danger).toBeDefined();
+    // No cap applied → suggested > 4000m
+    expect(danger!.suggestedRaw).toBeGreaterThan(4000);
+    expect(danger!.message).not.toContain("capped");
+  });
+});
+
+// --- maxNodeCapacity ---
+
+describe("maxNodeCapacity", () => {
+  it("returns zeros for empty node list", () => {
+    const cap = maxNodeCapacity([]);
+    expect(cap.maxCpuMillicores).toBe(0);
+    expect(cap.maxMemoryBytes).toBe(0);
+  });
+
+  it("picks max across Ready nodes", () => {
+    const nodes = [node(2000, 4 * 1024 * 1024 * 1024), node(8000, 16 * 1024 * 1024 * 1024)];
+    const cap = maxNodeCapacity(nodes);
+    expect(cap.maxCpuMillicores).toBe(8000);
+    expect(cap.maxMemoryBytes).toBe(16 * 1024 * 1024 * 1024);
+  });
+
+  it("excludes NotReady nodes", () => {
+    const nodes = [node(8000, 16 * 1024 * 1024 * 1024, "NotReady"), node(2000, 4 * 1024 * 1024 * 1024)];
+    const cap = maxNodeCapacity(nodes);
+    expect(cap.maxCpuMillicores).toBe(2000);
   });
 });
