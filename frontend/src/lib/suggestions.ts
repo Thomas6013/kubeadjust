@@ -112,19 +112,31 @@ function fmtKubectl(raw: number, isCPU: boolean): string {
 export interface NodeCapacity {
   maxCpuMillicores: number;
   maxMemoryBytes: number;
+  readyCpuMillicores: number[];
+  readyMemoryBytes: number[];
 }
 
-/** Returns the maximum allocatable CPU and memory across all Ready nodes. */
+/** Returns the maximum allocatable CPU and memory across all Ready nodes, plus per-node arrays for fit checks. */
 export function maxNodeCapacity(nodes: NodeOverview[]): NodeCapacity {
-  let maxCpu = 0;
-  let maxMem = 0;
+  const readyCpuMillicores: number[] = [];
+  const readyMemoryBytes: number[] = [];
   for (const n of nodes) {
     if (n.status === "Ready") {
-      maxCpu = Math.max(maxCpu, n.allocatable.cpu.millicores ?? 0);
-      maxMem = Math.max(maxMem, n.allocatable.memory.bytes ?? 0);
+      readyCpuMillicores.push(n.allocatable.cpu.millicores ?? 0);
+      readyMemoryBytes.push(n.allocatable.memory.bytes ?? 0);
     }
   }
-  return { maxCpuMillicores: maxCpu, maxMemoryBytes: maxMem };
+  const maxCpu = readyCpuMillicores.length > 0 ? Math.max(...readyCpuMillicores) : 0;
+  const maxMem = readyMemoryBytes.length > 0 ? Math.max(...readyMemoryBytes) : 0;
+  return { maxCpuMillicores: maxCpu, maxMemoryBytes: maxMem, readyCpuMillicores, readyMemoryBytes };
+}
+
+/** Returns "· fits on N/M nodes" suffix when the value doesn't fit on all nodes, or "" otherwise. */
+function nodesFitting(value: number, nodeLimits: number[]): string {
+  if (nodeLimits.length <= 1) return "";
+  const fits = nodeLimits.filter(cap => cap >= value).length;
+  if (fits === nodeLimits.length) return "";
+  return ` · fits on ${fits}/${nodeLimits.length} nodes`;
 }
 
 /** Applies rounding and returns both the display string and the raw rounded value. */
@@ -133,18 +145,21 @@ function suggest(raw: number, isCPU: boolean): { suggested: string; suggestedRaw
   return { suggested: fmtRawValue(rounded, isCPU), suggestedRaw: rounded };
 }
 
-/** Like suggest(), but caps the result at nodeCap (node allocatable). Returns whether capping occurred. */
-function suggestCapped(raw: number, isCPU: boolean, nodeCap: number): { suggested: string; suggestedRaw: number; capped: boolean } {
+/** Like suggest(), but caps the result at node allocatable and annotates how many nodes can fit the value. */
+function suggestCapped(raw: number, isCPU: boolean, nodeCap?: NodeCapacity): { suggested: string; suggestedRaw: number; capped: boolean; nodeFitSuffix: string } {
+  const cap = isCPU ? (nodeCap?.maxCpuMillicores ?? 0) : (nodeCap?.maxMemoryBytes ?? 0);
+  const nodeValues = isCPU ? (nodeCap?.readyCpuMillicores ?? []) : (nodeCap?.readyMemoryBytes ?? []);
   const rounded = roundResource(raw, isCPU);
-  if (nodeCap > 0 && rounded > nodeCap) {
-    return { suggested: fmtRawValue(nodeCap, isCPU), suggestedRaw: nodeCap, capped: true };
+  if (cap > 0 && rounded > cap) {
+    return { suggested: fmtRawValue(cap, isCPU), suggestedRaw: cap, capped: true, nodeFitSuffix: nodesFitting(cap, nodeValues) };
   }
-  return { suggested: fmtRawValue(rounded, isCPU), suggestedRaw: rounded, capped: false };
+  return { suggested: fmtRawValue(rounded, isCPU), suggestedRaw: rounded, capped: false, nodeFitSuffix: nodesFitting(rounded, nodeValues) };
 }
 
 /** Generates CPU and memory suggestions for a container: danger/warning when near limit, overkill when far below request.
  *  When Prometheus history is available, uses P95 for danger/warning thresholds and mean for overkill detection.
- *  Suggestions that increase a resource value are capped at the node's allocatable capacity. */
+ *  Suggestions that increase a resource value are capped at the node's allocatable capacity and annotated with
+ *  node fit count when the value doesn't fit on all Ready nodes. */
 function analyzeCpuMem(c: ContainerResources, depName: string, depNamespace: string, podName: string, hist?: ContainerHistory, nodeCap?: NodeCapacity): Suggestion[] {
   const results: Suggestion[] = [];
   for (const isCPU of [true, false]) {
@@ -164,29 +179,28 @@ function analyzeCpuMem(c: ContainerResources, depName: string, depNamespace: str
     const confidence = !hasHistory ? "" : histPoints.length >= 400 ? " · high confidence" : histPoints.length >= 60 ? " · medium confidence" : " · low confidence";
 
     const base = { deployment: depName, namespace: depNamespace, pod: podName, container: c.name };
-    const cap = isCPU ? (nodeCap?.maxCpuMillicores ?? 0) : (nodeCap?.maxMemoryBytes ?? 0);
 
     // No request defined — flag it
     if (req === 0) {
-      const { capped, ...s } = suggestCapped((meanUse > 0 ? meanUse : snapshotUse) * 1.3, isCPU, cap);
+      const { capped, nodeFitSuffix, ...s } = suggestCapped((meanUse > 0 ? meanUse : snapshotUse) * 1.3, isCPU, nodeCap);
       results.push({ ...base, resource: `${label} — no request`, kind: "warning",
         action: "Set request",
-        message: `No ${label} request set — scheduler cannot guarantee resources${capped ? " · capped to node capacity" : ""}`,
+        message: `No ${label} request set — scheduler cannot guarantee resources${capped ? " · capped to node capacity" : ""}${nodeFitSuffix}`,
         current: "none", ...s });
     }
     // No limit defined — flag it
     if (lim === 0) {
-      const { capped, ...s } = suggestCapped((p95Use > 0 ? p95Use : snapshotUse * 2) * 1.5, isCPU, cap);
+      const { capped, nodeFitSuffix, ...s } = suggestCapped((p95Use > 0 ? p95Use : snapshotUse * 2) * 1.5, isCPU, nodeCap);
       results.push({ ...base, resource: `${label} — no limit`, kind: "warning",
         action: "Set limit",
-        message: `No ${label} limit set — container can consume unbounded ${label.toLowerCase()}${capped ? " · capped to node capacity" : ""}`,
+        message: `No ${label} limit set — container can consume unbounded ${label.toLowerCase()}${capped ? " · capped to node capacity" : ""}${nodeFitSuffix}`,
         current: "unlimited", ...s });
     }
     if (lim > 0) {
       const pct = p95Use / lim;
       if (pct >= 0.70) {
         const kind: SuggestionKind = pct >= 0.90 ? "danger" : "warning";
-        const { capped, ...s } = suggestCapped(p95Use * 1.4, isCPU, cap);
+        const { capped, nodeFitSuffix, ...s } = suggestCapped(p95Use * 1.4, isCPU, nodeCap);
         if (capped && s.suggestedRaw <= lim) {
           results.push({ ...base, resource: label, kind: "danger",
             action: "Migrate to larger node",
@@ -195,7 +209,7 @@ function analyzeCpuMem(c: ContainerResources, depName: string, depNamespace: str
         } else {
           results.push({ ...base, resource: label, kind,
             action: "Increase limit",
-            message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${confidence}${capped ? " · capped to node capacity" : ""}`,
+            message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${confidence}${capped ? " · capped to node capacity" : ""}${nodeFitSuffix}`,
             current: fmtRawValue(lim, isCPU), ...s });
         }
       } else if (hasHistory) {
@@ -206,7 +220,7 @@ function analyzeCpuMem(c: ContainerResources, depName: string, depNamespace: str
           const hours = secs / 3600;
           const trendKind: SuggestionKind = hours < 4 ? "danger" : "warning";
           const timeStr = hours < 1 ? `${Math.round(secs / 60)}m` : `${hours.toFixed(1)}h`;
-          const { capped, ...s } = suggestCapped(lim * 1.5, isCPU, cap);
+          const { capped, nodeFitSuffix, ...s } = suggestCapped(lim * 1.5, isCPU, nodeCap);
           if (capped && s.suggestedRaw <= lim) {
             results.push({ ...base, resource: label, kind: "danger",
               action: "Migrate to larger node",
@@ -215,7 +229,7 @@ function analyzeCpuMem(c: ContainerResources, depName: string, depNamespace: str
           } else {
             results.push({ ...base, resource: label, kind: trendKind,
               action: "Increase limit",
-              message: `${label} trending to exceed limit in ~${timeStr} (linear trend${confidence.replace(" · ", ", ")})${capped ? " · capped to node capacity" : ""}`,
+              message: `${label} trending to exceed limit in ~${timeStr} (linear trend${confidence.replace(" · ", ", ")})${capped ? " · capped to node capacity" : ""}${nodeFitSuffix}`,
               current: fmtRawValue(lim, isCPU), ...s });
           }
         }
@@ -239,7 +253,7 @@ function analyzeCpuMem(c: ContainerResources, depName: string, depNamespace: str
     if (req > 0 && !requestOverkill && p95Use > req * 1.1) {
       const ratio = p95Use / req;
       const kind: SuggestionKind = ratio >= 2 ? "danger" : "warning";
-      const { capped, ...s } = suggestCapped(p95Use * 1.3, isCPU, cap);
+      const { capped, nodeFitSuffix, ...s } = suggestCapped(p95Use * 1.3, isCPU, nodeCap);
       if (capped && s.suggestedRaw <= req) {
         results.push({ ...base, resource: label, kind: "danger",
           action: "Migrate to larger node",
@@ -248,9 +262,22 @@ function analyzeCpuMem(c: ContainerResources, depName: string, depNamespace: str
       } else {
         results.push({ ...base, resource: label, kind,
           action: "Increase request",
-          message: `${label} ${source} usage is ${ratio.toFixed(1)}× the request — pod may be throttled or evicted${confidence}${capped ? " · capped to node capacity" : ""}`,
+          message: `${label} ${source} usage is ${ratio.toFixed(1)}× the request — pod may be throttled or evicted${confidence}${capped ? " · capped to node capacity" : ""}${nodeFitSuffix}`,
           current: fmtRawValue(req, isCPU), ...s });
       }
+    }
+
+    // Coherence: when both "Reduce request" and "Reduce limit" exist for this container/resource,
+    // ensure suggested limit > suggested request (K8s rejects limit < request).
+    // This can happen when both round to the same binary memory step (e.g. both → 8Gi).
+    const reqSug = results.find(r => r.action === "Reduce request" && r.resource === label && r.container === c.name);
+    const limSug = results.find(r => r.action === "Reduce limit" && r.resource === label && r.container === c.name);
+    if (reqSug && limSug && limSug.suggestedRaw <= reqSug.suggestedRaw) {
+      const nextStep = roundResource(reqSug.suggestedRaw + 1, isCPU);
+      const hardCap = isCPU ? (nodeCap?.maxCpuMillicores ?? 0) : (nodeCap?.maxMemoryBytes ?? 0);
+      const effective = hardCap > 0 && nextStep > hardCap ? hardCap : nextStep;
+      limSug.suggestedRaw = effective;
+      limSug.suggested = fmtRawValue(effective, isCPU);
     }
   }
   return results;

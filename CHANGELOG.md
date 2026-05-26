@@ -4,6 +4,16 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.26.0] - 2026-05-26
+
+### Added
+
+- **Node-aware suggestions with fit count** — CPU and memory suggestions that increase a resource value are now capped at the maximum allocatable capacity across all Ready nodes, and show a `· fits on N/M nodes` annotation in the message when the suggested value would not fit on all nodes in the cluster. This prevents suggestions that are theoretically valid but would only schedule on a fraction of nodes in heterogeneous clusters. `NodeCapacity` (in `suggestions.ts`) now carries per-node allocatable arrays (`readyCpuMillicores`, `readyMemoryBytes`) to compute the fit count. `SuggestionPanel` passes the `nodes` prop through to `computeSuggestions` so node data is available at suggestion time.
+
+- **Request/limit coherence check** — when a container triggers both a "Reduce request" and a "Reduce limit" overkill suggestion simultaneously (e.g. stable workload with both request and limit far above usage), the suggested values are now guaranteed to satisfy `limit > request`. Previously, both could round to the same binary memory step (e.g. both → 8Gi), which would produce suggestions that K8s rejects (`limit < request`). The suggested limit is now bumped to the next clean step above the suggested request when this collision occurs.
+
+---
+
 ## [0.25.0] - 2026-04-22
 
 ### Fixed
