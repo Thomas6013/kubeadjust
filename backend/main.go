@@ -209,9 +209,6 @@ func main() {
 			// Deployments + pod resource details
 			r.Get("/namespaces/{namespace}/deployments", handlers.ListDeployments)
 
-			// Raw pod metrics (optional, useful for debugging)
-			r.Get("/namespaces/{namespace}/metrics", handlers.GetPodMetrics)
-
 			// Prometheus history (requires PROMETHEUS_URL env var)
 			r.Get("/namespaces/{namespace}/prometheus", handlers.NewNamespaceHistoryHandler(promClient))
 			r.Get("/namespaces/{namespace}/prometheus/{pod}/{container}", handlers.NewContainerHistoryHandler(promClient))

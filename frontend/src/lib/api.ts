@@ -264,19 +264,6 @@ export function fmtStorage(rv: ResourceValue | undefined): string {
   return fmtMemory(rv);
 }
 
-/** Returns usage as a percentage of limit (0–100), or null if either value is missing/zero. */
-export function usagePct(
-  usage: ResourceValue | undefined,
-  limit: ResourceValue | undefined,
-  isCPU: boolean,
-): number | null {
-  if (!usage || !limit) return null;
-  const u = isCPU ? (usage.millicores ?? 0) : (usage.bytes ?? 0);
-  const l = isCPU ? (limit.millicores ?? 0) : (limit.bytes ?? 0);
-  if (l === 0) return null;
-  return Math.min(100, Math.round((u / l) * 100));
-}
-
 /** Returns storage usage as a percentage of capacity (0–100), or null if missing/zero. */
 export function storagePct(
   usage: ResourceValue | undefined,

@@ -1,290 +1,193 @@
-# KubeAdjust — Technical Audit v0.22.0
+# KubeAdjust — Technical Audit v0.26.0
 
-**Date**: 2026-03-19
-**Scope**: Backend Go, Frontend React/TS, Infrastructure (Docker, CI/CD), Architecture
-**Method**: Full source read of all `.go`, `.ts`, `.tsx` files + Dockerfiles + CI workflows
+**Date**: 2026-06-01
+**Scope**: Backend Go, Frontend React/TS, Infrastructure (Docker, CI/CD), Architecture, Product
+**Method**: Full source read of all `.go`, `.ts`, `.tsx` files + Dockerfiles + docs. `go test ./...` green (5 packages pass; `k8s` and `prometheus` have no test files).
+**Baseline**: branch `feature/0.26.0`, released version v0.25.0.
+
+> Supersedes the v0.22.0 audit. Resolved items from the previous audit (e.g. `GetPodMetrics` cluster URL, `package.json` version) are no longer listed.
 
 ---
 
 ## Executive Summary
 
-KubeAdjust is a **solid MVP**. For a read-only Kubernetes dashboard, the architecture is clean: clear backend/frontend separation, zero heavy dependencies on the Go side (no client-go, no framework beyond Chi), nonce-based CSP, proper token forwarding. The CLAUDE.md is exceptional — it serves as both spec and living roadmap.
+KubeAdjust remains a **solid, well-engineered MVP**. The architecture is clean (3 Go deps, no client-go, no UI/charting library), the code is idiomatic and unusually well-commented — a developer with no AI assistance can follow the "why" behind non-obvious decisions (kubelet token rotation, NFS `statfs` caveat, KeepAlive transport, scroll race). No critical correctness bug was found.
 
-**Strengths**:
-- Minimalist and consistent architecture (3 Go deps, no UI library, no charting lib)
-- Security well above average for an MVP: CSP nonce, path traversal prevention, PromQL injection whitelist, LimitReader everywhere, configurable CORS
-- OIDC flow well implemented with CSRF protection, custom HS256 session JWT (no external JWT library)
-- K8s client retry with exponential backoff, 4xx/5xx distinction
-- Clean Go package structure, readable code
-- Frontend well decomposed after recent refactors (Sidebar, Topbar, CircleGauge, PodBar)
-- Comprehensive test coverage on critical paths (OIDC, middleware, parsers)
+This audit focuses on the gaps that matter as the project moves toward production: one real cross-user security issue in token mode, one dead feature path in the UI, plus factorisation, dead code, maintainability and test-coverage opportunities.
 
-**Key concern**: The project is at a turning point — it must choose between staying a lean MVP or hardening for production. The sections below detail the trade-offs.
+**Priority shortlist**
 
----
-
-## 1. Bugs Found
-
-### BUG: `GetPodMetrics` ignores cluster URL in multi-cluster mode
-
-- **File**: `handlers/resources.go:248`
-- **Severity**: Medium (data correctness)
-- **Issue**: `k8s.New(middleware.TokenFromContext(r.Context()), "")` passes `""` instead of `middleware.ClusterURLFromContext(r.Context())`. In multi-cluster mode, this endpoint always queries the default cluster's metrics-server, not the requested cluster.
-- **Fix**: `k8s.New(middleware.TokenFromContext(r.Context()), middleware.ClusterURLFromContext(r.Context()))`
-
-### BUG: `frontend/package.json` version is `0.2.0`
-
-- **File**: `frontend/package.json:3`
-- **Severity**: Low (cosmetic, npm package is private)
-- **Issue**: Should be `0.22.0` to match `Chart.yaml` and `version.ts`.
+| # | Severity | Topic |
+|---|----------|-------|
+| S-1 | 🔴 High | Cross-user cache leak in token mode (RBAC bypass) |
+| F-1 | 🔴 High | Node-capacity capping of suggestions never runs in namespace view |
+| S-2 | 🟠 Medium | Backend container runs as root (scratch image, no `USER`) |
+| S-3 | 🟠 Medium | Docker base images not digest-pinned |
+| Fa-1…5 | 🟡 Low | Code factorisation opportunities |
+| D-1…3 | 🟡 Low | Dead code / stale docs |
+| M-1 | 🟡 Low | `dashboard/page.tsx` god-component |
+| T-1…5 | 🟡 Low | Test coverage gaps |
 
 ---
 
-## 2. Security
+## 1. Security
 
-### What's Good
+### 🔴 S-1 — Cross-user cache leak in token mode (RBAC bypass)
 
-| Aspect | Detail |
-|---|---|
-| Token safety | Never logged, never stored server-side |
-| CSP | Nonce-based per request, no `unsafe-eval` |
-| Path traversal | `..`, `//`, `\0` rejected in frontend API proxy |
-| PromQL injection | Whitelist `[a-zA-Z0-9._-]` — conservative and correct |
-| K8s API path encoding | `url.PathEscape()` on all interpolated segments |
-| Response cap | `io.LimitReader` 10 MB on all K8s + Prometheus responses |
-| OIDC CSRF | State cookie httpOnly, 5 min TTL |
-| Rate limiting | Throttle(20) global, Throttle(10) on OIDC public endpoints |
-| Error messages | Generic to clients, detailed server-side via `log.Printf` |
-| XSS prevention | All JSX uses `{}` expressions (React auto-escapes), no `dangerouslySetInnerHTML` |
-| No credential leakage | Only Authorization + X-Cluster + session cookie forwarded in proxy |
+- **File**: `k8s/cache.go`, used by `k8s/client.go` (`ListAllPods`, `ListNodes`, `ListNodeMetrics`, `ListAllPodMetrics`, `GetNodeSummary`)
+- **Issue**: All caches are keyed **only by `c.apiServer`** (cluster URL), never by the caller's token:
 
-### To Improve
+  ```go
+  func (c *Client) ListAllPods(ctx) (*PodList, error) {
+      if v, ok := allPodsCache.get(c.apiServer); ok { return v, nil } // no token in key
+  ```
 
-| Priority | Issue | File | Detail |
-|---|---|---|---|
-| **High** | Base images without digest pinning | `backend/Dockerfile`, `frontend/Dockerfile` | `golang:1.26-alpine` and `node:25-alpine` are floating tags. Supply chain risk. **Fix**: pin with `@sha256:...` |
-| **High** | `SESSION_SECRET` in plaintext env var | `main.go:67` | Anyone with pod spec access can forge session JWTs. Inevitable with K8s env vars, but a Secret file mount would be safer. |
-| **Medium** | `style-src 'unsafe-inline'` in CSP | `proxy.ts:10` | Required by Next.js CSS Modules inline style injection. Known compromise, but weakens CSP. |
-| **Medium** | No seccomp profile | Helm chart (separate repo) | Neither `seccompProfile: RuntimeDefault` nor `fsGroup`. Already in backlog. |
-| **Medium** | `sharedTransport` with global `InsecureSkipVerify` | `k8s/client.go:19` | Flag read once at package init. If one cluster needs `KUBE_INSECURE_TLS`, all clusters get it. **Fix**: per-cluster TLS config. |
-| **Medium** | No HTTPS validation on OIDC redirect URL | `handlers/oidc.go:36-42` | `redirectURL` from env var not validated as HTTPS. A misconfiguration allowing HTTP could leak authorization codes. |
-| **Low** | No length validation on `X-Cluster` header | `middleware/cluster.go` | A maliciously long header isn't truncated. Not exploitable, but a bound would be clean. |
-| **Low** | `.env.example` incomplete for OIDC mode | `.env.example` | Only 6 vars shown; OIDC adds 8 more (`OIDC_ENABLED`, `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, etc.). Developers may miss required vars. |
+  In **token mode** (`middleware.BearerToken`), multiple users with different Kubernetes RBAC hit the same cluster URL. User A (broad RBAC) populates the cache; User B (restricted RBAC) is then served A's cluster-wide node/pod data via the same cache key — data B is not authorised to list. This is a **cross-user data leak / privilege escalation** on `/nodes`, `/nodes/{node}/pods`, `/namespaces/stats`.
+- **Not affected**: OIDC mode and managed-SA mode, where every request legitimately uses the same shared SA token (caching is by design there).
+- **Fix**: In token mode, incorporate a token fingerprint into the cache key (e.g. `sha256(token)[:16] + ":" + apiServer`), or disable these caches when no managed SA token is configured. Recommended: token-fingerprint key — transparent and keeps the perf win for repeated calls by the same user.
 
----
+### 🟠 S-2 — Backend container runs as root
 
-## 3. Performance
+- **File**: `backend/Dockerfile`
+- **Issue**: Final stage is `FROM scratch` with no `USER` directive → runs as UID 0. The frontend image correctly sets `USER nextjs`. A pod `securityContext` could enforce `runAsNonRoot`, but the Helm chart lives in a separate repo, so this image lacks defense-in-depth on its own.
+- **Fix**: Add `USER 65534:65534` (nobody) to the scratch stage. Static binary, no filesystem writes needed → no other change required.
 
-### What's Good
+### 🟠 S-3 — Docker base images not digest-pinned
 
-- Connection pooling on K8s client (`MaxIdleConnsPerHost: 20`) and Prometheus (`MaxIdleConnsPerHost: 10`)
-- `ListAllPods` excludes `Succeeded`/`Failed` at the K8s API level via `fieldSelector`
-- `errgroup.SetLimit(5)` for kubelet calls
-- Frontend: `useMemo` on `visibleDeployments`, `computeSuggestions`, sparkline SVG paths
-- Auto-refresh pauses when tab is hidden or a fetch is already in flight
-- Eager namespace-wide history fetch (single Prometheus call, not per-pod)
+- **Files**: `backend/Dockerfile` (`golang:1.26-alpine`), `frontend/Dockerfile` (`node:25-alpine`)
+- **Issue**: Floating tags = supply-chain risk; builds are not reproducible.
+- **Fix**: Pin with `@sha256:…` and let Renovate bump the digests.
 
-### Issues
+### 🟡 S-4 — Session JWT is minimal
 
-| Priority | Issue | Impact | File |
-|---|---|---|---|
-| **High** | **N+1 kubelet calls** | `GetNodeSummary()` called per node in `resources.go:126-160`. 50-node cluster = 50 HTTP calls (bounded to 5 concurrent). | `handlers/resources.go` |
-| **High** | **`ListAllPods` + `ListAllPodMetrics` in `GetNodePods`** | Each "Pods" click on a node fetches ALL cluster pods + ALL metrics, then filters in Go. | `handlers/nodes.go:174-193` |
-| **High** | **`GetNamespaceStats` fetches all cluster pods** | Iterates over every pod in every namespace. On a 5000-pod cluster, that's several MB parsed per call. | `handlers/namespaces.go:72-122` |
-| **High** | **Zero caching** | No backend cache at all. Every request = direct K8s API calls. Auto-refresh every 30s × 10 users = 200+ K8s API calls/min. | Global |
-| **Medium** | **No frontend virtualization** | 100+ workloads rendered in a single list. No `react-window` or pagination. | `dashboard/page.tsx` |
-| **Medium** | **`QueryRange` and `QueryRangeMulti` duplicate HTTP logic** | Prometheus response parsing is copy-pasted between the two methods. | `prometheus/client.go:96-189` |
-| **Low** | **`parseValues()` exists but `QueryRange` has its own inline version** | Minor duplication. | `prometheus/client.go:132-150 vs 203-224` |
+- **File**: `oidc/session.go`
+- **Notes**: No `iss`/`aud`/`nbf` claims; no revocation or refresh (already in backlog). **Positive**: `VerifySessionToken` ignores the JWT header and always recomputes with HS256 — so there is **no `alg:none` / algorithm-confusion vulnerability**. Acceptable for an 8h read-only session. Document that `SESSION_SECRET` must never be reused across environments.
 
-### Cache Recommendation
+### ✅ Confirmed strengths
 
-The single biggest quick win: **in-memory TTL cache** (~15-30s) on:
-1. `ListAllPods()` — used by `/api/nodes`, `/api/nodes/{node}/pods`, `/api/namespaces/stats`
-2. `ListNodes()` + `ListNodeMetrics()` — stable over short windows
-3. `GetNodeSummary()` — most expensive (kubelet proxy)
-
-A simple `sync.Map` + `time.Time` is sufficient for an MVP. No Redis needed.
+Nonce-based CSP (`proxy.ts`), path-traversal rejection in the API proxy, PromQL injection whitelist (`IsValidLabelValue`), `io.LimitReader` 10 MB on both K8s and Prometheus clients, generic client-facing errors, token never logged, OIDC `state` CSRF check in the callback, short-lived (30s) `sameSite=strict` path-scoped init cookie.
 
 ---
 
-## 4. Code Quality & Refactoring
+## 2. Functional gaps & bugs
 
-### Backend Go
+### 🔴 F-1 — Node-capacity capping of suggestions never runs in namespace view
 
-| Aspect | Verdict | Detail |
-|---|---|---|
-| Package structure | Good | `handlers/`, `middleware/`, `resources/`, `k8s/`, `prometheus/`, `oidc/` — clean separation |
-| Error handling | Mixed | Good `jsonError` + `log.Printf` pattern, but `ParseCPUMillicores` and `ParseMemoryBytes` silently swallow parse errors (`_ = strconv.Parse...`) |
-| K8s types | Needs split | `client.go` is 454 lines; ~250 are type definitions. Deserves a separate `k8s/types.go` |
-| errgroup | Inconsistent | `resources.go` uses `errgroup.WithContext` (ignores ctx), `prometheus/client.go` uses `new(errgroup.Group)`. Should standardize. |
-| `parseMemoryBytes` for pod count | Fragile | `handlers/nodes.go:118` — works because pod count is a plain integer, but semantically wrong |
-| Response helpers | Good | `jsonOK`/`jsonError` centralized in `namespaces.go`, used everywhere |
-| Best-effort errors not logged | Missing | `handlers/resources.go:55,62,69,76,83,90` — errors swallowed with `return nil` but never logged. Should `log.Printf` before returning nil |
-| OIDC handlers bypass `jsonOK`/`jsonError` | Inconsistent | `handlers/oidc.go:73,141,154` — direct `json.NewEncoder(w).Encode()` calls without checking return value |
-| 10 MB limit magic number | Duplicated | `k8s/client.go:82`, `prometheus/client.go:112,170` — same `10<<20` literal in 3 places. Extract to constant |
-| Concurrency | Correct | All mutex usage verified correct. No data races in current code. |
+- **Files**: `frontend/src/app/dashboard/page.tsx` (`loadNodes` gated at L167–169; `SuggestionPanel` rendered only in namespace view at L565), `frontend/src/lib/suggestions.ts` (`maxNodeCapacity`, `suggestCapped`)
+- **Issue**: `nodes` state is populated **only when `view === "nodes"`**. The `SuggestionPanel` is rendered exclusively in the *namespaces* view and receives `nodes={nodes}`, which stays `[]` until the user visits the Nodes tab. Therefore `computeSuggestions` gets `nodeCap = undefined`, every `suggestCapped` returns the uncapped value, and the "capped to node capacity" / "Migrate to larger node" / "fits on N/M nodes" outcomes **never appear** during normal use. The entire `maxNodeCapacity` code path is effectively dead UX.
+- **Fix**: Load nodes lazily as soon as a token exists, independent of the active view (the result is cached 30s server-side anyway):
 
-### Frontend TypeScript
+  ```ts
+  useEffect(() => { if (token && nodes.length === 0) loadNodes(true); }, [token, nodes.length, loadNodes]);
+  ```
 
-| Aspect | Verdict | Detail |
-|---|---|---|
-| `dashboard/page.tsx` | Improved | ~460 lines after Sidebar/Topbar extraction. Dense but acceptable. 23 state variables + 6 refs. |
-| State management | Adequate | Many `useState` + `useRef` + `useEffect` interleaved. A `useReducer` or Zustand store would simplify, but not required at this scale. |
-| Prop drilling | Moderate | `Topbar` receives 14 props, `Sidebar` receives 10. Classic pattern; a Context would help but isn't critical. |
-| Type safety | Good | Comprehensive interfaces in `api.ts`, no `any` visible, proper props interfaces on all components |
-| CSS Modules | Consistent | No CSS-in-JS, no Tailwind. Clean approach. |
-| Memoization | Good | `useMemo` on all expensive computations. `generationRef` prevents stale fetches in PodRow. |
-| No error boundaries | Missing | No React error boundaries or Suspense fallbacks. A component crash takes down the whole page. |
-| `api.ts:119` uses raw `sessionStorage` | Inconsistent | `safeGetItem` exists in `storage.ts` but `apiFetch` accesses `sessionStorage` directly |
+### 🟡 F-2 — No pagination / virtualisation (backlog)
 
-### Dead Code
+`dashboard/page.tsx` renders all workloads at once → jank on 100+ workloads. Fix: react-window or "load more".
 
-| File | Dead code | Detail |
-|---|---|---|
-| `k8s/client.go:295` | `KubeletVersion` in `NodeInfo` struct | Field present but never used frontend-side (removed from `NodeOverview` in v0.17.0, remains in K8s type) |
-| `handlers/nodes.go:200-201` | Redundant `Succeeded`/`Failed` check | `ListAllPods()` already filters via `fieldSelector` — Go-side check is dead logic |
-| `prometheus/client.go:203` | `parseValues()` function | Defined at package level but `QueryRange` (line 132-150) has its own inline copy |
-| `SparklineModal.tsx:17-27` | `fmtVal()` | Duplicates `suggestions.ts:fmtSuggested()` formatting logic |
+### 🟡 F-3 — `/healthz` is not a real readiness check
+
+`main.go:148` always returns 200 without touching the K8s API. A separate `/readyz` that performs a fast `/api` probe would make readiness probes meaningful. Optional.
 
 ---
 
-## 5. Maintainability
+## 3. Code factorisation
 
-### Strengths
+### Fa-1 — `prometheus/client.go`: `QueryRange` and `QueryRangeMulti` are near-duplicates
 
-- **CLAUDE.md is exceptional** — covers architecture, conventions, known bugs, and resolutions. A true living document.
-- **CHANGELOG.md is thorough** — each version documents the "why", not just the "what".
-- **Existing tests**: OIDC session (7 cases), middleware auth (6 cases), parsers, validators. Good coverage on critical paths.
-- **Frontend test file exists**: `suggestions.test.ts` with 23 test cases covering `resourceStatus`, `storageStatus`, `buildHistoryMap`, `computeSuggestions`.
-- **Clear conventions**: no client-go, no CSS framework, no charting lib.
+~30 lines duplicated (params build, fetch, LimitReader, status handling, unmarshal). Extract:
 
-### Weaknesses
-
-| Priority | Issue | Detail |
-|---|---|---|
-| **High** | **No handler/K8s client tests** | `ListDeployments`, `ListNodes`, `GetNodePods`, `GetNamespaceStats` — all orchestration is untested. An aggregation bug would be invisible. |
-| **High** | **No frontend component tests** | All 14 components untested. Visual regressions and type errors only caught at runtime. vitest + @testing-library/react not configured. |
-| **Medium** | **Magic numbers in suggestions.ts** | 0.90, 0.70, 0.35, 3x, 1.1x, 1.3x, 1.4x, 1.5x — 8 hardcoded thresholds. |
-| **Medium** | **`openCards` unbounded in sessionStorage** | `Set<string>` grows indefinitely across sessions. |
-| **Medium** | **No Helm lint in CI** | Chart is in a separate repo, but nothing validates its correctness here. |
-| **Medium** | **Taint colors hardcoded in JS** | `NodeCard.tsx:24-33` — RGBA literals in JavaScript instead of CSS custom properties. |
-| **Low** | **CLAUDE.md is very long** | ~500 lines. Good signal/noise ratio, but the "Resolved" section is ~150 lines of closed bugs. Consider archiving to `RESOLVED.md`. |
-| **Low** | **No accessibility** | No `:focus-visible` styles, limited ARIA labels, no `cursor: not-allowed` on disabled buttons, sidebar not responsive. |
-
----
-
-## 6. Infrastructure
-
-### Docker
-
-| Aspect | Verdict | Detail |
-|---|---|---|
-| Multi-stage builds | Good | Backend: builder → scratch. Frontend: deps → builder → runner. Efficient layer caching. |
-| Non-root user | Good (frontend) | `nextjs:1001` user. Backend runs as root in scratch (acceptable — no shell/binaries). |
-| Build optimization | Good | `-ldflags="-s -w"` strips symbols (~30-40% smaller binary). Cross-compilation via `BUILDPLATFORM`/`TARGETARCH`. |
-| Image signing | Good | Cosign keyless signing + SBOM generation |
-| Digest pinning | Missing | Floating tags `golang:1.26-alpine`, `node:25-alpine`. Supply chain risk. |
-
-### CI/CD
-
-| Aspect | Verdict | Detail |
-|---|---|---|
-| Parallel jobs | Good | Backend and frontend jobs run in parallel |
-| Linting | Good | `go vet`, `golangci-lint`, `npm run lint` all active |
-| Testing | Good | `go test`, frontend build — all in CI |
-| Tag-based publish | Good | Docker images only on `*.*.*` tag push (no unversioned churn) |
-| Multi-arch | Good | amd64 + arm64 via QEMU + buildx |
-| Missing | `go mod verify` | Optional — guards against dependency tampering |
-| Missing | Dependency scanning | No `npm audit` or Go vuln check in CI. GitHub Dependabot covers this partially. |
-
----
-
-## 7. Architecture — MVP Trade-offs
-
-### Good for an MVP
-
-1. **Raw HTTP K8s API** — no client-go = no dependency hell, no K8s version coupling. But no watch/informer, no built-in cache, no auto typing.
-2. **sessionStorage** — simple, no complex cookie auth. But no cross-tab persistence.
-3. **No database** — stateless backend. But no suggestion history, no persistent user preferences.
-4. **Prometheus optional** — works without. Good modularity choice.
-
-### What Will Break at Scale
-
-1. **No cache** — backend is a pure passthrough. Every request = N K8s API calls. Beyond ~10 concurrent users or ~20 nodes, the K8s API server will throttle.
-2. **Systematic `ListAllPods`** — 3 different endpoints fetch all cluster pods. On a production cluster (5000+ pods), that's 3x a ~5-10 MB response per refresh cycle.
-3. **Kubelet summary API** — designed for debugging, not monitoring. Slow, not cached by the API server, frequent timeouts. Long-term fix: metrics-server or Prometheus for storage metrics.
-4. **Frontend single list** — beyond ~100 workloads, rendering will lag. `react-window` is the standard fix.
-
----
-
-## 8. Prioritized Action Plan
-
-If I had to do 5 things, in this order:
-
-### 1. Fix the `GetPodMetrics` multi-cluster bug (Effort: 5 min)
 ```go
-// handlers/resources.go:248 — change:
-client := k8s.New(middleware.TokenFromContext(r.Context()), "")
-// to:
-client := k8s.New(middleware.TokenFromContext(r.Context()), middleware.ClusterURLFromContext(r.Context()))
+func (c *Client) queryRange(query string, tr TimeRange) (promRangeResponse, error)
 ```
 
-### 2. In-memory TTL cache for backend (Impact: HUGE, Effort: ~2h)
-```go
-type cacheEntry[T any] struct {
-    data      T
-    fetchedAt time.Time
-}
-```
-Cache `ListAllPods()` 30s, `ListNodes()` 30s, `GetNodeSummary()` 60s. Auto-invalidate. No complex logic needed for a read-only dashboard.
+`QueryRange` returns `Result[0]`, `QueryRangeMulti` returns `Result`. Removes ~50 lines.
 
-### 3. Extract K8s types into `k8s/types.go` (Impact: readability, Effort: 30min)
-- `client.go` drops from 454 to ~150 lines
-- Types become independently importable
+### Fa-2 — Repeated JSON error boilerplate in middleware
 
-### 4. Handler tests with `httptest.Server` (Impact: confidence, Effort: 1 day)
-- Mock the K8s API server
-- Test `ListDeployments`, `ListNodes`, `GetNamespaceStats`
-- Validate aggregation logic, not just parsing
+`middleware/auth.go` and `middleware/session.go` repeat the `Header().Set / WriteHeader / Write([]byte(...))` block ~4×. Handlers already have `jsonError`; add a shared `middleware.writeJSONError(w, code, msg)`.
 
-### 5. Make `ParseCPUMillicores` / `ParseMemoryBytes` return errors (Impact: debuggability, Effort: 1h)
-- `ParseCPUMillicores("garbage")` silently returns 0
-- Risk: a pod with an invalid CPU request is invisible in suggestions
+### Fa-3 — Pod→container→usage metrics map built three times
+
+Same pattern in `handlers/resources.go:117-125`, `handlers/nodes.go:192-199`, `resources/workloads.go:71-77`. Extract `BuildContainerUsageMap(*PodMetricsList) map[string]map[string]ContainerUsage`.
+
+### Fa-4 — `suggestions.ts`: "increase-or-migrate" pattern repeated 3×
+
+The `if (capped && s.suggestedRaw <= base) { …Migrate… } else { …Increase… }` block appears for limit / trend / request (L204, L224, L257). Factor into a `pushIncreaseOrMigrate(...)` helper.
+
+### Fa-5 — Ratio→colour/label logic duplicated in the frontend
+
+The `>5 → red / >2 → orange` thresholds are hard-coded **three times** in `dashboard/page.tsx` (overview sort L422-431, badge L436-437, namespace header L505-511). Extract `ratioSeverity(ratio): { color, label, order }` into `lib/`.
 
 ---
 
-## 9. Open Questions
+## 4. Dead code
 
-1. **Target cluster size?** — If <20 nodes / <500 pods, the current design holds. Beyond that, caching becomes mandatory.
-
-2. **Is the external Helm chart tested?** — No `helm lint` or `ct lint` in either this repo's CI or (apparently) the helm repo. A broken chart = broken deployment.
-
-3. **`ParseMemoryBytes` for pod count** (`nodes.go:118`) — it's an int, not memory. Works by accident. Want a dedicated `parseInt`?
-
-4. **Is `style-src 'unsafe-inline'` acceptable long-term?** — Next.js CSS Modules force this. Alternative: hash styles, but complex with the current build pipeline.
-
-5. **Session JWT 8h with no refresh** — If a user leaves a tab open, they lose their session after 8h with no warning. A refresh token or extend-on-activity would be smoother.
-
-6. **`frontend/package.json` version tracking** — Should this be automated (e.g., bumped alongside `Chart.yaml` and `version.ts`)?
+- **D-1 — `usagePct` (`frontend/src/lib/api.ts:268`)**: exported but used nowhere (only `storagePct` and `fmtStorage` are consumed). Remove.
+- **D-2 — `docs/IMPROVE.md`**: a frozen v0.13.0 audit whose items are already resolved (nonce CSP, path validation…). Stale and confusing. Delete or move to an `archive/` folder.
+- **D-3 — `handlers.GetPodMetrics` + route `/namespaces/{ns}/metrics`** (`main.go:213`): labelled "useful for debugging" but never called by the frontend (`api.ts` has no method for it). Remove, or keep and clearly document it as a debug-only endpoint.
 
 ---
 
-## 10. Metrics
+## 5. Maintainability & comments
 
-| Metric | Value |
-|---|---|
-| Backend Go files | 28 |
-| Backend LOC (approx) | ~3,500 |
-| Frontend TS/TSX files | 41 |
-| Frontend LOC (approx) | ~3,500 |
-| Go dependencies (direct) | 3 (chi, cors, errgroup) + 1 OIDC |
-| Frontend components | 14 |
-| Custom hooks | 1 (useSessionState) |
-| Backend test files | 7 |
-| Frontend test files | 1 (23 test cases) |
-| Known bugs (CLAUDE.md backlog) | 1 high, 0 medium |
-| Known issues total (backlog) | ~25 items across all categories |
+Overall **very good**: systematic Go doc-comments, meaningful "why" comments. The main hotspot:
+
+### M-1 — `dashboard/page.tsx` (579 lines) is a god-component
+
+~15 `useEffect`, 6 sync `useRef`, cluster-switch logic, URL sync, overview computation, and three inline views in one file. Hard to read and to test. Suggested split:
+
+- `useDashboardData(token, cluster)` — namespaces, stats, deployments, nodes, history.
+- `useClusterSwitch()` — all of `handleClusterSwitch` + per-cluster token handling.
+- `useUrlSync(cluster, view, selectedNs)` — the `router.replace` effect.
+- `OverviewView` / `NodesView` / `NamespaceView` components to lift the per-view JSX out.
+
+This brings the page under ~200 lines and makes each piece independently testable.
+
+### M-2 — Suggestion thresholds hard-coded (backlog)
+
+`0.90 / 0.70 / 0.35 / 3× / 1.1` scattered through `suggestions.ts`. Extract a `THRESHOLDS` object at the top of the file for readability and future tuning.
 
 ---
 
-*Generated by Claude Opus 4.6 — 2026-03-19*
+## 6. Test coverage (suggestions only)
+
+Well covered on **pure calculation** (parse, validate, format, workloads, nodes, oidc/session, middleware/session, `suggestions.test.ts`). Gaps, by priority:
+
+- **T-1 (high) — `k8s/client.go`**: retry/backoff, 4xx/5xx distinction (`isClientError`), LimitReader. Testable with an `httptest.Server` that returns 500 then 200, plus a >10 MB body. Currently zero tests on the networking path.
+- **T-2 — `k8s/cache.go`**: TTL, expiry, concurrency (`go test -race`). Essential if S-1 is fixed.
+- **T-3 — `prometheus/client.go`**: `parseValues` (malformed pairs), `ParseTimeRange`, range parsing. Simple `httptest`.
+- **T-4 — handlers `resources`/`nodes`/`namespaces`**: errgroup orchestration + best-effort behaviour (one sub-call fails → partial response, not 500). Mock K8s via `httptest`.
+- **T-5 — frontend components** (backlog): none tested. Start with `SuggestionPanel` (filters/categories) and `dashboard` (cluster switch). vitest + @testing-library/react.
+
+---
+
+## 7. Product / MVP & business
+
+The positioning is right: a **visual, read-only VPA/Goldilocks with no CRD and no agent**, using token forwarding. The differentiator is *zero server state, zero intrusive install, OIDC + multi-cluster*. That is exactly what Goldilocks (ugly) and the VPA (no viz, intrusive) lack.
+
+Three levers to go from MVP to product:
+
+1. **€ cost translation** — turn CPU/RAM suggestions into estimated monthly savings (configurable price/core/month). This is the hook that wins managers, not just SREs. Low effort, high demo impact.
+2. **Grouped actionable export** — a "patch bundle" (kubectl set / values.yaml / PR) for *all* suggestions in a namespace, not just per-container. `toKubectlCmd` already exists per item; aggregate it.
+3. **Optional trend persistence** — today everything depends on client-side Prometheus. A lightweight "historical snapshot" mode (even a ConfigMap or S3 object) would enable weekly reporting — the basis of a paid/SaaS tier.
+
+Keep strict read-only as the central **trust anchor** ("we never touch your cluster") and **never** add write verbs to the ClusterRole.
+
+---
+
+## 8. Documentation
+
+README (171 lines) + CHANGELOG + focused docs strike a good size balance. Two frictions:
+
+- `docs/IMPROVE.md` is stale (see D-2) and muddies the picture.
+- Four docs (`SUGGEST.md`, `auto-refresh.md`, `node-pods.md`, `IMPROVE.md`) are **not referenced** in the CLAUDE.md layout or the README. `SUGGEST.md` (the suggestion-rules table) is valuable — link it from the README. The two feature docs (auto-refresh, node-pods) would be better folded into a "Features" section of the README so a newcomer understands quickly without four scattered files.
+- **Missing**: a one-image diagram of the auth flow (token vs OIDC vs managed-SA) at the top of the README — the hardest thing for a newcomer to grasp quickly given the three modes.
+
+---
+
+## Appendix — files reviewed
+
+Backend: `main.go`, `k8s/{client,cache,types}.go`, `middleware/{auth,session,cluster}.go`, `oidc/session.go`, `handlers/{resources,nodes,namespaces,prometheus,oidc,auth,clusters}.go`, `resources/{parse,workloads}.go`, `prometheus/client.go`.
+Frontend: `app/dashboard/page.tsx`, `lib/{api,suggestions}.ts`, `proxy.ts`, `app/api/[...path]/route.ts`, `app/auth/callback/route.ts`.
+Infra/docs: `backend/Dockerfile`, `frontend/Dockerfile`, `README.md`, `CHANGELOG.md`, `docs/*`.
