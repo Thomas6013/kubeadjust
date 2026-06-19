@@ -22,7 +22,7 @@ jobs:
             image: kubeadjust-frontend
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Read owner
         id: meta
