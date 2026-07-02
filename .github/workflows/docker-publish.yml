@@ -24,7 +24,7 @@ jobs:
             image: kubeadjust-frontend
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Resolve version and owner
         id: version
@@ -71,7 +71,7 @@ jobs:
           artifact-name: sbom-${{ matrix.image }}.spdx.json
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4.1.2
 
       - name: Sign image
         run: |

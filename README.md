@@ -93,7 +93,7 @@ Open http://localhost:3000, paste your token, done.
 # Backend (Go 1.26+)
 cd backend && KUBE_API_SERVER=https://<your-cluster> go run .
 
-# Frontend (Node 25+)
+# Frontend (Node 26+)
 cd frontend && npm install && npm run dev
 ```
 
