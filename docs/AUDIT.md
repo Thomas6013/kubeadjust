@@ -72,11 +72,11 @@ IDs from the 2026-06-01 pass are preserved. New IDs this pass: S-5…S-8, DOM-1,
 | T-5 | 2026-06-01 | LOW | Testing | Frontend components untested | OPEN (suggestions *lib* now has 36 tests; components still zero) | — |
 | **S-5** | 2026-07-02 | **MEDIUM** | Security | Anonymous access is the default posture for in-cluster installs | **NEW** — `main.go:58-66,155` | — |
 | **S-6** | 2026-07-02 | **MEDIUM** | Security | No HTTP server timeouts (slowloris) | ✅ FIXED 2026-07-25 — explicit `http.Server` in `main.go` | — |
-| **DOM-1** | 2026-07-02 | **MEDIUM** | Domain correctness | `toKubectlCmd` targets `deployment/` for StatefulSet/CronJob workloads | **NEW** — `suggestions.ts:386` | — |
+| **DOM-1** | 2026-07-02 | **MEDIUM** | Domain correctness | `toKubectlCmd` targets `deployment/` for StatefulSet/CronJob workloads | ✅ FIXED 2026-07-25 — `workloadKind` propagated, `kubectlTarget()` maps kind → target, `null` for CronJob | `suggestions.test.ts` (5 cases) |
 | **INFRA-1** | 2026-07-02 | **MEDIUM** | CI/CD | CI runs only on push to `main` — pull requests are unverified | **NEW** — `.github/workflows/ci.yml:3-5` | — |
 | **S-7** | 2026-07-02 | LOW | Security | Default-cluster SA token silently sent to *other* clusters' API servers | **NEW** — `middleware/auth.go:64`, `middleware/session.go:41` | — |
 | **S-8** | 2026-07-02 | LOW | Security | No request-body size cap on `POST /api/auth/session` | **NEW** — `handlers/oidc.go:89` | — |
-| **B-2** | 2026-07-02 | LOW | Bug | Linear-regression trend on raw unix timestamps risks precision loss | **NEW** — `suggestions.ts:49-67` | — |
+| **B-2** | 2026-07-02 | LOW | Bug | Linear-regression trend on raw unix timestamps risks precision loss | ✅ FIXED 2026-07-25 — timestamps re-based on the window's first sample | — |
 | **R-1** | 2026-07-02 | LOW | Robustness | Prometheus queries ignore request context (no cancellation) | **NEW** — `prometheus/client.go:114,153` | — |
 | **DOC-1** | 2026-07-02 | LOW | Docs | CHANGELOG 0.26.0 missing this branch's security fixes | **NEW** — `CHANGELOG.md:7` | — |
 | **DOC-2** | 2026-07-02 | LOW | Docs | Stale comments contradict token-fingerprint cache keys | **NEW** — `k8s/cache.go:13`, `k8s/client.go:219` | — |

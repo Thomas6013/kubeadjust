@@ -39,12 +39,18 @@ type ContainerResources struct {
 	Limits           ResourcePair          `json:"limits"`
 	Usage            *ResourcePair         `json:"usage,omitempty"`
 	EphemeralStorage *EphemeralStorageInfo `json:"ephemeralStorage,omitempty"`
+	// RestartCount and OOMKilled come from the pod's containerStatuses. They gate
+	// memory-reduction suggestions: a container that was OOMKilled restarts with a
+	// low RSS, so its P95 understates the memory it actually needs.
+	RestartCount int32 `json:"restartCount"`
+	OOMKilled    bool  `json:"oomKilled"`
 }
 
 type PodDetail struct {
 	Name       string               `json:"name"`
 	Namespace  string               `json:"namespace,omitempty"`
 	Phase      string               `json:"phase"`
+	QOSClass   string               `json:"qosClass,omitempty"`
 	Containers []ContainerResources `json:"containers"`
 	Volumes    []VolumeDetail       `json:"volumes,omitempty"`
 }

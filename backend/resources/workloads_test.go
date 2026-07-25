@@ -90,10 +90,7 @@ func pod(name, phase string, containers ...k8s.Container) k8s.Pod {
 	return k8s.Pod{
 		Metadata: k8s.ObjectMeta{Name: name},
 		Spec:     k8s.PodSpec{Containers: containers},
-		Status:   struct {
-			Phase             string            `json:"phase"`
-			ContainerStatuses []k8s.ContainerStatus `json:"containerStatuses"`
-		}{Phase: phase},
+		Status:   k8s.PodStatus{Phase: phase},
 	}
 }
 
@@ -173,6 +170,77 @@ func TestBuildPodDetails(t *testing.T) {
 		result := BuildPodDetails(pods, nil, nil, nil)
 		if result[0].Phase != "Pending" {
 			t.Errorf("phase: got %q, want %q", result[0].Phase, "Pending")
+		}
+	})
+
+	t.Run("qosClass preserved", func(t *testing.T) {
+		p := pod("p1", "Running", container("c", "1", "1Gi", "1", "1Gi"))
+		p.Status.QOSClass = "Guaranteed"
+		result := BuildPodDetails([]k8s.Pod{p}, nil, nil, nil)
+		if result[0].QOSClass != "Guaranteed" {
+			t.Errorf("qosClass: got %q, want %q", result[0].QOSClass, "Guaranteed")
+		}
+	})
+
+	t.Run("restartCount and OOMKilled from lastState", func(t *testing.T) {
+		p := pod("p1", "Running", container("app", "100m", "128Mi", "200m", "256Mi"))
+		p.Status.ContainerStatuses = []k8s.ContainerStatus{{
+			Name:         "app",
+			RestartCount: 3,
+			LastState:    k8s.ContainerState{Terminated: &k8s.ContainerStateTerminated{Reason: "OOMKilled", ExitCode: 137}},
+		}}
+		c := BuildPodDetails([]k8s.Pod{p}, nil, nil, nil)[0].Containers[0]
+		if c.RestartCount != 3 {
+			t.Errorf("restartCount: got %d, want 3", c.RestartCount)
+		}
+		if !c.OOMKilled {
+			t.Error("expected OOMKilled=true from lastState.terminated")
+		}
+	})
+
+	t.Run("OOMKilled from current state (CrashLoop)", func(t *testing.T) {
+		p := pod("p1", "Running", container("app", "100m", "128Mi", "200m", "256Mi"))
+		p.Status.ContainerStatuses = []k8s.ContainerStatus{{
+			Name:  "app",
+			State: k8s.ContainerState{Terminated: &k8s.ContainerStateTerminated{Reason: "OOMKilled", ExitCode: 137}},
+		}}
+		if !BuildPodDetails([]k8s.Pod{p}, nil, nil, nil)[0].Containers[0].OOMKilled {
+			t.Error("expected OOMKilled=true from state.terminated")
+		}
+	})
+
+	t.Run("non-OOM termination does not set OOMKilled", func(t *testing.T) {
+		p := pod("p1", "Running", container("app", "100m", "128Mi", "200m", "256Mi"))
+		p.Status.ContainerStatuses = []k8s.ContainerStatus{{
+			Name:         "app",
+			RestartCount: 1,
+			LastState:    k8s.ContainerState{Terminated: &k8s.ContainerStateTerminated{Reason: "Error", ExitCode: 1}},
+		}}
+		c := BuildPodDetails([]k8s.Pod{p}, nil, nil, nil)[0].Containers[0]
+		if c.OOMKilled {
+			t.Error("expected OOMKilled=false for Error termination")
+		}
+		if c.RestartCount != 1 {
+			t.Errorf("restartCount: got %d, want 1", c.RestartCount)
+		}
+	})
+
+	t.Run("container status matched by name, not index", func(t *testing.T) {
+		p := pod("p1", "Running",
+			container("sidecar", "10m", "16Mi", "20m", "32Mi"),
+			container("app", "100m", "128Mi", "200m", "256Mi"),
+		)
+		// containerStatuses order differs from spec order — matching must be by name.
+		p.Status.ContainerStatuses = []k8s.ContainerStatus{
+			{Name: "app", RestartCount: 5, LastState: k8s.ContainerState{Terminated: &k8s.ContainerStateTerminated{Reason: "OOMKilled"}}},
+			{Name: "sidecar", RestartCount: 0},
+		}
+		containers := BuildPodDetails([]k8s.Pod{p}, nil, nil, nil)[0].Containers
+		if containers[0].Name != "sidecar" || containers[0].OOMKilled || containers[0].RestartCount != 0 {
+			t.Errorf("sidecar mismatched: %+v", containers[0])
+		}
+		if containers[1].Name != "app" || !containers[1].OOMKilled || containers[1].RestartCount != 5 {
+			t.Errorf("app mismatched: %+v", containers[1])
 		}
 	})
 }

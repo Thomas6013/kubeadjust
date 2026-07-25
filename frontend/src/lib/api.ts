@@ -36,12 +36,20 @@ export interface ContainerResources {
   limits: ResourcePair;
   usage?: ResourcePair;
   ephemeralStorage?: EphemeralStorageInfo;
+  /** Container restarts observed by the kubelet. */
+  restartCount?: number;
+  /** True when the container was terminated by an OOM kill (current or previous run). */
+  oomKilled?: boolean;
 }
+
+/** Pod QoS class assigned by the API server. */
+export type QOSClass = "Guaranteed" | "Burstable" | "BestEffort";
 
 export interface PodDetail {
   name: string;
   namespace?: string;
   phase: string;
+  qosClass?: QOSClass;
   containers: ContainerResources[];
   volumes?: VolumeDetail[];
 }

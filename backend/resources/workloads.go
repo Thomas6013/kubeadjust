@@ -55,6 +55,10 @@ func BuildPodDetails(
 	var result []PodDetail
 	for _, pod := range pods {
 		stoStats := podStorageMap[pod.Metadata.Name]
+		statusByName := make(map[string]k8s.ContainerStatus, len(pod.Status.ContainerStatuses))
+		for _, cs := range pod.Status.ContainerStatuses {
+			statusByName[cs.Name] = cs
+		}
 		var containers []ContainerResources
 		for _, c := range pod.Spec.Containers {
 			cr := ContainerResources{
@@ -67,6 +71,10 @@ func BuildPodDetails(
 					CPU:    ParseResource(c.Resources.Limits["cpu"], true),
 					Memory: ParseResource(c.Resources.Limits["memory"], false),
 				},
+			}
+			if cs, ok := statusByName[c.Name]; ok {
+				cr.RestartCount = cs.RestartCount
+				cr.OOMKilled = isOOMKilled(cs)
 			}
 			if podMetrics, ok := metricsMap[pod.Metadata.Name]; ok {
 				if cu, ok := podMetrics[c.Name]; ok {
@@ -161,9 +169,22 @@ func BuildPodDetails(
 		result = append(result, PodDetail{
 			Name:       pod.Metadata.Name,
 			Phase:      pod.Status.Phase,
+			QOSClass:   pod.Status.QOSClass,
 			Containers: containers,
 			Volumes:    volumes,
 		})
 	}
 	return result
+}
+
+// isOOMKilled reports whether the container is currently terminated by an OOM kill
+// or was on its previous run. Both states matter: a CrashLooping container sits in
+// `state.terminated`, while a restarted-and-running one only records it in `lastState`.
+func isOOMKilled(cs k8s.ContainerStatus) bool {
+	for _, t := range []*k8s.ContainerStateTerminated{cs.LastState.Terminated, cs.State.Terminated} {
+		if t != nil && t.Reason == "OOMKilled" {
+			return true
+		}
+	}
+	return false
 }

@@ -1,12 +1,17 @@
 import { fmtRawValue } from "./api";
-import type { DataPoint, DeploymentDetail, ContainerResources, ResourceValue, VolumeDetail, ContainerHistory, NodeOverview } from "./api";
+import type { DataPoint, DeploymentDetail, PodDetail, ContainerResources, ResourceValue, VolumeDetail, ContainerHistory, NodeOverview, QOSClass } from "./api";
 
 export type SuggestionKind = "danger" | "warning" | "overkill";
 
 export interface Suggestion {
   deployment: string;
+  /** Workload kind ("Deployment" | "StatefulSet" | "CronJob") — drives the kubectl target. */
+  workloadKind: string;
   namespace: string;
+  /** Representative pod: scroll target and search matching. Suggestions are workload-level. */
   pod: string;
+  /** Number of replicas this suggestion aggregates. */
+  podCount: number;
   container: string;
   resource: string;
   kind: SuggestionKind;
@@ -15,6 +20,10 @@ export interface Suggestion {
   current: string;
   suggested: string;
   suggestedRaw: number;
+  /** When set, the suggestion changes request AND limit together to preserve Guaranteed QoS. */
+  appliesToBoth?: boolean;
+  /** Non-blocking caveats shown under the suggestion (QoS change, bursty usage, restarts). */
+  warnings?: string[];
 }
 
 /** Map of "pod/container" → ContainerHistory for quick lookup. */
@@ -50,17 +59,21 @@ function secondsToThreshold(points: DataPoint[], threshold: number): number | nu
   if (points.length < 5) return null;
   const recent = points.slice(-Math.min(points.length, 60));
   const n = recent.length;
+  // Re-base timestamps on the first point: raw unix seconds squared overflow float64
+  // precision in the sums below and skew the slope (AUDIT B-2).
+  const t0 = recent[0].t;
   let sumT = 0, sumV = 0, sumTT = 0, sumTV = 0;
   for (const p of recent) {
-    sumT += p.t; sumV += p.v;
-    sumTT += p.t * p.t; sumTV += p.t * p.v;
+    const t = p.t - t0;
+    sumT += t; sumV += p.v;
+    sumTT += t * t; sumTV += t * p.v;
   }
   const denom = n * sumTT - sumT * sumT;
   if (denom === 0) return null;
   const slope = (n * sumTV - sumT * sumV) / denom;
   if (slope <= 0) return null;
   const intercept = (sumV - slope * sumT) / n;
-  const lastT = recent[recent.length - 1].t;
+  const lastT = recent[recent.length - 1].t - t0;
   const predictedT = (threshold - intercept) / slope;
   if (predictedT <= lastT) return null;
   return predictedT - lastT;
@@ -156,47 +169,259 @@ function suggestCapped(raw: number, isCPU: boolean, nodeCap?: NodeCapacity): { s
   return { suggested: fmtRawValue(rounded, isCPU), suggestedRaw: rounded, capped: false, nodeFitSuffix: nodesFitting(rounded, nodeValues) };
 }
 
-/** Generates CPU and memory suggestions for a container: danger/warning when near limit, overkill when far below request.
- *  When Prometheus history is available, uses P95 for danger/warning thresholds and mean for overkill detection.
- *  Suggestions that increase a resource value are capped at the node's allocatable capacity and annotated with
- *  node fit count when the value doesn't fit on all Ready nodes. */
-function analyzeCpuMem(c: ContainerResources, depName: string, depNamespace: string, podName: string, hist?: ContainerHistory, nodeCap?: NodeCapacity): Suggestion[] {
+// --- Aggregation across replicas -------------------------------------------------
+
+/**
+ * A container's usage across every replica of a workload.
+ * Requests/limits come from the pod template and are identical across replicas, so a
+ * single representative spec is kept; usage is pooled so one workload yields one
+ * suggestion instead of one per pod.
+ */
+interface ContainerAggregate {
+  name: string;
+  spec: ContainerResources;
+  podNames: string[];
+  /** True when any replica was OOMKilled (current or previous run). */
+  oomKilled: boolean;
+  /** Highest restart count across replicas. */
+  maxRestarts: number;
+  qos?: QOSClass;
+  volumes: VolumeDetail[];
+}
+
+/** Pooled usage statistics for one resource (CPU or memory) of one container. */
+interface UsageStats {
+  hasHistory: boolean;
+  p95: number;
+  mean: number;
+  max: number;
+  /** Samples per replica — drives the confidence label (time coverage, not replica count). */
+  samplesPerReplica: number;
+  /** Per-replica time series, used for trend prediction (pooling would interleave timestamps). */
+  series: DataPoint[][];
+  /** Per-replica mean usage, used to surface replicas that deviate from their peers. */
+  perReplicaMean: number[];
+}
+
+/** Groups a workload's pods into one aggregate per container name. */
+function aggregateContainers(pods: PodDetail[]): ContainerAggregate[] {
+  const byName = new Map<string, ContainerAggregate>();
+  for (const pod of pods) {
+    for (const c of pod.containers) {
+      let agg = byName.get(c.name);
+      if (!agg) {
+        agg = { name: c.name, spec: c, podNames: [], oomKilled: false, maxRestarts: 0, qos: pod.qosClass, volumes: [] };
+        byName.set(c.name, agg);
+      }
+      agg.podNames.push(pod.name);
+      if (c.oomKilled) agg.oomKilled = true;
+      agg.maxRestarts = Math.max(agg.maxRestarts, c.restartCount ?? 0);
+    }
+  }
+  return [...byName.values()];
+}
+
+/**
+ * Pools usage for one container/resource across every replica.
+ * Returns null when no replica reports usage — matching the previous per-pod behaviour
+ * of emitting nothing at all for containers metrics-server doesn't know about.
+ */
+function usageStats(
+  pods: PodDetail[],
+  containerName: string,
+  isCPU: boolean,
+  histMap?: HistoryMap,
+): UsageStats | null {
+  const pooled: number[] = [];
+  const series: DataPoint[][] = [];
+  const perReplicaMean: number[] = [];
+  const snapshots: number[] = [];
+  let replicasWithHistory = 0;
+
+  for (const pod of pods) {
+    const c = pod.containers.find((x) => x.name === containerName);
+    if (!c?.usage) continue;
+    const snap = val(isCPU ? c.usage.cpu : c.usage.memory, isCPU);
+    if (snap > 0) snapshots.push(snap);
+
+    const hist = histMap?.get(`${pod.name}/${containerName}`);
+    const points = hist ? (isCPU ? hist.cpu : hist.memory) : [];
+    if (points.length >= 2) {
+      replicasWithHistory++;
+      series.push(points);
+      const values = points.map((p) => p.v);
+      pooled.push(...values);
+      perReplicaMean.push(mean(values));
+    } else if (snap > 0) {
+      perReplicaMean.push(snap);
+    }
+  }
+
+  if (snapshots.length === 0 && pooled.length === 0) return null;
+
+  const hasHistory = pooled.length >= 2;
+  const values = hasHistory ? pooled : snapshots;
+  if (values.length === 0) return null;
+
+  return {
+    hasHistory,
+    p95: hasHistory ? percentile95(values) : Math.max(...values),
+    mean: mean(values),
+    max: Math.max(...values),
+    samplesPerReplica: hasHistory ? Math.round(pooled.length / Math.max(1, replicasWithHistory)) : 1,
+    series,
+    perReplicaMean,
+  };
+}
+
+// --- Guard rails -----------------------------------------------------------------
+
+/** Peak-to-P95 ratio above which a workload is treated as bursty and reductions are based on the peak. */
+const BURST_RATIO = 5;
+/** Restart count above which usage data is considered unreliable and all reductions are suppressed. */
+const CRASHLOOP_RESTARTS = 3;
+
+/** Returns the peak/P95 ratio, or 0 when it cannot be computed. */
+function burstRatio(st: UsageStats): number {
+  if (!st.hasHistory || st.p95 <= 0) return 0;
+  return st.max / st.p95;
+}
+
+/** Returns a "replica usage varies N×" warning when replicas of the same workload diverge. */
+function replicaSpreadWarning(st: UsageStats, isCPU: boolean): string | null {
+  if (st.perReplicaMean.length < 2) return null;
+  const lo = Math.min(...st.perReplicaMean);
+  const hi = Math.max(...st.perReplicaMean);
+  if (lo <= 0 || hi / lo < 2) return null;
+  return `Replica usage varies ${(hi / lo).toFixed(1)}× (${fmtRawValue(lo, isCPU)} – ${fmtRawValue(hi, isCPU)}) — the workload may be unevenly loaded`;
+}
+
+// --- Analysis --------------------------------------------------------------------
+
+interface AnalysisContext {
+  deployment: string;
+  workloadKind: string;
+  namespace: string;
+  pod: string;
+  podCount: number;
+  container: string;
+}
+
+/**
+ * Generates CPU and memory suggestions for a container, aggregated across all replicas.
+ *
+ * Guard rails applied before any reduction is emitted:
+ *   - OOMKilled memory  → reductions suppressed, an "Increase limit" danger is raised instead.
+ *   - CrashLooping      → all reductions suppressed (usage of a restarting container is meaningless).
+ *   - Bursty (peak ≥5×) → reductions sized on the observed peak, dropped when they save <10%.
+ *   - Guaranteed QoS    → request and limit are moved together so the pod keeps its QoS class.
+ */
+function analyzeCpuMem(
+  agg: ContainerAggregate,
+  pods: PodDetail[],
+  ctx: Omit<AnalysisContext, "container">,
+  histMap?: HistoryMap,
+  nodeCap?: NodeCapacity,
+): Suggestion[] {
   const results: Suggestion[] = [];
+  const c = agg.spec;
+
   for (const isCPU of [true, false]) {
     const label = isCPU ? "CPU" : "Memory";
     const req = val(isCPU ? c.requests.cpu : c.requests.memory, isCPU);
     const lim = val(isCPU ? c.limits.cpu : c.limits.memory, isCPU);
-    if (!c.usage) continue;
-    const snapshotUse = val(isCPU ? c.usage.cpu : c.usage.memory, isCPU);
-    if (snapshotUse === 0) continue;
 
-    // Use Prometheus history if available, otherwise fall back to snapshot
-    const histPoints = hist ? (isCPU ? hist.cpu : hist.memory).map((p) => p.v) : [];
-    const hasHistory = histPoints.length >= 2;
-    const p95Use = hasHistory ? percentile95(histPoints) : snapshotUse;
-    const meanUse = hasHistory ? mean(histPoints) : snapshotUse;
-    const source = hasHistory ? "avg" : "current";
-    const confidence = !hasHistory ? "" : histPoints.length >= 400 ? " · high confidence" : histPoints.length >= 60 ? " · medium confidence" : " · low confidence";
+    const st = usageStats(pods, agg.name, isCPU, histMap);
+    if (!st) continue;
 
-    const base = { deployment: depName, namespace: depNamespace, pod: podName, container: c.name };
+    const p95Use = st.p95;
+    const meanUse = st.mean;
+    const source = st.hasHistory ? "avg" : "current";
+    const confidence = !st.hasHistory ? ""
+      : st.samplesPerReplica >= 400 ? " · high confidence"
+      : st.samplesPerReplica >= 60 ? " · medium confidence"
+      : " · low confidence";
+
+    const base = { ...ctx, container: agg.name };
+
+    // Guaranteed QoS holds only while request === limit for this resource; moving one
+    // side alone silently downgrades the pod to Burstable (higher eviction priority).
+    const isGuaranteedPair = agg.qos === "Guaranteed" && req > 0 && req === lim;
+
+    // Reductions are unsafe when the container is OOMKilled (memory only) or crashlooping:
+    // a container that keeps restarting reports a low RSS that understates what it needs.
+    const crashLooping = agg.maxRestarts >= CRASHLOOP_RESTARTS;
+    const oomBlocked = !isCPU && agg.oomKilled;
+    const reductionsBlocked = crashLooping || oomBlocked;
+
+    const burst = burstRatio(st);
+    const bursty = burst >= BURST_RATIO;
+    const burstNote = bursty ? ` · bursty (peak ${burst.toFixed(1)}× P95)` : "";
+
+    const commonWarnings: string[] = [];
+    const spread = replicaSpreadWarning(st, isCPU);
+    if (spread) commonWarnings.push(spread);
+    if (agg.maxRestarts > 0) {
+      commonWarnings.push(`${agg.maxRestarts} restart${agg.maxRestarts > 1 ? "s" : ""} observed${agg.oomKilled ? " (OOMKilled)" : ""}`);
+    }
+
+    const withWarnings = (extra: string[] = []): string[] | undefined => {
+      const all = [...commonWarnings, ...extra];
+      return all.length > 0 ? all : undefined;
+    };
+
+    // --- OOMKilled: the strongest signal a memory limit is too low ------------------
+    if (oomBlocked) {
+      if (lim > 0) {
+        const { capped, nodeFitSuffix, ...s } = suggestCapped(Math.max(lim, st.max) * 1.5, isCPU, nodeCap);
+        if (capped && s.suggestedRaw <= lim) {
+          results.push({
+            ...base, resource: label, kind: "danger",
+            action: "Migrate to larger node",
+            message: "Container was OOMKilled — node capacity too small to increase the memory limit",
+            current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(lim, isCPU), suggestedRaw: lim,
+            warnings: withWarnings(),
+          });
+        } else {
+          results.push({
+            ...base, resource: label, kind: "danger",
+            action: "Increase limit",
+            message: `Container was OOMKilled — memory limit is too low${capped ? " · capped to node capacity" : ""}${nodeFitSuffix}`,
+            current: fmtRawValue(lim, isCPU), ...s,
+            appliesToBoth: isGuaranteedPair || undefined,
+            warnings: withWarnings(),
+          });
+        }
+      } else {
+        const { capped, nodeFitSuffix, ...s } = suggestCapped(st.max * 2, isCPU, nodeCap);
+        results.push({
+          ...base, resource: `${label} — no limit`, kind: "danger",
+          action: "Set limit",
+          message: `Container was OOMKilled with no memory limit — the node ran out of memory${capped ? " · capped to node capacity" : ""}${nodeFitSuffix}`,
+          current: "unlimited", ...s,
+          warnings: withWarnings(),
+        });
+      }
+    }
 
     // No request defined — flag it
     if (req === 0) {
-      const { capped, nodeFitSuffix, ...s } = suggestCapped((meanUse > 0 ? meanUse : snapshotUse) * 1.3, isCPU, nodeCap);
+      const { capped, nodeFitSuffix, ...s } = suggestCapped((meanUse > 0 ? meanUse : st.max) * 1.3, isCPU, nodeCap);
       results.push({ ...base, resource: `${label} — no request`, kind: "warning",
         action: "Set request",
         message: `No ${label} request set — scheduler cannot guarantee resources${capped ? " · capped to node capacity" : ""}${nodeFitSuffix}`,
-        current: "none", ...s });
+        current: "none", ...s, warnings: withWarnings() });
     }
-    // No limit defined — flag it
-    if (lim === 0) {
-      const { capped, nodeFitSuffix, ...s } = suggestCapped((p95Use > 0 ? p95Use : snapshotUse * 2) * 1.5, isCPU, nodeCap);
+    // No limit defined — flag it (skipped when the OOM branch above already raised it)
+    if (lim === 0 && !oomBlocked) {
+      const { capped, nodeFitSuffix, ...s } = suggestCapped((p95Use > 0 ? p95Use : st.max * 2) * 1.5, isCPU, nodeCap);
       results.push({ ...base, resource: `${label} — no limit`, kind: "warning",
         action: "Set limit",
         message: `No ${label} limit set — container can consume unbounded ${label.toLowerCase()}${capped ? " · capped to node capacity" : ""}${nodeFitSuffix}`,
-        current: "unlimited", ...s });
+        current: "unlimited", ...s, warnings: withWarnings() });
     }
-    if (lim > 0) {
+
+    if (lim > 0 && !oomBlocked) {
       const pct = p95Use / lim;
       if (pct >= 0.70) {
         const kind: SuggestionKind = pct >= 0.90 ? "danger" : "warning";
@@ -205,50 +430,82 @@ function analyzeCpuMem(c: ContainerResources, depName: string, depNamespace: str
           results.push({ ...base, resource: label, kind: "danger",
             action: "Migrate to larger node",
             message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit — node capacity too small to increase limit${confidence}`,
-            current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(lim, isCPU), suggestedRaw: lim });
+            current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(lim, isCPU), suggestedRaw: lim,
+            warnings: withWarnings() });
         } else {
           results.push({ ...base, resource: label, kind,
             action: "Increase limit",
             message: `${label} P95 usage at ${Math.round(pct * 100)}% of limit${confidence}${capped ? " · capped to node capacity" : ""}${nodeFitSuffix}`,
-            current: fmtRawValue(lim, isCPU), ...s });
+            current: fmtRawValue(lim, isCPU), ...s,
+            appliesToBoth: isGuaranteedPair || undefined,
+            warnings: withWarnings() });
         }
-      } else if (hasHistory) {
-        // Trend-based: predict when usage will exceed limit (only when P95 hasn't already flagged it)
-        const histSeries = isCPU ? hist!.cpu : hist!.memory;
-        const secs = secondsToThreshold(histSeries, lim);
-        if (secs !== null && secs < 24 * 3600) {
-          const hours = secs / 3600;
+      } else if (st.hasHistory) {
+        // Trend-based: predict when usage will exceed the limit (only when P95 hasn't already
+        // flagged it). Each replica is regressed separately — pooling would interleave
+        // timestamps — and the most urgent replica wins.
+        let soonest: number | null = null;
+        for (const points of st.series) {
+          const secs = secondsToThreshold(points, lim);
+          if (secs !== null && (soonest === null || secs < soonest)) soonest = secs;
+        }
+        if (soonest !== null && soonest < 24 * 3600) {
+          const hours = soonest / 3600;
           const trendKind: SuggestionKind = hours < 4 ? "danger" : "warning";
-          const timeStr = hours < 1 ? `${Math.round(secs / 60)}m` : `${hours.toFixed(1)}h`;
+          const timeStr = hours < 1 ? `${Math.round(soonest / 60)}m` : `${hours.toFixed(1)}h`;
           const { capped, nodeFitSuffix, ...s } = suggestCapped(lim * 1.5, isCPU, nodeCap);
           if (capped && s.suggestedRaw <= lim) {
             results.push({ ...base, resource: label, kind: "danger",
               action: "Migrate to larger node",
               message: `${label} trending to exceed limit in ~${timeStr} — node capacity too small to increase limit (linear trend${confidence.replace(" · ", ", ")})`,
-              current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(lim, isCPU), suggestedRaw: lim });
+              current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(lim, isCPU), suggestedRaw: lim,
+              warnings: withWarnings() });
           } else {
             results.push({ ...base, resource: label, kind: trendKind,
               action: "Increase limit",
               message: `${label} trending to exceed limit in ~${timeStr} (linear trend${confidence.replace(" · ", ", ")})${capped ? " · capped to node capacity" : ""}${nodeFitSuffix}`,
-              current: fmtRawValue(lim, isCPU), ...s });
+              current: fmtRawValue(lim, isCPU), ...s,
+              appliesToBoth: isGuaranteedPair || undefined,
+              warnings: withWarnings() });
           }
         }
       }
     }
+
+    // --- Reductions ----------------------------------------------------------------
+    // Bursty workloads are sized on the observed peak, not the mean: a JVM that needs
+    // 2 CPU for 60s at startup and 100m afterwards must not be told to request 130m.
+    const reductionBasis = bursty ? st.max : meanUse;
+
     const requestOverkill = req > 0 && meanUse / req <= 0.35;
-    if (requestOverkill) {
-      results.push({ ...base, resource: label, kind: "overkill",
-        action: "Reduce request",
-        message: `${label} ${source} request is ${(req / meanUse).toFixed(1)}× actual usage${confidence}`,
-        current: fmtRawValue(req, isCPU), ...suggest(meanUse * 1.3, isCPU) });
+    if (requestOverkill && !reductionsBlocked) {
+      const target = roundResource(reductionBasis * 1.3, isCPU);
+      // Drop the suggestion when the peak-based value saves less than 10% — nothing to gain.
+      if (!bursty || target < req * 0.9) {
+        results.push({ ...base, resource: label, kind: "overkill",
+          action: isGuaranteedPair ? "Reduce request + limit" : "Reduce request",
+          message: `${label} ${source} request is ${(req / meanUse).toFixed(1)}× actual usage${confidence}${burstNote}`,
+          current: fmtRawValue(req, isCPU), suggested: fmtRawValue(target, isCPU), suggestedRaw: target,
+          appliesToBoth: isGuaranteedPair || undefined,
+          warnings: withWarnings(isGuaranteedPair ? ["Request and limit are moved together to keep the pod in the Guaranteed QoS class"] : []) });
+      }
     }
-    // Limit over-provisioned: limit is more than 3× P95 usage
-    if (lim > 0 && p95Use > 0 && lim / p95Use >= 3) {
-      results.push({ ...base, resource: label, kind: "overkill",
-        action: "Reduce limit",
-        message: `${label} limit is ${(lim / p95Use).toFixed(1)}× P95 usage${confidence}`,
-        current: fmtRawValue(lim, isCPU), ...suggest(p95Use * 1.5, isCPU) });
+
+    // Limit over-provisioned: limit is more than 3× P95 usage.
+    // Skipped for Guaranteed pairs — the "Reduce request + limit" suggestion above already
+    // covers both sides, and emitting a second one would contradict it.
+    if (lim > 0 && p95Use > 0 && lim / p95Use >= 3 && !reductionsBlocked && !(isGuaranteedPair && requestOverkill)) {
+      const target = roundResource((bursty ? st.max * 1.15 : p95Use * 1.5), isCPU);
+      if (!bursty || target < lim * 0.9) {
+        results.push({ ...base, resource: label, kind: "overkill",
+          action: isGuaranteedPair ? "Reduce request + limit" : "Reduce limit",
+          message: `${label} limit is ${(lim / p95Use).toFixed(1)}× P95 usage${confidence}${burstNote}`,
+          current: fmtRawValue(lim, isCPU), suggested: fmtRawValue(target, isCPU), suggestedRaw: target,
+          appliesToBoth: isGuaranteedPair || undefined,
+          warnings: withWarnings(isGuaranteedPair ? ["Request and limit are moved together to keep the pod in the Guaranteed QoS class"] : []) });
+      }
     }
+
     // Request too low: P95 usage consistently exceeds request (only when not already flagged as overkill)
     if (req > 0 && !requestOverkill && p95Use > req * 1.1) {
       const ratio = p95Use / req;
@@ -258,20 +515,23 @@ function analyzeCpuMem(c: ContainerResources, depName: string, depNamespace: str
         results.push({ ...base, resource: label, kind: "danger",
           action: "Migrate to larger node",
           message: `${label} ${source} usage is ${ratio.toFixed(1)}× the request — node capacity too small to increase request${confidence}`,
-          current: fmtRawValue(req, isCPU), suggested: fmtRawValue(req, isCPU), suggestedRaw: req });
+          current: fmtRawValue(req, isCPU), suggested: fmtRawValue(req, isCPU), suggestedRaw: req,
+          warnings: withWarnings() });
       } else {
         results.push({ ...base, resource: label, kind,
-          action: "Increase request",
+          action: isGuaranteedPair ? "Increase request + limit" : "Increase request",
           message: `${label} ${source} usage is ${ratio.toFixed(1)}× the request — pod may be throttled or evicted${confidence}${capped ? " · capped to node capacity" : ""}${nodeFitSuffix}`,
-          current: fmtRawValue(req, isCPU), ...s });
+          current: fmtRawValue(req, isCPU), ...s,
+          appliesToBoth: isGuaranteedPair || undefined,
+          warnings: withWarnings(isGuaranteedPair ? ["Request and limit are moved together to keep the pod in the Guaranteed QoS class"] : []) });
       }
     }
 
     // Coherence: when both "Reduce request" and "Reduce limit" exist for this container/resource,
     // ensure suggested limit > suggested request (K8s rejects limit < request).
     // This can happen when both round to the same binary memory step (e.g. both → 8Gi).
-    const reqSug = results.find(r => r.action === "Reduce request" && r.resource === label && r.container === c.name);
-    const limSug = results.find(r => r.action === "Reduce limit" && r.resource === label && r.container === c.name);
+    const reqSug = results.find(r => r.action === "Reduce request" && r.resource === label && r.container === agg.name);
+    const limSug = results.find(r => r.action === "Reduce limit" && r.resource === label && r.container === agg.name);
     if (reqSug && limSug && limSug.suggestedRaw <= reqSug.suggestedRaw) {
       const nextStep = roundResource(reqSug.suggestedRaw + 1, isCPU);
       const hardCap = isCPU ? (nodeCap?.maxCpuMillicores ?? 0) : (nodeCap?.maxMemoryBytes ?? 0);
@@ -283,16 +543,21 @@ function analyzeCpuMem(c: ContainerResources, depName: string, depNamespace: str
   return results;
 }
 
-/** Generates ephemeral storage suggestions: flags missing limits, warns near capacity. */
-function analyzeEphemeral(c: ContainerResources, depName: string, depNamespace: string, podName: string): Suggestion[] {
-  const eph = c.ephemeralStorage;
-  if (!eph?.usage) return [];
-  const use = eph.usage.bytes ?? 0;
+/** Generates ephemeral storage suggestions for a container, aggregated across replicas. */
+function analyzeEphemeral(agg: ContainerAggregate, pods: PodDetail[], ctx: Omit<AnalysisContext, "container">): Suggestion[] {
+  // Ephemeral usage is per-replica; the worst replica drives the suggestion.
+  let use = 0;
+  let lim = 0;
+  for (const pod of pods) {
+    const eph = pod.containers.find((x) => x.name === agg.name)?.ephemeralStorage;
+    if (!eph?.usage) continue;
+    use = Math.max(use, eph.usage.bytes ?? 0);
+    lim = Math.max(lim, eph.limit?.bytes ?? 0);
+  }
   if (use === 0) return [];
 
   const results: Suggestion[] = [];
-  const lim = eph.limit?.bytes ?? 0;
-  const base = { deployment: depName, namespace: depNamespace, pod: podName, container: c.name };
+  const base = { ...ctx, container: agg.name };
 
   if (lim === 0) {
     results.push({ ...base, resource: "Ephemeral — no limit", kind: "warning",
@@ -316,62 +581,104 @@ function analyzeEphemeral(c: ContainerResources, depName: string, depNamespace: 
   return results;
 }
 
-/** Generates volume suggestions: PVC near capacity, emptyDir without sizeLimit. */
-function analyzeVolumes(volumes: VolumeDetail[], depName: string, depNamespace: string, podName: string): Suggestion[] {
+/**
+ * Generates volume suggestions: PVC near capacity, emptyDir without sizeLimit.
+ * PVCs stay per-pod — a StatefulSet's volumeClaimTemplates create one distinct
+ * physical volume per replica, so they must each be reported. EmptyDirs come from
+ * the pod template and are deduplicated by volume name.
+ */
+function analyzeVolumes(pods: PodDetail[], ctx: Omit<AnalysisContext, "container" | "pod" | "podCount">): Suggestion[] {
   const results: Suggestion[] = [];
-  for (const vol of volumes) {
-    const use = vol.usage?.bytes ?? 0;
-    if (use === 0) continue;
+  const seenEmptyDir = new Set<string>();
 
-    if (vol.type === "pvc") {
-      const cap = vol.capacity?.bytes ?? 0;
-      if (cap > 0) {
-        const pct = use / cap;
-        const base = { deployment: depName, namespace: depNamespace, pod: podName, container: vol.pvcName ?? vol.name };
-        if (pct >= 0.90) {
-          results.push({ ...base, resource: "PVC", kind: "danger", action: "Expand PVC",
-            message: `PVC "${vol.pvcName}" at ${Math.round(pct * 100)}% capacity`,
-            current: fmtRawValue(cap, false), ...suggest(cap * 1.5, false) });
-        } else if (pct >= 0.75) {
-          results.push({ ...base, resource: "PVC", kind: "warning", action: "Expand PVC",
-            message: `PVC "${vol.pvcName}" at ${Math.round(pct * 100)}% capacity`,
-            current: fmtRawValue(cap, false), ...suggest(cap * 1.5, false) });
+  for (const pod of pods) {
+    for (const vol of pod.volumes ?? []) {
+      const use = vol.usage?.bytes ?? 0;
+      if (use === 0) continue;
+
+      if (vol.type === "pvc") {
+        const cap = vol.capacity?.bytes ?? 0;
+        if (cap > 0) {
+          const pct = use / cap;
+          const base = { ...ctx, pod: pod.name, podCount: 1, container: vol.pvcName ?? vol.name };
+          if (pct >= 0.90) {
+            results.push({ ...base, resource: "PVC", kind: "danger", action: "Expand PVC",
+              message: `PVC "${vol.pvcName}" at ${Math.round(pct * 100)}% capacity`,
+              current: fmtRawValue(cap, false), ...suggest(cap * 1.5, false) });
+          } else if (pct >= 0.75) {
+            results.push({ ...base, resource: "PVC", kind: "warning", action: "Expand PVC",
+              message: `PVC "${vol.pvcName}" at ${Math.round(pct * 100)}% capacity`,
+              current: fmtRawValue(cap, false), ...suggest(cap * 1.5, false) });
+          }
         }
       }
-    }
 
-    if (vol.type === "emptyDir" && !vol.sizeLimit) {
-      results.push({ deployment: depName, namespace: depNamespace, pod: podName, container: vol.name, resource: "EmptyDir",
-        kind: "warning", action: "Set sizeLimit",
-        message: `EmptyDir "${vol.name}" has no sizeLimit`,
-        current: "unlimited", ...suggest(use * 2, false) });
+      if (vol.type === "emptyDir" && !vol.sizeLimit && !seenEmptyDir.has(vol.name)) {
+        seenEmptyDir.add(vol.name);
+        results.push({ ...ctx, pod: pod.name, podCount: pods.length, container: vol.name, resource: "EmptyDir",
+          kind: "warning", action: "Set sizeLimit",
+          message: `EmptyDir "${vol.name}" has no sizeLimit`,
+          current: "unlimited", ...suggest(use * 2, false) });
+      }
     }
   }
   return results;
 }
 
-/** Computes all suggestions across all workloads, sorted by severity (danger → warning → overkill).
- *  When history is provided, suggestions are weighted with Prometheus P95/mean data.
- *  When nodes is provided, "increase" suggestions are capped at the maximum node allocatable capacity. */
+/**
+ * Computes all suggestions across all workloads, sorted by severity (danger → warning → overkill).
+ *
+ * Suggestions are workload-level, not pod-level: requests and limits are set on the pod
+ * template, so a Deployment with 20 replicas produces one suggestion per container/resource,
+ * with usage pooled across every replica — not 20 identical rows.
+ *
+ * When history is provided, suggestions are weighted with Prometheus P95/mean data.
+ * When nodes is provided, "increase" suggestions are capped at the maximum node allocatable capacity.
+ */
 export function computeSuggestions(deployments: DeploymentDetail[], history?: ContainerHistory[], nodes?: NodeOverview[]): Suggestion[] {
   const histMap = history && history.length > 0 ? buildHistoryMap(history) : undefined;
   const nodeCap = nodes && nodes.length > 0 ? maxNodeCapacity(nodes) : undefined;
   const out: Suggestion[] = [];
+
   for (const dep of deployments) {
-    for (const pod of dep.pods ?? []) {
-      for (const c of pod.containers) {
-        const hist = histMap?.get(`${pod.name}/${c.name}`);
-        out.push(...analyzeCpuMem(c, dep.name, dep.namespace, pod.name, hist, nodeCap));
-        out.push(...analyzeEphemeral(c, dep.name, dep.namespace, pod.name));
-      }
-      out.push(...analyzeVolumes(pod.volumes ?? [], dep.name, dep.namespace, pod.name));
+    const pods = dep.pods ?? [];
+    if (pods.length === 0) continue;
+
+    const ctx = {
+      deployment: dep.name,
+      workloadKind: dep.kind,
+      namespace: dep.namespace,
+      pod: pods[0].name,
+      podCount: pods.length,
+    };
+
+    for (const agg of aggregateContainers(pods)) {
+      out.push(...analyzeCpuMem(agg, pods, ctx, histMap, nodeCap));
+      out.push(...analyzeEphemeral(agg, pods, ctx));
     }
+    out.push(...analyzeVolumes(pods, { deployment: dep.name, workloadKind: dep.kind, namespace: dep.namespace }));
   }
+
   const order: Record<SuggestionKind, number> = { danger: 0, warning: 1, overkill: 2 };
   return out.sort((a, b) => order[a.kind] - order[b.kind]);
 }
 
-/** Generates a kubectl command for a suggestion, or null for non-patchable resources (PVC, EmptyDir) or node-capacity-blocked items. */
+/** Maps a workload kind to the `kubectl set resources` target prefix, or null when unsupported. */
+function kubectlTarget(kind: string, name: string): string | null {
+  switch (kind) {
+    case "Deployment": return `deployment/${name}`;
+    case "StatefulSet": return `statefulset/${name}`;
+    case "DaemonSet": return `daemonset/${name}`;
+    // CronJob pod templates are nested under spec.jobTemplate — `kubectl set resources`
+    // cannot address them, so no command is offered rather than a wrong one.
+    default: return null;
+  }
+}
+
+/**
+ * Generates a kubectl command for a suggestion, or null when the change cannot be
+ * expressed as a `kubectl set resources` call (PVC, EmptyDir, CronJob, node-capacity-blocked).
+ */
 export function toKubectlCmd(s: Suggestion): string | null {
   if (s.action === "Migrate to larger node") return null;
   let k8sResource: string;
@@ -380,10 +687,17 @@ export function toKubectlCmd(s: Suggestion): string | null {
   else if (s.resource.startsWith("Ephemeral")) k8sResource = "ephemeral-storage";
   else return null;
 
-  const isRequest = s.action.toLowerCase().includes("request");
-  const flag = isRequest ? "--requests" : "--limits";
+  const target = kubectlTarget(s.workloadKind, s.deployment);
+  if (!target) return null;
+
   const isCPU = k8sResource === "cpu";
-  return `kubectl set resources deployment/${s.deployment} -c ${s.container} ${flag}=${k8sResource}=${fmtKubectl(s.suggestedRaw, isCPU)} -n ${s.namespace}`;
+  const value = `${k8sResource}=${fmtKubectl(s.suggestedRaw, isCPU)}`;
+  // Guaranteed pods must keep request === limit, so both flags are set together.
+  const flags = s.appliesToBoth
+    ? `--requests=${value} --limits=${value}`
+    : `${s.action.toLowerCase().includes("request") ? "--requests" : "--limits"}=${value}`;
+
+  return `kubectl set resources ${target} -c ${s.container} ${flags} -n ${s.namespace}`;
 }
 
 /** Returns the color status for a resource bar based on usage vs request/limit thresholds. */

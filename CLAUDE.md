@@ -58,7 +58,8 @@ frontend/
   src/app/auth/done/       # Client component: moves token from cookie → sessionStorage → /dashboard
   src/app/auth/logout/     # Client component: clears all kube-token*, kube-cluster, kubeadjust:* from sessionStorage → /
   src/lib/api.ts           # Typed API client (TimeRange, ContainerHistory, NamespaceHistoryResponse, AuthConfig, fmtRawValue)
-  src/lib/suggestions.ts   # Suggestion computation (P95/mean weighted, no-limit warning, confidence indicator)
+  src/lib/suggestions.ts   # Suggestion computation — workload-level (replicas pooled), P95/mean weighted,
+                           #   OOMKill/crashloop/burst/QoS guard rails, kind-aware kubectl
   src/lib/status.ts        # Shared STATUS_COLOR, STATUS_LABEL, shortPodName() (deduplicated from components)
   src/lib/storage.ts       # sessionStorage safe helpers (safeGetItem, safeSetItem, safeRemoveItem, STORAGE_KEYS)
   src/hooks/useSessionState.ts  # SessionStorage-backed dashboard preferences (view, autoRefresh, selectedNs, etc.)
@@ -69,6 +70,7 @@ frontend/
 
 docs/
   AUDIT.md                 # Technical audit: security, performance, code quality (v0.22.0)
+  PRODUCT.md               # Product analysis: retention diagnostic + phased roadmap (phase 1 done in 0.26.0)
   oidc.md                  # OIDC/SSO setup guide (Keycloak, Dex, Azure AD, Okta, Google)
   multi-cluster.md         # Multi-cluster configuration guide
 
@@ -178,6 +180,7 @@ See `.env.example` at repo root. Key variables:
 
 > Chart-related items (seccompProfile, fsGroup, `/tmp` emptyDir sizeLimit, helm lint in CI) are tracked in the [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm) repo — `helm/` no longer exists here.
 > Full audit detail with severities and evidence: [docs/AUDIT.md](docs/AUDIT.md) (pass 2026-07-02).
+> Product strategy and phased roadmap (retention, cost, persistence, push, GitOps loop): [docs/PRODUCT.md](docs/PRODUCT.md) — phase 1 (suggestion credibility) shipped in 0.26.0.
 
 ### Security — Medium Priority
 
@@ -189,11 +192,6 @@ See `.env.example` at repo root. Key variables:
 
 - **Default SA token sent to other clusters on misconfiguration (AUDIT S-7)** — `middleware/auth.go:64`, `middleware/session.go:41`
   - Fallback to `saTokens["default"]` for a *named* cluster transmits the default cluster's credential to a different API server. Fix: only fall back when the target cluster is "default".
-
-### Bugs — Medium Priority
-
-- **`toKubectlCmd` targets `deployment/` for StatefulSet/CronJob workloads (AUDIT DOM-1)** — `suggestions.ts:386`
-  - `Suggestion` lacks the workload kind; copied/exported commands hit the wrong (or a nonexistent) object. Fix: propagate `dep.kind`, emit `statefulset/`, return `null` for CronJobs.
 
 ### CI/CD — Medium Priority
 

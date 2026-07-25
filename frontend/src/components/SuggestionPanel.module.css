@@ -211,6 +211,14 @@
   margin: 0;
 }
 
+.itemWarning {
+  font-size: 10px;
+  color: var(--orange);
+  line-height: 1.35;
+  margin: 3px 0 0;
+  opacity: 0.85;
+}
+
 .itemAction {
   display: flex;
   align-items: center;
