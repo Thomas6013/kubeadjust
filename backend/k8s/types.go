@@ -111,10 +111,15 @@ type PodList struct {
 type Pod struct {
 	Metadata ObjectMeta `json:"metadata"`
 	Spec     PodSpec    `json:"spec"`
-	Status   struct {
-		Phase             string            `json:"phase"`
-		ContainerStatuses []ContainerStatus `json:"containerStatuses"`
-	} `json:"status"`
+	Status   PodStatus  `json:"status"`
+}
+
+type PodStatus struct {
+	Phase string `json:"phase"`
+	// QOSClass is assigned by the API server: Guaranteed, Burstable or BestEffort.
+	// Used to warn when a suggestion would downgrade the pod's eviction priority.
+	QOSClass          string            `json:"qosClass"`
+	ContainerStatuses []ContainerStatus `json:"containerStatuses"`
 }
 
 type PodSpec struct {
@@ -133,8 +138,24 @@ type ResourceRequire struct {
 	Limits   map[string]string `json:"limits"`
 }
 type ContainerStatus struct {
-	Name  string `json:"name"`
-	Ready bool   `json:"ready"`
+	Name         string `json:"name"`
+	Ready        bool   `json:"ready"`
+	RestartCount int32  `json:"restartCount"`
+	// LastState holds the previous termination reason. "OOMKilled" here is the
+	// strongest signal that a memory limit is too low — a container killed for
+	// OOM restarts with a low RSS, which drags the P95 down and would otherwise
+	// make the container look over-provisioned.
+	LastState ContainerState `json:"lastState"`
+	State     ContainerState `json:"state"`
+}
+
+type ContainerState struct {
+	Terminated *ContainerStateTerminated `json:"terminated,omitempty"`
+}
+
+type ContainerStateTerminated struct {
+	Reason   string `json:"reason"`
+	ExitCode int32  `json:"exitCode"`
 }
 
 // --- Volumes ---

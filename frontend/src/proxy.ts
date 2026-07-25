@@ -26,7 +26,8 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Apply to all pages except static assets
-    "/((?!_next/static|_next/image|favicon.ico).*)",
+    // Apply to all pages except static assets and the health endpoint, which
+    // must stay as cheap as possible for kubelet probes.
+    "/((?!_next/static|_next/image|favicon.ico|healthz).*)",
   ],
 };

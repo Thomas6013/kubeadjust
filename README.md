@@ -28,7 +28,8 @@ Most clusters waste resources because requests and limits are set once and never
 KubeAdjust shows for every Deployment, StatefulSet and CronJob:
 - CPU and memory **requests / limits / actual usage** side-by-side
 - Color-coded status (critical / warning / over-provisioned / healthy)
-- Actionable **right-sizing suggestions** with confidence levels
+- Actionable **right-sizing suggestions** with confidence levels — one per workload, not one per replica, with usage pooled across every pod
+- **Safety guard rails on every suggestion** — never recommends shrinking memory on a container that was OOMKilled, stays silent on crashlooping containers, sizes bursty workloads on their observed peak instead of their average, and moves request and limit together so a Guaranteed pod keeps its QoS class
 - Optional **sparklines** from Prometheus (1h to 7d trends)
 - Cluster-wide **node overview** with capacity, usage, limit overcommit indicator, node conditions (DiskPressure / MemoryPressure / PIDPressure), age, kubelet version, kernel, and OS image
 - **Namespace limit/request ratios** — CPU ×N.N and MEM ×N.N at a glance above the workload list
@@ -93,7 +94,7 @@ Open http://localhost:3000, paste your token, done.
 # Backend (Go 1.26+)
 cd backend && KUBE_API_SERVER=https://<your-cluster> go run .
 
-# Frontend (Node 25+)
+# Frontend (Node 26+)
 cd frontend && npm install && npm run dev
 ```
 

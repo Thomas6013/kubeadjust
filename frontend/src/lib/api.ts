@@ -36,12 +36,20 @@ export interface ContainerResources {
   limits: ResourcePair;
   usage?: ResourcePair;
   ephemeralStorage?: EphemeralStorageInfo;
+  /** Container restarts observed by the kubelet. */
+  restartCount?: number;
+  /** True when the container was terminated by an OOM kill (current or previous run). */
+  oomKilled?: boolean;
 }
+
+/** Pod QoS class assigned by the API server. */
+export type QOSClass = "Guaranteed" | "Burstable" | "BestEffort";
 
 export interface PodDetail {
   name: string;
   namespace?: string;
   phase: string;
+  qosClass?: QOSClass;
   containers: ContainerResources[];
   volumes?: VolumeDetail[];
 }
@@ -262,19 +270,6 @@ export function fmtMemory(rv: ResourceValue): string {
 export function fmtStorage(rv: ResourceValue | undefined): string {
   if (!rv) return "—";
   return fmtMemory(rv);
-}
-
-/** Returns usage as a percentage of limit (0–100), or null if either value is missing/zero. */
-export function usagePct(
-  usage: ResourceValue | undefined,
-  limit: ResourceValue | undefined,
-  isCPU: boolean,
-): number | null {
-  if (!usage || !limit) return null;
-  const u = isCPU ? (usage.millicores ?? 0) : (usage.bytes ?? 0);
-  const l = isCPU ? (limit.millicores ?? 0) : (limit.bytes ?? 0);
-  if (l === 0) return null;
-  return Math.min(100, Math.round((u / l) * 100));
 }
 
 /** Returns storage usage as a percentage of capacity (0–100), or null if missing/zero. */

@@ -58,7 +58,8 @@ frontend/
   src/app/auth/done/       # Client component: moves token from cookie → sessionStorage → /dashboard
   src/app/auth/logout/     # Client component: clears all kube-token*, kube-cluster, kubeadjust:* from sessionStorage → /
   src/lib/api.ts           # Typed API client (TimeRange, ContainerHistory, NamespaceHistoryResponse, AuthConfig, fmtRawValue)
-  src/lib/suggestions.ts   # Suggestion computation (P95/mean weighted, no-limit warning, confidence indicator)
+  src/lib/suggestions.ts   # Suggestion computation — workload-level (replicas pooled), P95/mean weighted,
+                           #   OOMKill/crashloop/burst/QoS guard rails, kind-aware kubectl
   src/lib/status.ts        # Shared STATUS_COLOR, STATUS_LABEL, shortPodName() (deduplicated from components)
   src/lib/storage.ts       # sessionStorage safe helpers (safeGetItem, safeSetItem, safeRemoveItem, STORAGE_KEYS)
   src/hooks/useSessionState.ts  # SessionStorage-backed dashboard preferences (view, autoRefresh, selectedNs, etc.)
@@ -69,6 +70,7 @@ frontend/
 
 docs/
   AUDIT.md                 # Technical audit: security, performance, code quality (v0.22.0)
+  PRODUCT.md               # Product analysis: retention diagnostic + phased roadmap (phase 1 done in 0.26.0)
   oidc.md                  # OIDC/SSO setup guide (Keycloak, Dex, Azure AD, Okta, Google)
   multi-cluster.md         # Multi-cluster configuration guide
 
@@ -159,6 +161,9 @@ See `.env.example` at repo root. Key variables:
 - PromQL injection is prevented via `isValidLabelValue()` in `handlers/prometheus.go` — whitelist `[a-zA-Z0-9._-]`.
 - All K8s API errors are logged server-side only — generic messages returned to clients.
 - Response bodies capped at 10 MB via `io.LimitReader` (K8s + Prometheus clients).
+- Backend serves via an explicit `http.Server` with `ReadHeaderTimeout: 10s`, `ReadTimeout: 30s`, `WriteTimeout: 60s`, `IdleTimeout: 120s` (`main.go`) — never `http.ListenAndServe`, whose zero-value server has no timeouts (slowloris).
+- Frontend API proxy caps each upstream call at 30s and aborts it when the client disconnects (`AbortSignal.any` in `api/[...path]/route.ts`) — prevents orphaned in-flight requests accumulating in the Node process.
+- Frontend probes must target `/healthz` (`app/healthz/route.ts`, `force-static`, excluded from the `proxy.ts` matcher), never `/` — the root layout reads `headers()` for the CSP nonce, so every page is rendered per request and a probe on `/` can exceed its deadline under the container CPU limit.
 - CORS origins configurable via `ALLOWED_ORIGINS` env var (defaults to `*` with startup warning).
 - CSP is nonce-based (per-request) via `src/proxy.ts` — no `'unsafe-inline'` or `'unsafe-eval'` in `script-src`.
 - Path traversal (`../`, `//`, null bytes) rejected in the frontend API proxy.
@@ -173,38 +178,38 @@ See `.env.example` at repo root. Key variables:
 
 > Resolved items are archived in [ClaudeDone.md](ClaudeDone.md).
 
+> Chart-related items (seccompProfile, fsGroup, `/tmp` emptyDir sizeLimit, helm lint in CI) are tracked in the [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm) repo — `helm/` no longer exists here.
+> Full audit detail with severities and evidence: [docs/AUDIT.md](docs/AUDIT.md) (pass 2026-07-02).
+> Product strategy and phased roadmap (retention, cost, persistence, push, GitOps loop): [docs/PRODUCT.md](docs/PRODUCT.md) — phase 1 (suggestion credibility) shipped in 0.26.0.
+
 ### Security — Medium Priority
 
-- **Base images without digest pinning** — `backend/Dockerfile`, `frontend/Dockerfile`
-  - `golang:1.26-alpine` and `node:25-alpine` use floating tags. Supply chain risk. Fix: pin with `@sha256:...`.
+- **Anonymous access is the default for in-cluster installs (AUDIT S-5)** — `main.go:58-66,155`
+  - The auto-mounted SA token enables managed mode on every Helm install without OIDC: anyone reaching the frontend gets cluster-wide read access with no login. Fix: explicit opt-in env var (or loud startup WARN) + document the implication in README.
 
-- **`KUBE_INSECURE_TLS` is global, not per-cluster** — `k8s/client.go:19`
+- **`KUBE_INSECURE_TLS` is global, not per-cluster** — `k8s/client.go:28`
   - `sharedTransport` reads the flag once at package init. If one cluster needs insecure TLS, all clusters get it. Fix: per-cluster TLS config or per-client transport.
 
-- **Missing `seccompProfile: RuntimeDefault`** — `helm/kubeadjust/templates/deployment.yaml`
-  - Neither backend nor frontend pod specs set seccomp profile. Fix: add `seccompProfile.type: RuntimeDefault` to both.
+- **Default SA token sent to other clusters on misconfiguration (AUDIT S-7)** — `middleware/auth.go:64`, `middleware/session.go:41`
+  - Fallback to `saTokens["default"]` for a *named* cluster transmits the default cluster's credential to a different API server. Fix: only fall back when the target cluster is "default".
 
-- **Missing `fsGroup` on pod security contexts** — `helm/kubeadjust/templates/deployment.yaml`
-  - Fix: add `fsGroup: 65534` (backend) and `fsGroup: 1001` (frontend).
+### CI/CD — Medium Priority
 
-- **Frontend `/tmp` emptyDir has no size limit** — `helm/kubeadjust/templates/deployment.yaml:133`
-  - Can grow unbounded and evict pod. Fix: add `sizeLimit: 100Mi`.
+- **CI runs only on push to `main` — PRs are unverified (AUDIT INFRA-1)** — `.github/workflows/ci.yml:3-5`
+  - The `pull_request` trigger was removed with `docker-pr.yml`. Fix: restore `pull_request: branches: [main]`.
 
 ### Performance — Medium Priority
-
-- **N+1 kubelet calls per node** — `handlers/resources.go:115-161`
-  - `GetNodeSummary()` called per node. Fix: batch or cache with short TTL.
 
 - **No virtualisation/pagination for large clusters** — `dashboard/page.tsx`
   - 100+ workloads render in a single list. Fix: react-window or "load more" pagination.
 
 ### Robustness — Medium Priority
 
-- **Helm chart not linted in CI** — `.github/workflows/ci.yml`
-  - Fix: add `helm lint helm/kubeadjust` and optionally `ct lint`.
-
 - **Session JWT 8h with no refresh** — `oidc/session.go`
   - User loses session after 8h with no warning or extend-on-activity. Fix: refresh token or session extension mechanism.
+
+- **Prometheus queries ignore request context (AUDIT R-1)** — `prometheus/client.go:114,153`
+  - `httpClient.Get` without ctx; queries outlive cancelled requests. Fix: `http.NewRequestWithContext`.
 
 ### Testing — Medium Priority
 
@@ -257,7 +262,7 @@ See `.env.example` at repo root. Key variables:
 
 ## CI/CD Notes
 
-- `ci.yml` runs on push/PR to `main`: `go build`, `go vet`, `go test`, `golangci-lint`, `npm ci`, `npm run typecheck` (`tsc --noEmit`), `npm run build`, `npm run lint`. Skipped for `renovate[bot]` PRs (`if: github.actor != 'renovate[bot]'` on both jobs).
+- `ci.yml` currently runs on **push to `main` only** (the `pull_request` trigger was removed with `docker-pr.yml` — see AUDIT INFRA-1; restore it). Jobs: `go build`, `go vet`, `go test`, `golangci-lint`, `npm ci`, `npm run typecheck` (`tsc --noEmit`), `npm run build`, `npm run lint`. Skipped for `renovate[bot]` PRs (`if: github.actor != 'renovate[bot]'` on both jobs).
 - `docker-publish.yml` builds and pushes to `ghcr.io/thomas6013/kubeadjust/` on `*.*.*` tag push only (not on every merge to `main`).
 - Image tags: `latest`, `<git-tag>` (authoritative version from `$GITHUB_REF_NAME`), `<commit-sha>`.
 - Multi-arch: `linux/amd64` + `linux/arm64` via QEMU + buildx. Backend uses native Go cross-compilation (`BUILDPLATFORM`/`TARGETARCH`).

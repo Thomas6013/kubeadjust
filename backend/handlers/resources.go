@@ -252,16 +252,3 @@ func ListDeployments(w http.ResponseWriter, r *http.Request) {
 		PrometheusAvailable: os.Getenv("PROMETHEUS_URL") != "",
 	})
 }
-
-// GetPodMetrics proxies raw pod metrics from metrics-server. Useful for debugging.
-func GetPodMetrics(w http.ResponseWriter, r *http.Request) {
-	ns := chi.URLParam(r, "namespace")
-	client := k8s.New(middleware.TokenFromContext(r.Context()), middleware.ClusterURLFromContext(r.Context()))
-	metrics, err := client.ListPodMetrics(r.Context(), ns)
-	if err != nil {
-		log.Printf("metrics-server error for %s: %v", ns, err)
-		jsonError(w, "metrics-server unavailable", http.StatusServiceUnavailable)
-		return
-	}
-	jsonOK(w, metrics)
-}

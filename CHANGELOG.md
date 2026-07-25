@@ -4,6 +4,42 @@ All notable changes to KubeAdjust are documented here.
 
 ---
 
+## [0.26.0] - 2026-07-25
+
+### Changed
+
+- **Suggestions are now workload-level, not pod-level** — `computeSuggestions` iterated `deployment → pod → container`, so a Deployment with 20 replicas emitted 20 identical suggestions (only the `pod` field differed) and `SuggestionPanel` deduplicated nowhere. The unit of analysis was wrong: requests and limits are set on the pod template, never on an individual pod. Suggestions now aggregate by `(workload, container, resource)`, pooling usage across every replica before computing P95/mean/peak, and carry a `podCount` field rendered as an "N replicas" tag. PVC suggestions deliberately stay per-replica — a StatefulSet's `volumeClaimTemplates` create one distinct physical volume per pod — while emptyDirs deduplicate by volume name. Trend prediction regresses each replica separately (pooling would interleave timestamps) and reports the most urgent. Replicas whose mean usage diverges by ≥2× now raise a "replica usage varies N×" warning, surfacing uneven load balancing.
+
+### Fixed
+
+- **Suggestions ignored OOMKills, the strongest signal a memory limit is too low** — nothing in the backend read `OOMKilled` or `restartCount`, although `containerStatuses[].lastState.terminated.reason` was already present in the pod payload being parsed. Because a container killed for OOM restarts with a low RSS, its P95 collapses, and the `limit / p95Use >= 3` rule could recommend **cutting the memory limit of a container OOMKilled twice that night**. `ContainerResources` now carries `restartCount` and `oomKilled` (matched by container name, not index — `containerStatuses` order does not follow `spec.containers`), and `PodDetail` carries `qosClass`. When any replica was OOMKilled, memory reductions are suppressed and a `danger` is raised instead: "Increase limit" when a limit exists, "Set limit" (node-level OOM) when it does not. CPU suggestions are unaffected.
+
+- **Confident suggestions from crashlooping containers** — a container restarting every 30s reports usage that means nothing. At ≥3 restarts all reductions are now suppressed for that container; restart counts are surfaced as a warning on the suggestions that remain.
+
+- **Startup bursts were averaged away** — P95 over 7 days flattens a startup spike completely, so a JVM needing 2 CPU for 60s and 100m afterwards was told to request ~130m, starving the next rolling update until the liveness probe failed. When `peak / P95 ≥ 5` the workload is treated as bursty: every reduction is sized on the observed peak rather than the mean, suggestions saving less than 10% against that peak are dropped entirely, and the message carries `· bursty (peak N× P95)`.
+
+- **QoS class downgrades happened silently** — moving a container from `requests == limits` (Guaranteed) to `requests < limits` (Burstable) raises its eviction priority, and reduction suggestions performed that downgrade without a word. For containers where request equals limit, suggestions now move both sides together (`Reduce request + limit` / `Increase request + limit`), `toKubectlCmd` emits `--requests` and `--limits` in a single command, and a warning explains why. Guaranteed pairs emit one reduction instead of two contradicting ones.
+
+- **`toKubectlCmd` targeted `deployment/` for every workload kind (AUDIT DOM-1)** — copied commands for StatefulSets hit the wrong object or nothing at all. The workload kind is now propagated into `Suggestion` and mapped to `deployment/`, `statefulset/` or `daemonset/`. CronJobs return `null`: `kubectl set resources` cannot address a pod template nested under `spec.jobTemplate`, and offering no command is better than offering a broken one.
+
+- **Linear-regression trend lost precision on raw timestamps (AUDIT B-2)** — `secondsToThreshold` summed `t²` over raw unix seconds (~1.7e9, squared ~2.9e18), exceeding float64's exact-integer range and skewing the slope. Timestamps are now re-based on the first sample of the window.
+
+- **Intermittent frontend liveness probe failures** (`Get "http://<pod-ip>:3000/": context deadline exceeded`) — the probes targeted `/`, which is rendered per request: the root layout calls `headers()` to read the CSP nonce, which opts every page out of static rendering. Each probe therefore ran the proxy middleware plus a full React server render, and under the container CPU limit (`200m`) that render could exceed the probe deadline while the process was streaming API traffic — restarting a healthy pod. Added `GET /healthz` (`frontend/src/app/healthz/route.ts`), a `force-static` route handler that is not wrapped by the layout and is excluded from the `proxy.ts` matcher, mirroring the backend's existing `/healthz`. The chart now probes it with an explicit `timeoutSeconds: 5` and `failureThreshold: 3` on both containers — previously `timeoutSeconds` was unset, so Kubernetes applied its 1 second default.
+
+- **No HTTP server timeouts on the backend** (AUDIT S-6) — `main.go` served with `http.ListenAndServe`, whose zero-value `http.Server` has no timeouts: a peer that opened a connection and never finished sending headers held a goroutine indefinitely (slowloris), and no request had an upper bound on duration. Now uses an explicit `http.Server` with `ReadHeaderTimeout: 10s`, `ReadTimeout: 30s`, `WriteTimeout: 60s`, `IdleTimeout: 120s`. `WriteTimeout` sits above the frontend proxy's 30s ceiling so it bounds runaway handlers without cutting requests the dashboard is still waiting for. Verified: a connection sending partial headers is now closed after exactly 10s.
+
+- **`POST` through the frontend API proxy always returned 502** — `route.ts` forwarded `req.body` (a `ReadableStream`) to `fetch` without `duplex: "half"`, which undici rejects with `TypeError: RequestInit: duplex option is required when sending a body`. The bare `catch` turned that into a misleading `502 Backend unavailable`. Latent until now (every browser call in `lib/api.ts` is a GET, and the OIDC session exchange posts from `/auth/callback` with a string body), but any future POST endpoint would have failed.
+
+- **Unbounded requests in the frontend API proxy** — `frontend/src/app/api/[...path]/route.ts` called `fetch` with no timeout and no abort signal. The backend retries K8s calls 3 times with a 15s client timeout (~45s per call, minutes on the fan-out endpoints), so requests could stay in flight up to undici's 300s default, and a client disconnect (tab closed, navigation, auto-refresh superseding a request) left the upstream call running to completion. Orphaned requests accumulated against the frontend's `200m` CPU / `256Mi` budget. The upstream call is now bounded by `AbortSignal.any([req.signal, AbortSignal.timeout(30_000)])`, returning `504` on timeout and `499` when the client has gone.
+
+### Added
+
+- **Node-aware suggestions with fit count** — CPU and memory suggestions that increase a resource value are now capped at the maximum allocatable capacity across all Ready nodes, and show a `· fits on N/M nodes` annotation in the message when the suggested value would not fit on all nodes in the cluster. This prevents suggestions that are theoretically valid but would only schedule on a fraction of nodes in heterogeneous clusters. `NodeCapacity` (in `suggestions.ts`) now carries per-node allocatable arrays (`readyCpuMillicores`, `readyMemoryBytes`) to compute the fit count. `SuggestionPanel` passes the `nodes` prop through to `computeSuggestions` so node data is available at suggestion time.
+
+- **Request/limit coherence check** — when a container triggers both a "Reduce request" and a "Reduce limit" overkill suggestion simultaneously (e.g. stable workload with both request and limit far above usage), the suggested values are now guaranteed to satisfy `limit > request`. Previously, both could round to the same binary memory step (e.g. both → 8Gi), which would produce suggestions that K8s rejects (`limit < request`). The suggested limit is now bumped to the next clean step above the suggested request when this collision occurs.
+
+---
+
 ## [0.25.0] - 2026-04-22
 
 ### Fixed

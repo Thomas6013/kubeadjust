@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
@@ -209,17 +210,29 @@ func main() {
 			// Deployments + pod resource details
 			r.Get("/namespaces/{namespace}/deployments", handlers.ListDeployments)
 
-			// Raw pod metrics (optional, useful for debugging)
-			r.Get("/namespaces/{namespace}/metrics", handlers.GetPodMetrics)
-
 			// Prometheus history (requires PROMETHEUS_URL env var)
 			r.Get("/namespaces/{namespace}/prometheus", handlers.NewNamespaceHistoryHandler(promClient))
 			r.Get("/namespaces/{namespace}/prometheus/{pod}/{container}", handlers.NewContainerHistoryHandler(promClient))
 		})
 	})
 
+	// Explicit timeouts: the zero-value http.Server has none, so a peer that
+	// opens a connection and never finishes sending headers holds a goroutine
+	// indefinitely (slowloris), and no request has an upper bound on duration.
+	// WriteTimeout is deliberately above the 30s ceiling the frontend proxy
+	// applies, so it bounds runaway handlers without cutting requests the
+	// dashboard would still be waiting for.
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
 	log.Printf("kubeadjust backend listening on :%s", port)
-	if err := http.ListenAndServe(":"+port, r); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }

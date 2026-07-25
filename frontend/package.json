@@ -1,6 +1,6 @@
 {
   "name": "kubeadjust-frontend",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -11,16 +11,16 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "next": "16.2.3",
+    "next": "16.2.10",
     "react": "^19",
     "react-dom": "^19"
   },
   "devDependencies": {
-    "@types/node": "^25",
+    "@types/node": "^26.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.3",
+    "eslint-config-next": "16.2.10",
     "typescript": "^6",
     "vitest": "^4.0.18"
   }

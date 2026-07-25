@@ -2,7 +2,9 @@ package k8s
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -54,6 +56,19 @@ func New(token, apiServer string) *Client {
 			Transport: sharedTransport,
 		},
 	}
+}
+
+// cacheKey scopes cluster-wide cached data to both the cluster URL and a
+// fingerprint of the caller's token. This prevents a cross-user RBAC leak in
+// token mode, where users with different Kubernetes permissions share the same
+// apiServer URL: without the token in the key, a restricted user could be served
+// cluster-wide data fetched by a more privileged user. In OIDC / managed-SA mode
+// every request uses the same shared SA token, so the key collapses to one entry
+// per cluster as before (no cache-hit-rate regression). Only the first 8 bytes of
+// the SHA-256 are used — enough to avoid collisions, and the token is never logged.
+func (c *Client) cacheKey() string {
+	sum := sha256.Sum256([]byte(c.token))
+	return hex.EncodeToString(sum[:8]) + ":" + c.apiServer
 }
 
 const maxRetries = 3
@@ -161,38 +176,41 @@ func (c *Client) ListPodMetrics(ctx context.Context, namespace string) (*PodMetr
 
 // ListAllPodMetrics returns pod metrics for all pods across all namespaces.
 func (c *Client) ListAllPodMetrics(ctx context.Context) (*PodMetricsList, error) {
-	if v, ok := allPodMetricsCache.get(c.apiServer); ok {
+	key := c.cacheKey()
+	if v, ok := allPodMetricsCache.get(key); ok {
 		return v, nil
 	}
 	var out PodMetricsList
 	if err := c.get(ctx, "/apis/metrics.k8s.io/v1beta1/pods", &out); err != nil {
 		return nil, err
 	}
-	allPodMetricsCache.set(c.apiServer, &out, ttlShort)
+	allPodMetricsCache.set(key, &out, ttlShort)
 	return &out, nil
 }
 
 func (c *Client) ListNodes(ctx context.Context) (*NodeList, error) {
-	if v, ok := nodesCache.get(c.apiServer); ok {
+	key := c.cacheKey()
+	if v, ok := nodesCache.get(key); ok {
 		return v, nil
 	}
 	var out NodeList
 	if err := c.get(ctx, "/api/v1/nodes", &out); err != nil {
 		return nil, err
 	}
-	nodesCache.set(c.apiServer, &out, ttlShort)
+	nodesCache.set(key, &out, ttlShort)
 	return &out, nil
 }
 
 func (c *Client) ListNodeMetrics(ctx context.Context) (*NodeMetricsList, error) {
-	if v, ok := nodeMetricsCache.get(c.apiServer); ok {
+	key := c.cacheKey()
+	if v, ok := nodeMetricsCache.get(key); ok {
 		return v, nil
 	}
 	var out NodeMetricsList
 	if err := c.get(ctx, "/apis/metrics.k8s.io/v1beta1/nodes", &out); err != nil {
 		return nil, err
 	}
-	nodeMetricsCache.set(c.apiServer, &out, ttlShort)
+	nodeMetricsCache.set(key, &out, ttlShort)
 	return &out, nil
 }
 
@@ -200,14 +218,15 @@ func (c *Client) ListNodeMetrics(ctx context.Context) (*NodeMetricsList, error) 
 // Excludes Succeeded and Failed pods at the API level to reduce response size.
 // Results are cached per cluster URL for ttlShort to avoid redundant cluster-wide fetches.
 func (c *Client) ListAllPods(ctx context.Context) (*PodList, error) {
-	if v, ok := allPodsCache.get(c.apiServer); ok {
+	key := c.cacheKey()
+	if v, ok := allPodsCache.get(key); ok {
 		return v, nil
 	}
 	var out PodList
 	if err := c.get(ctx, "/api/v1/pods?fieldSelector=status.phase!=Succeeded,status.phase!=Failed", &out); err != nil {
 		return nil, err
 	}
-	allPodsCache.set(c.apiServer, &out, ttlShort)
+	allPodsCache.set(key, &out, ttlShort)
 	return &out, nil
 }
 
@@ -240,7 +259,7 @@ func (c *Client) ListCronJobs(ctx context.Context, namespace string) (*CronJobLi
 // Requires nodes/proxy get permission. Best-effort: caller should handle errors.
 // Results are cached per (cluster, node) for ttlLong to reduce kubelet proxy load.
 func (c *Client) GetNodeSummary(ctx context.Context, nodeName string) (*NodeSummary, error) {
-	key := c.apiServer + ":" + nodeName
+	key := c.cacheKey() + ":" + nodeName
 	if v, ok := nodeSummaryCache.get(key); ok {
 		return v, nil
 	}

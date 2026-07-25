@@ -168,6 +168,15 @@ export default function DashboardPage() {
     if (token && view === "nodes" && nodes.length === 0) loadNodes();
   }, [view, token, loadNodes, nodes.length]);
 
+  // Silently pre-load nodes in the namespace view so suggestion capping has node
+  // capacity (maxNodeCapacity) before the Nodes tab is ever opened. Cheap: the
+  // backend caches the node list for 30s. Without this, SuggestionPanel receives
+  // an empty nodes array and the "capped to node capacity" / "Migrate to larger
+  // node" outcomes never fire.
+  useEffect(() => {
+    if (token && view === "namespaces" && nodes.length === 0) loadNodes(true);
+  }, [token, view, nodes.length, loadNodes]);
+
   // Re-fetch history when time range changes
   useEffect(() => {
     if (!token || !selectedNs || !prometheusAvailable || view !== "namespaces") return;
@@ -567,6 +576,7 @@ export default function DashboardPage() {
             <SuggestionPanel
               deployments={visibleDeployments}
               history={nsHistory}
+              nodes={nodes}
               onOpenCards={handleOpenCards}
               searchQuery={workloadSearch}
             />

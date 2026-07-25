@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import type { DeploymentDetail, ContainerHistory } from "@/lib/api";
+import type { DeploymentDetail, ContainerHistory, NodeOverview } from "@/lib/api";
 import { computeSuggestions, toKubectlCmd, type Suggestion, type SuggestionKind } from "@/lib/suggestions";
 import styles from "./SuggestionPanel.module.css";
 
@@ -66,8 +66,10 @@ function groupByKind(suggestions: Suggestion[]): Array<{ kind: SuggestionKind; i
   return groups;
 }
 
+// Suggestions are workload-level, so the pod is not part of the identity — except for
+// PVCs, which are per-replica physical volumes and keep their own row.
 function suggestionKey(s: Suggestion): string {
-  return `${s.deployment}:${s.pod}:${s.container}:${s.resource}:${s.kind}`;
+  return `${s.deployment}:${s.pod}:${s.container}:${s.resource}:${s.kind}:${s.action}`;
 }
 
 const VOLUME_RESOURCES = new Set(["PVC", "EmptyDir"]);
@@ -103,10 +105,15 @@ function SuggestionItem({ s, onOpenCards }: { s: Suggestion; onOpenCards?: (ids:
     >
       <div className={styles.itemHeader}>
         <span className={styles.depName}>{s.deployment}</span>
-        <span className={styles.podTag}>{s.pod.split("-").slice(-2).join("-")}</span>
+        <span className={styles.podTag} title={s.podCount > 1 ? `${s.podCount} replicas aggregated` : s.pod}>
+          {s.podCount > 1 ? `${s.podCount} replicas` : s.pod.split("-").slice(-2).join("-")}
+        </span>
         <span className={styles.resourceTag}>{s.resource}</span>
       </div>
       <p className={styles.itemMsg}>{s.message}</p>
+      {s.warnings?.map((w) => (
+        <p key={w} className={styles.itemWarning}>⚠ {w}</p>
+      ))}
       <div className={styles.itemAction}>
         <span className={styles.actionLabel}>{s.action}</span>
         <span className={styles.arrow}>→</span>
@@ -164,11 +171,12 @@ function SuggestionGroup({ kind, items, open, onToggle, onOpenCards }: Suggestio
 interface SuggestionPanelProps {
   deployments: DeploymentDetail[];
   history?: ContainerHistory[];
+  nodes?: NodeOverview[];
   onOpenCards?: (ids: string[], scrollTarget: string) => void;
   searchQuery?: string;
 }
 
-export default function SuggestionPanel({ deployments, history, onOpenCards, searchQuery }: SuggestionPanelProps) {
+export default function SuggestionPanel({ deployments, history, nodes, onOpenCards, searchQuery }: SuggestionPanelProps) {
   // --- Open/close per kind group (useCallback prevents stale closure on rapid re-renders) ---
   const [openGroups, setOpenGroups] = useState<Map<string, boolean>>(new Map());
   const [exportCopied, setExportCopied] = useState(false);
@@ -200,7 +208,7 @@ export default function SuggestionPanel({ deployments, history, onOpenCards, sea
   }, []);
 
   // --- Compute ---
-  const allSuggestions = useMemo(() => computeSuggestions(deployments, history), [deployments, history]);
+  const allSuggestions = useMemo(() => computeSuggestions(deployments, history, nodes), [deployments, history, nodes]);
 
   const searchFiltered = useMemo(() => {
     const q = searchQuery?.toLowerCase() ?? "";
