@@ -3,7 +3,7 @@ module github.com/devops-kubeadjust/backend
 go 1.26
 
 require (
-	github.com/coreos/go-oidc/v3 v3.19.0
+	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-chi/cors v1.2.2
 	golang.org/x/oauth2 v0.36.0
