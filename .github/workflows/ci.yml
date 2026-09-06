@@ -4,6 +4,14 @@ on:
   push:
     branches: [main]
 
+# One run per ref at a time; the superseded one is cancelled.
+#
+# On a private repository every job-minute of a run nobody will read is still
+# billed. Pushing twice in a minute used to pay for both.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: Go build, vet, lint & test
