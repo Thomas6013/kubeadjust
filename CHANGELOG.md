@@ -1,6 +1,63 @@
 # Changelog
 
-All notable changes to KubeAdjust are documented here.
+All notable changes to KubeAdjust are documented here. Since 0.27.0 this includes the Helm
+chart, whose version is now the same number as the application's.
+
+---
+
+## [0.27.0] - 2026-09-08
+
+### Changed
+
+- **The `kubeadjust-helm` repository is folded back into this one.** The chart lives at
+  [`charts/kubeadjust/`](charts/kubeadjust) and its example manifests at [`deploy/`](deploy);
+  the 14 commits of chart history came across with it, so `git log -- charts/kubeadjust/`
+  still resolves. The v0.19.0 split existed to let the chart version move independently of
+  the app, but both were bumped together at every release from 0.20 through 0.26 — it cost
+  two PRs, two tags and two changelogs per release for no gain, while the docs on each side
+  drifted from the other.
+
+- **One version number for the whole project.** Chart `version`, chart `appVersion`,
+  `frontend/package.json` and `frontend/src/lib/version.ts` all read 0.27.0 and move together
+  from now on. The chart's own changelog is closed as an archive of chart versions
+  0.19.0-0.26.0; chart changes are documented here from 0.27.0 on.
+
+- **Helm install is documented as what it actually is.** The README advertised
+  `helm repo add kubeadjust https://thomas6013.github.io/kubeadjust-helm`, and the chart
+  repo's CONTRIBUTING claimed releases were automated by chart-releaser. Neither the
+  gh-pages branch nor the workflow ever existed, so that command could not have worked for
+  anyone. Install is now `git clone` + `helm dependency build` + `helm install` from
+  `charts/kubeadjust`, which is what the chart supports today. Publishing a real Helm
+  repository is back on the roadmap as an open item.
+
+- **`Chart.lock` is now tracked**, pinning the metrics-server sub-chart digest so every clone
+  resolves the same dependency via `helm dependency build`. The downloaded `.tgz` under
+  `charts/kubeadjust/charts/` stays ignored.
+
+### Fixed
+
+- **Removed the dead `rbac.role` chart value.** `values.yaml` documented it as choosing
+  between a `viewer` and an `admin` ClusterRole, but no template ever read
+  `.Values.rbac.role` — `rbac.yaml` renders one fixed read-only role and only checks
+  `rbac.create`. Setting it to `admin` silently did nothing. Removing it changes no rendered
+  output; the role's actual contents are now spelled out in the value's comment and in the
+  chart README.
+
+- **Documented the chart values that were missing from the README** — `nodeSelector`,
+  `tolerations` and `affinity` (both Deployments, shipped in 0.26.0 and never written up),
+  `image.pullPolicy`, `image.pullSecrets`, `nameOverride`, `fullnameOverride`,
+  `frontend.port`, `serviceAccount.name`, `serviceAccount.annotations`, `service.type`,
+  `ingress.annotations`, `metrics-server.args`, `prometheus.port`, `oidc.clientSecret` and
+  `oidc.sessionSecret`.
+
+- **`SECURITY.md` pointed at a repository that does not exist** — vulnerability reports were
+  directed to `github.com/thomas6013/devops-kubeadjust/security/advisories/new`. Corrected to
+  this repository, and the supported-version table no longer claims 0.22.x is current.
+
+- **`helm lint --strict` and the five template smoke tests now run in this repo's CI**
+  (`.github/workflows/helm-lint.yml`), path-filtered to chart changes so a frontend-only push
+  does not pay for a Helm job — and `ci.yml` is likewise filtered so a chart-only push does
+  not pay for Go and Node jobs.
 
 ---
 

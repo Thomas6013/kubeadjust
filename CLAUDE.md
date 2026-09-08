@@ -10,7 +10,14 @@ KubeAdjust is a **read-only Kubernetes dashboard** (Go backend + Next.js fronten
 
 - **Backend**: Go 1.26, Chi v5 router, 3 production dependencies (chi, cors, errgroup), raw HTTP K8s API (no client-go)
 - **Frontend**: Next.js 16, React 19, TypeScript 5, no UI library, no charting library
-- **Infra**: Helm chart moved to [kubeadjust-helm](https:²/github.com/Thomas6013/kubeadjust-helm) (separate repo, independent versioning, published via GitHub Pages). Multi-stage Docker builds (amd64 + arm64), GitHub Actions CI with linting + tests + SBOM + cosign. Docker images publish on `v*.*.*` tag push only (not on every merge to main).
+- **Infra**: Helm chart in-tree at `charts/kubeadjust/` (folded back from the separate
+  `kubeadjust-helm` repo in 0.27.0; that repo is closed). Chart version == app version.
+  Multi-stage Docker builds (amd64 + arm64), GitHub Actions CI with linting + tests + SBOM +
+  cosign. Docker images publish on `*.*.*` tag push only, not on every merge to main.
+- **Helm distribution**: there is none yet. Install is `git clone` + `helm dependency build`
+  + `helm install charts/kubeadjust`. Do not write `helm repo add kubeadjust
+  https://thomas6013.github.io/...` anywhere: the README claimed that until 0.27.0 and it
+  never worked — no gh-pages branch, no release workflow, ever created. See ROADMAP.md.
 
 ---
 
@@ -68,22 +75,40 @@ frontend/
   eslint.config.mjs        # ESLint 9 flat config (eslint-config-next + typescript)
   next.config.mjs          # Standalone output, security headers (CSP handled by proxy.ts)
 
+charts/kubeadjust/         # The Helm chart. Version tracks appVersion, both == app version.
+  Chart.yaml               # version + appVersion + metrics-server dependency
+  Chart.lock               # TRACKED: pins the metrics-server digest for `helm dependency build`
+  values.yaml              # every value carries an inline comment (enforced by convention)
+  README.md                # the values reference -- a new value must land here too
+  CHANGELOG.md             # CLOSED archive of chart versions 0.19.0-0.26.0 (the split era)
+  templates/
+    _helpers.tpl           # fullname, labels, SA name, OIDC secret names
+    deployment.yaml        # backend + frontend Deployments (nodeSelector/tolerations/affinity)
+    rbac.yaml              # ClusterRole (get/list/watch only) + ClusterRoleBinding
+    service.yaml           # backend + frontend Services
+    serviceaccount.yaml
+    ingress.yaml           # optional (ingress.enabled)
+    networkpolicy.yaml     # optional (networkPolicy.enabled)
+    oidc-secret.yaml       # generated Secret when oidc.enabled
+    NOTES.txt              # post-install instructions
+
+deploy/                    # Example manifests applied by hand, NOT part of the helm package
+  oidc-secret.yaml         # Secret template for OIDC clientSecret + sessionSecret
+  oidc-tokens-secret.yaml  # Secret template for SA tokens (OIDC multi-cluster)
+  viewer-serviceaccount.yaml  # Standalone SA + ClusterRole for remote clusters
+
 docs/
   AUDIT.md                 # Technical audit: security, performance, code quality (v0.22.0)
   PRODUCT.md               # Product analysis: retention diagnostic + phased roadmap (phase 1 done in 0.26.0)
   oidc.md                  # OIDC/SSO setup guide (Keycloak, Dex, Azure AD, Okta, Google)
   multi-cluster.md         # Multi-cluster configuration guide
 
-deploy/
-  viewer-serviceaccount.yaml  # Standalone SA + ClusterRole for remote clusters (still used in SA token setup docs)
-
 .github/workflows/
   ci.yml                   # go build/vet/test + golangci-lint + npm typecheck/build/lint
+                           #   paths-ignore: charts/, deploy/, docs/, *.md
+  helm-lint.yml            # helm lint --strict + 5 template smoke tests
+                           #   paths: charts/ only
   docker-publish.yml       # Push to GHCR (amd64+arm64) + SBOM + cosign signing
-
-# Helm chart — separate repository
-# https://github.com/Thomas6013/kubeadjust-helm
-# helm repo add kubeadjust https://thomas6013.github.io/kubeadjust-helm
 ```
 
 ---
@@ -104,10 +129,15 @@ cd frontend && npm run lint
 # Full stack local dev
 docker compose up --build
 
-# Helm (production) — chart is now in https://github.com/Thomas6013/kubeadjust-helm
-helm repo add kubeadjust https://thomas6013.github.io/kubeadjust-helm
-helm repo update
-helm upgrade --install kubeadjust kubeadjust/kubeadjust \
+# Helm -- validate the chart the way CI does
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
+helm dependency build charts/kubeadjust   # `build` honours Chart.lock; `update` rewrites it
+helm lint charts/kubeadjust --strict      # one expected [INFO]: icon is recommended
+helm template kubeadjust charts/kubeadjust > /dev/null
+
+# Helm (production) -- no Helm repo exists; install from the path
+helm upgrade --install kubeadjust charts/kubeadjust \
+  --namespace kubeadjust --create-namespace \
   --set ingress.enabled=true \
   --set ingress.host=kubeadjust.your-domain.com
 ```
@@ -178,7 +208,8 @@ See `.env.example` at repo root. Key variables:
 
 > Resolved items are archived in [ClaudeDone.md](ClaudeDone.md).
 
-> Chart-related items (seccompProfile, fsGroup, `/tmp` emptyDir sizeLimit, helm lint in CI) are tracked in the [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm) repo — `helm/` no longer exists here.
+> Chart items are tracked here now (the `kubeadjust-helm` repo is closed) — see
+> "Chart hardening" below. `helm lint` in CI landed in 0.27.0.
 > Full audit detail with severities and evidence: [docs/AUDIT.md](docs/AUDIT.md) (pass 2026-07-02).
 > Product strategy and phased roadmap (retention, cost, persistence, push, GitOps loop): [docs/PRODUCT.md](docs/PRODUCT.md) — phase 1 (suggestion credibility) shipped in 0.26.0.
 
@@ -193,10 +224,35 @@ See `.env.example` at repo root. Key variables:
 - **Default SA token sent to other clusters on misconfiguration (AUDIT S-7)** — `middleware/auth.go:64`, `middleware/session.go:41`
   - Fallback to `saTokens["default"]` for a *named* cluster transmits the default cluster's credential to a different API server. Fix: only fall back when the target cluster is "default".
 
+### Chart hardening — Medium Priority
+
+> Carried over from the closed `kubeadjust-helm` backlog. All three are in
+> `charts/kubeadjust/templates/deployment.yaml`.
+
+- **No `seccompProfile` on either pod** — both containers set `readOnlyRootFilesystem`,
+  `runAsNonRoot`, `runAsUser` (65534 backend / 1001 frontend), `allowPrivilegeEscalation: false`
+  and drop all capabilities, but neither sets `seccompProfile: {type: RuntimeDefault}`. Note the
+  `securityContext` blocks are container-level; there is no pod-level `securityContext` at all.
+  Fix: add a pod-level `securityContext` carrying `seccompProfile` on both Deployments.
+
+- **No `fsGroup`** — no volume needs it today (the only one is the frontend's `/tmp`
+  emptyDir, written by the container's own uid), so this matters only if a shared writable
+  volume is ever added. Fix: set `fsGroup` in that pod-level `securityContext` when it is.
+
+- **The frontend's `/tmp` emptyDir has no `sizeLimit`** — `deployment.yaml:216-218`. With
+  `readOnlyRootFilesystem: true` the frontend pod mounts `emptyDir: {}` at `/tmp`; unbounded it
+  can fill the node's ephemeral storage and get the pod evicted. The backend mounts no volume.
+  Fix: `emptyDir: {sizeLimit: 64Mi}`.
+
+- **`rbac.role` was a dead value** — removed in 0.27.0. Kept here as a note because the
+  lesson generalises: a value no template reads is a bug. Grep
+  `charts/kubeadjust/templates/` for `.Values.<new-value>` before documenting it.
+
 ### CI/CD — Medium Priority
 
 - **CI runs only on push to `main` — PRs are unverified (AUDIT INFRA-1)** — `.github/workflows/ci.yml:3-5`
   - The `pull_request` trigger was removed with `docker-pr.yml`. Fix: restore `pull_request: branches: [main]`.
+    (`helm-lint.yml` does run on PRs, so the chart is covered and the Go/Node side is not.)
 
 ### Performance — Medium Priority
 
@@ -250,8 +306,19 @@ See `.env.example` at repo root. Key variables:
 - **No client-go**: raw `net/http` calls to the K8s API only. Do not add `k8s.io/client-go`.
 - **No CSS frameworks**: CSS Modules only (`*.module.css`). No Tailwind, no MUI.
 - **No charting libraries**: SVG sparklines hand-rolled. No Chart.js, Recharts, etc.
-- **Versioning**: follow [Semantic Versioning](https://semver.org/). Three files to update on every release: `frontend/src/lib/version.ts` (`APP_VERSION`), `frontend/package.json` (`version`), and `appVersion` in the [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm) Chart.yaml (separate repo — `helm/` no longer exists here). Keep CHANGELOG.md, CLAUDE.md, and README.md aligned. Docker images publish only when a `*.*.*` git tag is pushed (`git tag 0.24.0 && git push origin 0.24.0`).
-- **RBAC**: keep the ClusterRole strictly read-only. Any new K8s resource access needs a `get`/`list`/`watch` verb only.
+- **Versioning**: follow [Semantic Versioning](https://semver.org/). **One number for the
+  whole project**, in four places, all bumped together: `frontend/src/lib/version.ts`
+  (`APP_VERSION`), `frontend/package.json` (`version`), and both `version` and `appVersion`
+  in `charts/kubeadjust/Chart.yaml`. The chart used to version independently; from 0.27.0 it
+  does not. Keep CHANGELOG.md, CLAUDE.md and README.md aligned. Docker images publish only
+  when a `*.*.*` git tag is pushed (`git tag 0.27.0 && git push origin 0.27.0`).
+- **Chart values**: every value in `values.yaml` carries an inline comment, and every value
+  gets a row in `charts/kubeadjust/README.md`. Before adding one, grep the templates for
+  `.Values.<name>` — a value nothing reads is a bug (`rbac.role` shipped unread from 0.19.0
+  to 0.26.0, documented as switching between a viewer and an admin role that did not exist).
+- **RBAC**: keep the ClusterRole in `charts/kubeadjust/templates/rbac.yaml` strictly
+  read-only. Any new K8s resource access needs a `get`/`list`/`watch` verb only. The chart
+  exposes no value that can widen it, and must not grow one.
 - **Error handling**: never return raw K8s API errors to HTTP clients. Log server-side with `log.Printf`, return generic messages.
 - **Token safety**: never log, store, or cache the bearer token.
 - **Parallelism**: use `golang.org/x/sync/errgroup` for concurrent K8s API calls. Use `SetLimit()` to bound kubelet/node calls.
@@ -263,12 +330,24 @@ See `.env.example` at repo root. Key variables:
 ## CI/CD Notes
 
 - `ci.yml` currently runs on **push to `main` only** (the `pull_request` trigger was removed with `docker-pr.yml` — see AUDIT INFRA-1; restore it). Jobs: `go build`, `go vet`, `go test`, `golangci-lint`, `npm ci`, `npm run typecheck` (`tsc --noEmit`), `npm run build`, `npm run lint`. Skipped for `renovate[bot]` PRs (`if: github.actor != 'renovate[bot]'` on both jobs).
+- Both workflows are **path-filtered**, because on a private repo every job-minute of a run
+  nobody reads is still billed (same reasoning as the `concurrency` block in `ci.yml`).
+  `ci.yml` ignores `charts/`, `deploy/`, `docs/` and `*.md`; `helm-lint.yml` runs only on
+  `charts/`. A change touching both areas triggers both.
+- `helm-lint.yml` runs `helm dependency build` (not `update`), `helm lint --strict` and five
+  `helm template` smoke tests: default, OIDC, multi-cluster, Ingress+TLS,
+  Prometheus+NetworkPolicy. `--strict` emits one expected `[INFO] icon is recommended`.
 - `docker-publish.yml` builds and pushes to `ghcr.io/thomas6013/kubeadjust/` on `*.*.*` tag push only (not on every merge to `main`).
 - Image tags: `latest`, `<git-tag>` (authoritative version from `$GITHUB_REF_NAME`), `<commit-sha>`.
 - Multi-arch: `linux/amd64` + `linux/arm64` via QEMU + buildx. Backend uses native Go cross-compilation (`BUILDPLATFORM`/`TARGETARCH`).
 - SBOM generated per image with `anchore/sbom-action` (SPDX format).
 - Images signed with `sigstore/cosign` (keyless, OIDC-based).
-- Renovate is configured but only applies dependency updates (no custom rules yet).
+- Renovate groups `react`/`react-dom`/their `@types` into one PR, `next`/`eslint-config-next`
+  into another, and Helm chart dependencies into a third (labelled `chart`) — a chart bump
+  needs `Chart.lock` regenerated, so it stays on its own. See `renovate.json`.
+- A Renovate PR that bumps the metrics-server dependency in `Chart.yaml` must also carry the
+  regenerated `Chart.lock`, or `helm dependency build` fails for everyone. Run
+  `helm dependency update charts/kubeadjust` and commit the lock.
 
 ---
 
@@ -283,25 +362,36 @@ Before merging a feature branch and tagging a release, every item below must be 
 - `cd frontend && npm run typecheck` — no type errors (`tsc --noEmit`)
 - `cd frontend && npm run build` — no build errors
 - `cd frontend && npm run lint` — no lint errors
+- `helm dependency build charts/kubeadjust && helm lint charts/kubeadjust --strict` — no
+  errors (one `[INFO] icon is recommended` is expected)
+- `helm template kubeadjust charts/kubeadjust > /dev/null` — renders
 
-### Version bump (3 files — all three, every time)
+### Version bump (4 fields — all four, every time, same number)
 - `frontend/src/lib/version.ts` — update `APP_VERSION` (drives topbar badge)
 - `frontend/package.json` — update `version` field (easy to forget — was stuck at `0.2.0` until v0.22.0, then missed again in 0.23.0)
-- `appVersion` in [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm) `Chart.yaml` (separate repo)
+- `charts/kubeadjust/Chart.yaml` — `version`
+- `charts/kubeadjust/Chart.yaml` — `appVersion` (identical to `version` since 0.27.0)
 
 ### Documentation
 - `CHANGELOG.md` — all changes documented under the new version; change date from `unreleased` to `YYYY-MM-DD`
 - `CLAUDE.md` — Known Issues: move every item resolved this version to `ClaudeDone.md` under a new `## vX.Y.Z` heading
 - `README.md` — update if user-facing features, env vars, or architecture changed
+- `charts/kubeadjust/README.md` — update if any chart value was added, renamed or removed
 
 ### Git workflow
 1. All changes committed on the feature branch
 2. PR reviewed and merged into `main`
 3. Tag pushed from `main` to trigger Docker publish: `git tag 0.X.Y && git push origin 0.X.Y`
-4. Helm chart version bumped and tagged in [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm)
+   — one tag covers app and chart now; there is no second repo to tag
 
 ### Common pitfalls
-- Helm chart is in a **separate repo** — `helm/` no longer exists in this repo; changes to chart values, RBAC, or deployment templates go there
+- The chart is **in this repo** at `charts/kubeadjust/` (it was in `kubeadjust-helm` from
+  0.19.0 to 0.26.0, and in `helm/` before that). Chart values, RBAC and deployment templates
+  all change here.
+- `helm dependency build` is required once per clone before any `helm lint`/`template`/
+  `install`, **even with `metrics-server.enabled=false`** — Helm resolves dependencies
+  before evaluating the condition that would skip them. The error is
+  `found in Chart.yaml, but missing in charts/ directory: metrics-server`.
 - Docker images publish **only on tag push** (not on merge to main) — double-check the tag matches the version bumped in step above
 - `frontend/package.json` `version` is not read at runtime but must stay in sync for `npm audit` and tooling consistency
 - HTTP transports in `k8s/client.go` and `prometheus/client.go` are custom — always include `DialContext` with `KeepAlive: 30s` if creating a new one (see v0.24.0 stale-connection fix)
@@ -310,10 +400,13 @@ Before merging a feature branch and tagging a release, every item below must be 
 
 ## Deployment Reminders
 
-- Helm chart is now at [github.com/Thomas6013/kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm). `helm repo add kubeadjust https://thomas6013.github.io/kubeadjust-helm`.
+- The chart is at `charts/kubeadjust/` in this repo. Install from the path; no Helm
+  repository exists to `helm repo add`.
 - The chart's `rbac.yaml` creates a `ClusterRoleBinding`. On RBAC-restricted clusters, the installer needs `cluster-admin` or equivalent.
 - `KUBE_API_SERVER` must be reachable from within the cluster when deployed via Helm (use the cluster's internal API server URL, typically `https://kubernetes.default.svc`).
-- `metrics-server` is an optional sub-chart. Enable with `metricsServer.enabled=true` only if not already deployed in the cluster.
+- `metrics-server` is an optional sub-chart. Enable with `--set metrics-server.enabled=true`
+  (hyphenated — it is the sub-chart's own name, not `metricsServer`) only if the cluster does
+  not already have one.
 - Set `ALLOWED_ORIGINS` in production to restrict CORS to your frontend domain.
 - `BACKEND_URL` is auto-generated by Helm as FQDN (`<release>-backend.<namespace>:<port>`). No manual override needed.
 - `PROMETHEUS_URL` can be set with or without `http://` scheme — the backend auto-prepends if missing.

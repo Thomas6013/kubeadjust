@@ -65,13 +65,12 @@ serviceAccount:
   name: ""
   annotations: {}
 
-# RBAC — create a ClusterRole + ClusterRoleBinding for demo/admin users
-# You can bind this role to specific users/groups manually.
+# RBAC — create the read-only ClusterRole + ClusterRoleBinding.
+# The role is fixed and not tunable: get/list/watch on namespaces, pods, PVCs,
+# nodes, apps workloads, batch jobs, metrics.k8s.io, plus get on nodes/proxy.
+# It grants no write verb, ever. Bind it to extra users/groups manually if needed.
 rbac:
   create: true
-  # "viewer" creates read-only access to deployments, pods, namespaces, metrics
-  # "admin" additionally allows listing all namespaces
-  role: viewer
 
 service:
   type: ClusterIP
