@@ -11,11 +11,17 @@ jobs:
     name: Build & push ${{ matrix.image }}
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # required for sbom-action to attach artifacts to releases
+      contents: read   # checkout only -- we no longer attach assets to releases
       packages: write
       id-token: write  # required for cosign signing
 
     strategy:
+      # One image failing must not cancel the other. On 0.27.0 the backend's SBOM
+      # step failed and fail-fast cancelled the frontend job mid-run, so the
+      # frontend image for that version was never pushed at all -- while the
+      # backend's `latest` had already moved. That left `latest` split across two
+      # versions: a 0.27.0 backend talking to a 0.26.0 frontend.
+      fail-fast: false
       matrix:
         include:
           - context: ./backend
@@ -64,16 +70,29 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.2
+
+      # Signing runs before the SBOM on purpose. An unsigned published image is a
+      # supply-chain regression; a missing SBOM is an inconvenience. With these two
+      # in the other order, the 0.27.0 SBOM failure skipped signing altogether and
+      # published the backend image unsigned.
+      - name: Sign image
+        run: |
+          cosign sign --yes \
+            ghcr.io/${{ steps.version.outputs.owner }}/kubeadjust/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+
       - name: Generate SBOM
         uses: anchore/sbom-action@v0.24.2
         with:
           image: ghcr.io/${{ steps.version.outputs.owner }}/kubeadjust/${{ matrix.image }}:${{ github.sha }}
           artifact-name: sbom-${{ matrix.image }}.spdx.json
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v4.1.2
-
-      - name: Sign image
-        run: |
-          cosign sign --yes \
-            ghcr.io/${{ steps.version.outputs.owner }}/kubeadjust/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          # This repository has immutable releases enabled: publishing a release
+          # seals it, assets included. The action otherwise defaults to attaching
+          # the SBOM as a release asset, which fails with
+          #   Error: Cannot upload assets to an immutable release.
+          # It only fails when the release already exists as this step runs, so it
+          # broke 0.27.0 (release published two seconds earlier) and passed quietly
+          # on 0.26.0 (release created after the workflow had finished) -- a race,
+          # not a constant. The SBOM is kept as a workflow artifact, unaffected.
+          upload-release-assets: false
