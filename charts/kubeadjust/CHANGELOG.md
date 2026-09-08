@@ -1,6 +1,11 @@
-# Changelog
+# Changelog — Helm chart (archive)
 
-All notable changes to the KubeAdjust Helm chart are documented here.
+**This file is closed.** It records the chart's own version line for the period it lived in
+the separate `kubeadjust-helm` repository — chart versions 0.19.0 through 0.26.0.
+
+From 0.27.0 the chart version and the application version are the same number, and every
+chart change is documented in the repository's [CHANGELOG.md](../../CHANGELOG.md) alongside
+the code it ships with. Nothing new gets appended below.
 
 ---
 

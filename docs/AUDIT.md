@@ -2,7 +2,7 @@
 
 > Current audit pass: **2026-07-02**
 > Previous audit pass: 2026-06-01 (narrative format, superseded structure; findings carried into the tracking table below)
-> Framework: full-repo engineering audit — security, correctness, maintainability, factorisation, dead code, performance, testing, docs drift, supply chain, domain correctness. Helm chart lives in [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm) (not checked out — out of scope for this pass).
+> Framework: full-repo engineering audit — security, correctness, maintainability, factorisation, dead code, performance, testing, docs drift, supply chain, domain correctness. Helm chart was in the separate `kubeadjust-helm` repo at the time of this pass and was not checked out — out of scope here. It moved in-tree to `charts/kubeadjust/` in 0.27.0 and **is in scope from the next pass on**.
 
 ---
 
@@ -106,9 +106,9 @@ IDs from the 2026-06-01 pass are preserved. New IDs this pass: S-5…S-8, DOM-1,
 | `frontend/src/components/` (NodeCard, SuggestionPanel deep; others skimmed for structure/size) | reviewed 2026-07-02 (light on CircleGauge, PodBar, PodRow, ResourceBar, Sidebar, Sparkline*, Topbar, VolumeSection, DeploymentCard) |
 | CSS modules (`*.module.css`, `globals.css`) | skipped — cosmetic; known LOW items (focus-visible, type scale) tracked in CLAUDE.md backlog |
 | `README.md`, `CHANGELOG.md`, `CLAUDE.md`, `ClaudeDone.md`, `ROADMAP.md`, `docs/*` | reviewed 2026-07-02 |
-| Sibling repo `kubeadjust-helm` | skipped — not checked out alongside; seccomp/fsGroup/sizeLimit items live there |
+| Sibling repo `kubeadjust-helm` | skipped — not checked out alongside. Folded into `charts/kubeadjust/` in 0.27.0; its seccomp/fsGroup/sizeLimit items now sit in the CLAUDE.md "Chart hardening" backlog |
 
-**Coverage gaps the next pass must close:** deep-read the 9 skimmed components (especially `PodRow.tsx` and `SparklineModal.tsx`); audit the kubeadjust-helm chart if checked out (seccomp, fsGroup, emptyDir sizeLimit, helm lint in its CI).
+**Coverage gaps the next pass must close:** deep-read the 9 skimmed components (especially `PodRow.tsx` and `SparklineModal.tsx`); audit `charts/kubeadjust/` and `deploy/`, now in-tree and never yet audited (seccomp, fsGroup, emptyDir sizeLimit, and a sweep for further dead values after `rbac.role` was found unread from 0.19.0 to 0.26.0).
 
 ---
 

@@ -23,3 +23,8 @@ frontend/.next/
 .env*
 .env.local
 .env*.local
+
+# Helm sub-charts fetched by `helm dependency build` into the chart dir.
+# Chart.lock IS tracked (it pins the metrics-server digest, so a clone can
+# reproduce the exact sub-chart); the downloaded .tgz under charts/ is not.
+charts/kubeadjust/charts/

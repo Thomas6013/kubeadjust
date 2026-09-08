@@ -3,6 +3,12 @@ name: CI
 on:
   push:
     branches: [main]
+    # A chart-only push has no Go or Node to build; helm-lint.yml covers it.
+    paths-ignore:
+      - 'charts/**'
+      - 'deploy/**'
+      - 'docs/**'
+      - '**/*.md'
 
 # One run per ref at a time; the superseded one is cancelled.
 #

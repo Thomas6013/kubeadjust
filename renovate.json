@@ -1,3 +1,22 @@
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json"
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "description": "React and its DOM binding must move together; three separate PRs for one upgrade is noise.",
+      "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"],
+      "groupName": "react"
+    },
+    {
+      "description": "Next and its ESLint config are version-locked to each other.",
+      "matchPackageNames": ["next", "eslint-config-next"],
+      "groupName": "next"
+    },
+    {
+      "description": "Helm chart dependencies. The chart moved into this repo in 0.27.0; helmv3 picks up charts/kubeadjust/Chart.yaml. A bump here needs Chart.lock regenerated, so keep it in its own PR.",
+      "matchManagers": ["helmv3"],
+      "groupName": "helm chart dependencies",
+      "addLabels": ["chart"]
+    }
+  ]
 }

@@ -57,17 +57,25 @@ KubeAdjust shows for every Deployment, StatefulSet and CronJob:
 
 ### Helm (production)
 
-The Helm chart lives in a dedicated repository — [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm).
+The chart lives in this repository under [`charts/kubeadjust/`](charts/kubeadjust). There is no
+Helm repository to add — clone and install from the path:
 
 ```bash
-helm repo add kubeadjust https://thomas6013.github.io/kubeadjust-helm
-helm repo update
+git clone https://github.com/Thomas6013/kubeadjust.git && cd kubeadjust
 
-helm install kubeadjust kubeadjust/kubeadjust \
+# Once per clone: fetches the metrics-server sub-chart pinned in Chart.lock.
+# Required even when metrics-server.enabled=false — Helm resolves every
+# dependency before it evaluates the condition that would skip it.
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
+helm dependency build charts/kubeadjust
+
+helm install kubeadjust charts/kubeadjust \
   --namespace kubeadjust --create-namespace \
   --set ingress.enabled=true \
   --set ingress.host=kubeadjust.your-domain.com
 ```
+
+Every value is documented in [charts/kubeadjust/README.md](charts/kubeadjust/README.md).
 
 Get a login token:
 
@@ -124,7 +132,7 @@ cd frontend && npm install && npm run dev
 
 **metrics-server:** required for live usage data. If not installed, enable the sub-chart: `--set metrics-server.enabled=true`.
 
-**Multi-cluster:** configure clusters as a Helm map (`backend.clusters.prod`, `backend.clusters.staging`, …). Each cluster stores its token independently in sessionStorage — switching between clusters requires no re-authentication. Full Helm values reference is in [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm).
+**Multi-cluster:** configure clusters as a Helm map (`backend.clusters.prod`, `backend.clusters.staging`, …). Each cluster stores its token independently in sessionStorage — switching between clusters requires no re-authentication. Full Helm values reference: [charts/kubeadjust/README.md](charts/kubeadjust/README.md).
 
 **OIDC / SSO:** see [docs/oidc.md](docs/oidc.md) for a full setup guide. Works with any OIDC provider and on managed clusters (EKS, GKE, AKS) — no K8s API server configuration required.
 
@@ -147,7 +155,7 @@ Browser → Next.js (port 3000) → /api/* proxy → Go backend (port 8080)
 
 ## Security
 
-- **Read-only RBAC** — the Helm ClusterRole only has `get`, `list`, `watch` permissions
+- **Read-only RBAC** — the Helm ClusterRole ([`charts/kubeadjust/templates/rbac.yaml`](charts/kubeadjust/templates/rbac.yaml)) only has `get`, `list`, `watch` permissions
 - **Token in sessionStorage** — cleared on tab close, never logged or persisted
 - **PromQL injection prevention** — strict whitelist validation on all label values
 - **10MB response cap** — `io.LimitReader` on all upstream responses
@@ -159,6 +167,7 @@ Browser → Next.js (port 3000) → /api/* proxy → Go backend (port 8080)
 
 ## Docs
 
+- [Helm values reference](charts/kubeadjust/README.md) — every chart value, with worked examples
 - [OIDC / SSO setup](docs/oidc.md) — Keycloak, Dex, Azure AD, Okta, Google Workspace
 - [Multi-cluster](docs/multi-cluster.md) — configuring multiple K8s clusters
 - [Technical audit](docs/AUDIT.md) — security, performance, code quality analysis (v0.22.0)
