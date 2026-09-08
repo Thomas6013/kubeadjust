@@ -13,7 +13,7 @@ Thank you for taking the time to contribute!
 
 ### Prerequisites
 
-- Go 1.26+
+- Go 1.27+
 - Node.js 26+ (CI builds on 26)
 - Helm 3.x or 4.x (chart changes only)
 - Docker + Docker Compose (optional)

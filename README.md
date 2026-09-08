@@ -3,7 +3,7 @@
 > See what your Kubernetes workloads actually use vs what they request — and get suggestions to right-size them.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/go-1.26+-00ADD8.svg)](https://golang.org/)
+[![Go](https://img.shields.io/badge/go-1.27+-00ADD8.svg)](https://golang.org/)
 [![Next.js](https://img.shields.io/badge/next.js-16-black.svg)](https://nextjs.org/)
 [![Kubernetes](https://img.shields.io/badge/kubernetes-%E2%89%A51.21-326CE5.svg)](https://kubernetes.io/)
 
@@ -48,8 +48,8 @@ KubeAdjust shows for every Deployment, StatefulSet and CronJob:
 | Kubernetes | **1.21** (`batch/v1` CronJobs) |
 | metrics-server | any (optional, enables live usage) |
 | Prometheus | any (optional, enables sparklines + P95) |
-| Go | 1.26+ (build only) |
-| Node.js | 25+ (build only) |
+| Go | 1.27+ (build only) |
+| Node.js | 26+ (build only) |
 
 ---
 
@@ -99,7 +99,7 @@ Open http://localhost:3000, paste your token, done.
 ### Local dev
 
 ```bash
-# Backend (Go 1.26+)
+# Backend (Go 1.27+)
 cd backend && KUBE_API_SERVER=https://<your-cluster> go run .
 
 # Frontend (Node 26+)
