@@ -3,6 +3,20 @@ name: CI
 on:
   push:
     branches: [main]
+    # A chart-only push has no Go or Node to build; helm-lint.yml covers it.
+    paths-ignore:
+      - 'charts/**'
+      - 'deploy/**'
+      - 'docs/**'
+      - '**/*.md'
+
+# One run per ref at a time; the superseded one is cancelled.
+#
+# On a private repository every job-minute of a run nobody will read is still
+# billed. Pushing twice in a minute used to pay for both.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend:
@@ -14,9 +28,9 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.26"
+          go-version: "1.27"
           cache-dependency-path: backend/go.sum
       - run: go build ./...
       - run: go vet ./...
@@ -24,7 +38,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: "v2.12.2"
+          version: "v2.13.2"
           working-directory: backend
 
   frontend:
@@ -36,7 +50,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "26"
           cache: npm

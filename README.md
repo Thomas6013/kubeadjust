@@ -3,7 +3,7 @@
 > See what your Kubernetes workloads actually use vs what they request — and get suggestions to right-size them.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/go-1.26+-00ADD8.svg)](https://golang.org/)
+[![Go](https://img.shields.io/badge/go-1.27+-00ADD8.svg)](https://golang.org/)
 [![Next.js](https://img.shields.io/badge/next.js-16-black.svg)](https://nextjs.org/)
 [![Kubernetes](https://img.shields.io/badge/kubernetes-%E2%89%A51.21-326CE5.svg)](https://kubernetes.io/)
 
@@ -48,8 +48,8 @@ KubeAdjust shows for every Deployment, StatefulSet and CronJob:
 | Kubernetes | **1.21** (`batch/v1` CronJobs) |
 | metrics-server | any (optional, enables live usage) |
 | Prometheus | any (optional, enables sparklines + P95) |
-| Go | 1.26+ (build only) |
-| Node.js | 25+ (build only) |
+| Go | 1.27+ (build only) |
+| Node.js | 26+ (build only) |
 
 ---
 
@@ -57,17 +57,25 @@ KubeAdjust shows for every Deployment, StatefulSet and CronJob:
 
 ### Helm (production)
 
-The Helm chart lives in a dedicated repository — [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm).
+The chart lives in this repository under [`charts/kubeadjust/`](charts/kubeadjust). There is no
+Helm repository to add — clone and install from the path:
 
 ```bash
-helm repo add kubeadjust https://thomas6013.github.io/kubeadjust-helm
-helm repo update
+git clone https://github.com/Thomas6013/kubeadjust.git && cd kubeadjust
 
-helm install kubeadjust kubeadjust/kubeadjust \
+# Once per clone: fetches the metrics-server sub-chart pinned in Chart.lock.
+# Required even when metrics-server.enabled=false — Helm resolves every
+# dependency before it evaluates the condition that would skip it.
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
+helm dependency build charts/kubeadjust
+
+helm install kubeadjust charts/kubeadjust \
   --namespace kubeadjust --create-namespace \
   --set ingress.enabled=true \
   --set ingress.host=kubeadjust.your-domain.com
 ```
+
+Every value is documented in [charts/kubeadjust/README.md](charts/kubeadjust/README.md).
 
 Get a login token:
 
@@ -91,7 +99,7 @@ Open http://localhost:3000, paste your token, done.
 ### Local dev
 
 ```bash
-# Backend (Go 1.26+)
+# Backend (Go 1.27+)
 cd backend && KUBE_API_SERVER=https://<your-cluster> go run .
 
 # Frontend (Node 26+)
@@ -124,7 +132,7 @@ cd frontend && npm install && npm run dev
 
 **metrics-server:** required for live usage data. If not installed, enable the sub-chart: `--set metrics-server.enabled=true`.
 
-**Multi-cluster:** configure clusters as a Helm map (`backend.clusters.prod`, `backend.clusters.staging`, …). Each cluster stores its token independently in sessionStorage — switching between clusters requires no re-authentication. Full Helm values reference is in [kubeadjust-helm](https://github.com/Thomas6013/kubeadjust-helm).
+**Multi-cluster:** configure clusters as a Helm map (`backend.clusters.prod`, `backend.clusters.staging`, …). Each cluster stores its token independently in sessionStorage — switching between clusters requires no re-authentication. Full Helm values reference: [charts/kubeadjust/README.md](charts/kubeadjust/README.md).
 
 **OIDC / SSO:** see [docs/oidc.md](docs/oidc.md) for a full setup guide. Works with any OIDC provider and on managed clusters (EKS, GKE, AKS) — no K8s API server configuration required.
 
@@ -147,7 +155,7 @@ Browser → Next.js (port 3000) → /api/* proxy → Go backend (port 8080)
 
 ## Security
 
-- **Read-only RBAC** — the Helm ClusterRole only has `get`, `list`, `watch` permissions
+- **Read-only RBAC** — the Helm ClusterRole ([`charts/kubeadjust/templates/rbac.yaml`](charts/kubeadjust/templates/rbac.yaml)) only has `get`, `list`, `watch` permissions
 - **Token in sessionStorage** — cleared on tab close, never logged or persisted
 - **PromQL injection prevention** — strict whitelist validation on all label values
 - **10MB response cap** — `io.LimitReader` on all upstream responses
@@ -159,6 +167,7 @@ Browser → Next.js (port 3000) → /api/* proxy → Go backend (port 8080)
 
 ## Docs
 
+- [Helm values reference](charts/kubeadjust/README.md) — every chart value, with worked examples
 - [OIDC / SSO setup](docs/oidc.md) — Keycloak, Dex, Azure AD, Okta, Google Workspace
 - [Multi-cluster](docs/multi-cluster.md) — configuring multiple K8s clusters
 - [Technical audit](docs/AUDIT.md) — security, performance, code quality analysis (v0.22.0)

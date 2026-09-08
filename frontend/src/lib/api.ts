@@ -135,6 +135,10 @@ async function apiFetch<T>(path: string, token: string): Promise<T> {
           sessionStorage.removeItem(k);
         }
       } catch { /* ignore */ }
+      // Hard navigation on purpose. router.push() would soft-navigate and keep the
+      // React tree alive, so components would re-render against the stale auth state
+      // we just cleared. This module is not a component either -- no router here.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       window.location.href = "/";
       throw new APIError(401, "Session expired");
     }

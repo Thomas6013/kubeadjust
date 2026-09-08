@@ -1,6 +1,98 @@
 # Changelog
 
-All notable changes to KubeAdjust are documented here.
+All notable changes to KubeAdjust are documented here. Since 0.27.0 this includes the Helm
+chart, whose version is now the same number as the application's.
+
+---
+
+## [0.27.0] - 2026-09-08
+
+### Changed
+
+- **The `kubeadjust-helm` repository is folded back into this one.** The chart lives at
+  [`charts/kubeadjust/`](charts/kubeadjust) and its example manifests at [`deploy/`](deploy);
+  the 14 commits of chart history came across with it, so `git log -- charts/kubeadjust/`
+  still resolves. The v0.19.0 split existed to let the chart version move independently of
+  the app, but both were bumped together at every release from 0.20 through 0.26 — it cost
+  two PRs, two tags and two changelogs per release for no gain, while the docs on each side
+  drifted from the other.
+
+- **One version number for the whole project.** Chart `version`, chart `appVersion`,
+  `frontend/package.json` and `frontend/src/lib/version.ts` all read 0.27.0 and move together
+  from now on. The chart's own changelog is closed as an archive of chart versions
+  0.19.0-0.26.0; chart changes are documented here from 0.27.0 on.
+
+- **Helm install is documented as what it actually is.** The README advertised
+  `helm repo add kubeadjust https://thomas6013.github.io/kubeadjust-helm`, and the chart
+  repo's CONTRIBUTING claimed releases were automated by chart-releaser. Neither the
+  gh-pages branch nor the workflow ever existed, so that command could not have worked for
+  anyone. Install is now `git clone` + `helm dependency build` + `helm install` from
+  `charts/kubeadjust`, which is what the chart supports today. Publishing a real Helm
+  repository is back on the roadmap as an open item.
+
+- **`Chart.lock` is now tracked**, pinning the metrics-server sub-chart digest so every clone
+  resolves the same dependency via `helm dependency build`. The downloaded `.tgz` under
+  `charts/kubeadjust/charts/` stays ignored.
+
+### Fixed
+
+- **Removed the dead `rbac.role` chart value.** `values.yaml` documented it as choosing
+  between a `viewer` and an `admin` ClusterRole, but no template ever read
+  `.Values.rbac.role` — `rbac.yaml` renders one fixed read-only role and only checks
+  `rbac.create`. Setting it to `admin` silently did nothing. Removing it changes no rendered
+  output; the role's actual contents are now spelled out in the value's comment and in the
+  chart README.
+
+- **Documented the chart values that were missing from the README** — `nodeSelector`,
+  `tolerations` and `affinity` (both Deployments, shipped in 0.26.0 and never written up),
+  `image.pullPolicy`, `image.pullSecrets`, `nameOverride`, `fullnameOverride`,
+  `frontend.port`, `serviceAccount.name`, `serviceAccount.annotations`, `service.type`,
+  `ingress.annotations`, `metrics-server.args`, `prometheus.port`, `oidc.clientSecret` and
+  `oidc.sessionSecret`.
+
+- **`SECURITY.md` pointed at a repository that does not exist** — vulnerability reports were
+  directed to `github.com/thomas6013/devops-kubeadjust/security/advisories/new`. Corrected to
+  this repository, and the supported-version table no longer claims 0.22.x is current.
+
+- **`helm lint --strict` and the five template smoke tests now run in this repo's CI**
+  (`.github/workflows/helm-lint.yml`), path-filtered to chart changes so a frontend-only push
+  does not pay for a Helm job — and `ci.yml` is likewise filtered so a chart-only push does
+  not pay for Go and Node jobs.
+
+### Dependencies
+
+Renovate's twenty open branches consolidated into this release.
+
+- **Go 1.26 → 1.27**, in lockstep across `go.mod`, `backend/Dockerfile`
+  (`golang:1.27-alpine`, digest-pinned), the CI `go-version`, and the four places the docs
+  named a Go version. Verified locally: Go's toolchain auto-download fetched go1.27.0 and
+  `go build`, `go vet` and `go test ./...` are all clean on it.
+- **Go modules**: `github.com/coreos/go-oidc/v3` 3.19.0 → 3.21.0,
+  `github.com/go-chi/chi/v5` 5.3.0 → 5.3.2, `golang.org/x/sync` 0.21.0 → 0.22.0.
+- **Next.js 16.2.10 → 16.3.4** with `eslint-config-next` moved in lockstep. Its new
+  `no-location-assign-relative-destination` rule flags the two deliberate hard navigations in
+  `lib/api.ts` (401 handling, which must drop the React tree holding the cleared auth state,
+  and which has no router since the module is not a component) and `app/page.tsx`
+  (`/auth/login` is a server route handler, not a page, so `router.push` cannot reach it).
+  Both are suppressed inline with the reason rather than rewritten.
+- **vitest 4.1.9 → 5.0.0.** `vitest.config.ts` becomes `.mts` and `__dirname` becomes
+  `import.meta.dirname`: Vite's native config loader warns on both and is slated to become the
+  default. The `@` alias was checked with a throwaway probe test, not assumed — nothing in the
+  existing suite imports through it, so a broken alias would have gone unnoticed.
+- **In-range refreshes**: react and react-dom 19.2.7 → 19.2.8, eslint 9.39.4 → 9.39.5,
+  `@types/node` 26.1.0 → 26.5.0. `npm install` alone does not move these (it honours the
+  existing lockfile); `npm update` does.
+- **Actions**: `actions/setup-go` v6 → v7, `actions/setup-node` v6 → v7,
+  `anchore/sbom-action` v0.24.0 → v0.24.2, `golangci-lint` v2.12.2 → v2.13.2.
+- **Base image digests**: `node:26-alpine` re-pinned.
+- **`npm audit` is back to zero.** Five advisories (three high) sat in transitive build and
+  lint tooling — @babel/core, @humanfs/node, brace-expansion, browserslist, flatted.
+  `npm audit fix` cleared all five without touching a single range in `package.json`.
+- **`typescript` stays on 6.** Renovate proposes 7, but `typescript-eslint` refuses to load
+  against the TS 7.0 API, so `npm run lint` exits 2 and the frontend CI job fails. Blocked
+  upstream (typescript-eslint#10940, support targeted at TS >=7.1), not a preference.
+- **Node.js requirement in the README said 25+** while CI, the Dockerfile and `@types/node`
+  had all been on 26 for some time. Corrected to 26+.
 
 ---
 

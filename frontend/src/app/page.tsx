@@ -77,6 +77,9 @@ export default function LoginPage() {
     if (selectedCluster) {
       try { sessionStorage.setItem("kube-cluster", selectedCluster); } catch { /* ignore */ }
     }
+    // Hard navigation on purpose: /auth/login is a server route handler that redirects
+    // to the OIDC provider, not a page. router.push() cannot navigate to a route handler.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = "/auth/login";
   }
 
