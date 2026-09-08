@@ -107,7 +107,7 @@ One number for the whole project. When bumping a release, update **all four**:
 
 Docker images are published via `docker-publish.yml` when a `*.*.*` git tag is pushed:
 ```bash
-git tag 0.22.0 && git push origin 0.22.0
+git tag 0.27.0 && git push origin 0.27.0
 ```
 
 ## Pull request checklist
