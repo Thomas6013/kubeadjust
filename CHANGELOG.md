@@ -59,6 +59,41 @@ chart, whose version is now the same number as the application's.
   does not pay for a Helm job — and `ci.yml` is likewise filtered so a chart-only push does
   not pay for Go and Node jobs.
 
+### Dependencies
+
+Renovate's twenty open branches consolidated into this release.
+
+- **Go 1.26 → 1.27**, in lockstep across `go.mod`, `backend/Dockerfile`
+  (`golang:1.27-alpine`, digest-pinned), the CI `go-version`, and the four places the docs
+  named a Go version. Verified locally: Go's toolchain auto-download fetched go1.27.0 and
+  `go build`, `go vet` and `go test ./...` are all clean on it.
+- **Go modules**: `github.com/coreos/go-oidc/v3` 3.19.0 → 3.21.0,
+  `github.com/go-chi/chi/v5` 5.3.0 → 5.3.2, `golang.org/x/sync` 0.21.0 → 0.22.0.
+- **Next.js 16.2.10 → 16.3.4** with `eslint-config-next` moved in lockstep. Its new
+  `no-location-assign-relative-destination` rule flags the two deliberate hard navigations in
+  `lib/api.ts` (401 handling, which must drop the React tree holding the cleared auth state,
+  and which has no router since the module is not a component) and `app/page.tsx`
+  (`/auth/login` is a server route handler, not a page, so `router.push` cannot reach it).
+  Both are suppressed inline with the reason rather than rewritten.
+- **vitest 4.1.9 → 5.0.0.** `vitest.config.ts` becomes `.mts` and `__dirname` becomes
+  `import.meta.dirname`: Vite's native config loader warns on both and is slated to become the
+  default. The `@` alias was checked with a throwaway probe test, not assumed — nothing in the
+  existing suite imports through it, so a broken alias would have gone unnoticed.
+- **In-range refreshes**: react and react-dom 19.2.7 → 19.2.8, eslint 9.39.4 → 9.39.5,
+  `@types/node` 26.1.0 → 26.5.0. `npm install` alone does not move these (it honours the
+  existing lockfile); `npm update` does.
+- **Actions**: `actions/setup-go` v6 → v7, `actions/setup-node` v6 → v7,
+  `anchore/sbom-action` v0.24.0 → v0.24.2, `golangci-lint` v2.12.2 → v2.13.2.
+- **Base image digests**: `node:26-alpine` re-pinned.
+- **`npm audit` is back to zero.** Five advisories (three high) sat in transitive build and
+  lint tooling — @babel/core, @humanfs/node, brace-expansion, browserslist, flatted.
+  `npm audit fix` cleared all five without touching a single range in `package.json`.
+- **`typescript` stays on 6.** Renovate proposes 7, but `typescript-eslint` refuses to load
+  against the TS 7.0 API, so `npm run lint` exits 2 and the frontend CI job fails. Blocked
+  upstream (typescript-eslint#10940, support targeted at TS >=7.1), not a preference.
+- **Node.js requirement in the README said 25+** while CI, the Dockerfile and `@types/node`
+  had all been on 26 for some time. Corrected to 26+.
+
 ---
 
 ## [0.26.0] - 2026-07-25

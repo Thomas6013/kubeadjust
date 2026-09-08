@@ -8,7 +8,7 @@ Context file for Claude Code. Covers architecture, commands, conventions, and kn
 
 KubeAdjust is a **read-only Kubernetes dashboard** (Go backend + Next.js frontend) that shows resource usage and optimization suggestions. It forwards the user's Kubernetes bearer token on every request — no server-side state, no database.
 
-- **Backend**: Go 1.26, Chi v5 router, 3 production dependencies (chi, cors, errgroup), raw HTTP K8s API (no client-go)
+- **Backend**: Go 1.27, Chi v5 router, 3 production dependencies (chi, cors, errgroup), raw HTTP K8s API (no client-go)
 - **Frontend**: Next.js 16, React 19, TypeScript 5, no UI library, no charting library
 - **Infra**: Helm chart in-tree at `charts/kubeadjust/` (folded back from the separate
   `kubeadjust-helm` repo in 0.27.0; that repo is closed). Chart version == app version.
