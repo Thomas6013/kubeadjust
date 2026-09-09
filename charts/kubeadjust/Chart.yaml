@@ -12,6 +12,6 @@ keywords:
   - requests
 dependencies:
   - name: metrics-server
-    version: "3.13.0"
+    version: "3.14.0"
     repository: "https://kubernetes-sigs.github.io/metrics-server"
     condition: metrics-server.enabled
