@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # golang:1.27-alpine — digest-pinned for supply-chain integrity (Renovate bumps the digest)
-FROM --platform=$BUILDPLATFORM golang:1.27-alpine@sha256:cf6fca6641884b8433441b2b0652976f975e1d0fdd26d177eaaf8596087f3125 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine@sha256:738d1cf061836894ff6bb8c33881080ac66de8cf0586615012a0c8f592649cfa AS builder
 ARG TARGETOS TARGETARCH
 WORKDIR /app
 RUN apk add --no-cache tzdata
